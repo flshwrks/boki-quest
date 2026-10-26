@@ -102,13 +102,49 @@ export const ITEMS: Record<ItemId, Item> = {
     sprite: "scroll",
     palette: { o: "#1d1d2b", t: "#b07a3a", p: "#f4e4c0", k: "#6a5a8a" },
   },
+  ether: {
+    name: "エーテル",
+    unit: "本",
+    cost: 1500,
+    price: 2500,
+    level: 3,
+    sprite: "bottle",
+    palette: { o: "#1d1d2b", k: "#8a5a2b", w: "#d8f0f8", r: "#3a8ae8" },
+  },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 
-export const LEVELS: Record<number, { name: string; rent: number }> = {
-  1: { name: "露店", rent: 20000 },
-  2: { name: "小さな店舗", rent: 40000 },
+export interface Level {
+  name: string;
+  rent: number;
+  /** 昇格審査の名前 */
+  exam: string;
+  /** 成長したときに見せる変化 */
+  perks: string[];
+  /** 成長したときの師匠のひとこと */
+  hoho: string;
+  /** 記帳を本番と同じCBT形式にする（設定で変えていなければ） */
+  cbt?: boolean;
+}
+
+export const LEVELS: Record<number, Level> = {
+  1: { name: "露店", rent: 20000, exam: "", perks: [], hoho: "" },
+  2: {
+    name: "小さな店舗",
+    rent: 40000,
+    exam: "商人ギルドの昇格審査",
+    perks: ["ギルドの審査に合格し、通りに面した店舗を借りた", "新商品「魔法の巻物」を扱えるようになった", "取引先が増え、新しい講義が始まる"],
+    hoho: "ホッホ、立派になったのう。ここからは「ツケ」の世界じゃ。帳簿の腕がますます試されるぞ。",
+  },
+  3: {
+    name: "商店街の店",
+    rent: 60000,
+    cbt: true,
+    exam: "王都銀行の融資審査",
+    perks: ["銀行の融資審査に合格し、商店街の大きな店に移った", "新商品「エーテル」を扱えるようになった", "手形やカード払いなど、支払い方が多彩になる"],
+    hoho: "見事じゃ！ これからは手形や電子記録など、お金の「形」がいろいろになる。ここからは記帳も本番の試験と同じ形式でやってみよう。",
+  },
 };
 
 export const DAYS_PER_MONTH = 5;

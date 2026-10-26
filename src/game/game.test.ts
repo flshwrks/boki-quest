@@ -3,34 +3,42 @@ import { isBalanced } from "@/engine/journal";
 import { trialBalance } from "@/engine/ledger";
 import { LESSONS } from "@/content/lessons";
 import { ITEM_IDS } from "@/content/world";
-import { advance, balance, choose, closeDay, entriesOf, newGame, nextDay, submitEntry, turnLessonPage, unlockedAccounts } from "./logic";
-import type { GameState } from "./types";
-
-function mulberry32(seed: number) {
-  let a = seed;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { EXAM_BANK } from "@/content/examBank";
+import { LESSON_BY_ID } from "@/content/lessons";
+import {
+  advance,
+  balance,
+  beginExam,
+  choose,
+  closeDay,
+  entriesOf,
+  finishExam,
+  gradeExam,
+  newGame,
+  nextDay,
+  setExamAnswer,
+  submitEntry,
+  turnLessonPage,
+  unlockedAccounts,
+} from "./logic";
+import { seededRand } from "./random";
+import { CREDIT_KINDS, type GameState } from "./types";
 
 function checkInvariants(s: GameState) {
   for (const id of ITEM_IDS) expect(s.stock[id]).toBeGreaterThanOrEqual(0);
   expect(balance(s, "現金")).toBeGreaterThanOrEqual(0);
   expect(balance(s, "普通預金")).toBeGreaterThanOrEqual(0);
-  const sum = (kind: string) => s.credits.filter((c) => c.kind === kind).reduce((a, c) => a + c.amount, 0);
-  expect(sum("売掛金")).toBe(balance(s, "売掛金"));
-  expect(sum("買掛金")).toBe(balance(s, "買掛金"));
+  for (const kind of CREDIT_KINDS) {
+    const sum = s.credits.filter((c) => c.kind === kind).reduce((a, c) => a + c.amount, 0);
+    expect(sum, `${kind} の追跡額と帳簿が食い違う`).toBe(balance(s, kind));
+  }
   const tb = trialBalance(entriesOf(s));
   expect(tb.reduce((a, r) => a + r.debit, 0)).toBe(tb.reduce((a, r) => a + r.credit, 0));
 }
 
 /** ランダムに選択しながら、正解を入力して days 日間プレイする */
 function play(seed: number, days: number, mistakeRate = 0) {
-  const rand = mulberry32(seed);
+  const rand = seededRand(seed);
   let s = newGame("テスト商店", rand);
   const seenTemplates = new Set<string>();
   let steps = 0;
@@ -80,6 +88,16 @@ function play(seed: number, days: number, mistakeRate = 0) {
       case "monthEnd":
         s = nextDay(s, rand);
         break;
+      case "exam": {
+        // 審査はすべて正解して進む
+        const e = p.exam;
+        if (e.startedAt === null) s = beginExam(s, 0);
+        else if (!e.graded) {
+          e.questions.forEach((q, i) => (s = setExamAnswer(s, i, q.answer)));
+          s = gradeExam(s);
+        } else s = finishExam(s, rand);
+        break;
+      }
     }
   }
   return { s, seenTemplates };
@@ -87,7 +105,7 @@ function play(seed: number, days: number, mistakeRate = 0) {
 
 describe("採点", () => {
   function atFirstJournal() {
-    const rand = mulberry32(1);
+    const rand = seededRand(1);
     let s = newGame("テスト商店", rand);
     while (s.phase.kind !== "journal") {
       s = s.phase.kind === "lesson" ? turnLessonPage(s, 1) : s.phase.kind === "event" ? choose(s, 0, rand) : advance(s, rand);
@@ -116,8 +134,8 @@ describe("採点", () => {
 });
 
 describe("通しプレイ", () => {
-  it.each([1, 2, 3, 4, 5, 6, 7, 8])("seed %i：60日間、帳簿とゲーム状態が矛盾しない", (seed) => {
-    const { s } = play(seed, 60, 0.2);
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])("seed %i：120日間、帳簿とゲーム状態が矛盾しない", (seed) => {
+    const { s } = play(seed, 120, 0.2);
     checkInvariants(s);
   });
 
@@ -125,11 +143,11 @@ describe("通しプレイ", () => {
     const seen = new Set<string>();
     let last: GameState | undefined;
     for (let seed = 1; seed <= 8; seed++) {
-      const r = play(seed, 60);
+      const r = play(seed, 120);
       r.seenTemplates.forEach((t) => seen.add(t));
       last = r.s;
     }
-    expect(last!.level).toBe(2);
+    expect(last!.level).toBe(3);
     expect(last!.lessonsDone).toEqual(LESSONS.map((l) => l.id));
     for (const t of [
       "founding",
@@ -152,8 +170,41 @@ describe("通しプレイ", () => {
       "deliver-staff",
       "cashdiff",
       "cashdiff-resolve",
+      "open-checking",
+      "customer-note",
+      "note-due",
+      "pay-by-note",
+      "note-pay-due",
+      "erecord-receive",
+      "erecord-due",
+      "erecord-pay",
+      "erecord-pay-due",
+      "card-sale",
+      "card-collect",
+      "giftcert-sale",
+      "giftcert-redeem",
+      "buy-fixture",
+      "pay-payable",
+      "petty-advance",
+      "petty-report",
+      "petty-replenish",
     ]) {
       expect(seen.has(t), `${t} が一度も登場しない`).toBe(true);
+    }
+  }, 60000);
+});
+
+describe("審査の問題", () => {
+  it("すべての正解が貸借一致し、出題する講義までに習う科目だけを使う", () => {
+    for (const q of EXAM_BANK) {
+      expect(isBalanced(q.answer), q.text).toBe(true);
+      const level = LESSON_BY_ID[q.lesson].level;
+      const learned = new Set(
+        Object.values(LESSON_BY_ID)
+          .filter((l) => l.level <= level)
+          .flatMap((l) => l.accounts),
+      );
+      for (const l of [...q.answer.debit, ...q.answer.credit]) expect(learned.has(l.account), `${q.text} → ${l.account}`).toBe(true);
     }
   });
 });

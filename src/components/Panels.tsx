@@ -1,21 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { explainLine, sumAmounts } from "@/engine/journal";
+import { sumAmounts } from "@/engine/journal";
 import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel } from "@/content/world";
 import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
 import type { AccountName } from "@/engine/accounts";
+import { seededRand, shuffle } from "@/game/random";
 import type { GameEvent, GameState, LessonId, ResultInfo } from "@/game/types";
 import { TrialBalanceTable } from "./BookModal";
 import { LedgerViz } from "./LedgerViz";
-import { AccountChip, Btn, Dialogue, EntryTable, Portrait, Speaker, Win, fmt } from "./ui";
+import { AccountChip, AnswerExplain, Btn, Dialogue, Portrait, Speaker, Win, fmt } from "./ui";
 
 export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () => void }) {
   const lesson = todaysLesson(state);
-  const lv1 = lessonsForLevel(1);
+  const lessons = lessonsForLevel(state.level);
+  const goal = LEVEL_UP[state.level];
+  const next = LEVELS[state.level + 1];
   return (
     <Win title={`${dateLabel(state.day)} の朝`}>
       <ul className="mb-3 text-sm">
@@ -26,18 +29,21 @@ export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () 
         )}
         <li>🧑‍🤝‍🧑 来店予定の冒険者：およそ {expectedCustomers(state)} 人（評判が上がると増える）</li>
       </ul>
-      {state.level === 1 && state.day > 1 && (
-        <div className="mb-3 rounded border border-white/30 p-2 text-sm">
-          <div className="mb-1 text-gold">店を「小さな店舗」に成長させる条件</div>
-          <Goal label="Lv1の講義をすべて受ける" now={lv1.filter((l) => state.lessonsDone.includes(l.id)).length} target={lv1.length} />
-          <Goal label="売上の累計" now={totalSales(state)} target={LEVEL_UP.sales} unit="円" />
-          <Goal label="帳簿の信用" now={state.trust} target={LEVEL_UP.trust} />
-          <Goal label="営業日数" now={state.day} target={LEVEL_UP.days} unit="日目" />
+      {goal && next && state.day > 1 && (
+        <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
+          <div className="mb-1 text-gold">
+            「{next.name}」へ成長する条件（そろうと翌朝{next.exam}）
+          </div>
+          <Goal label={`Lv${state.level}の講義をすべて受ける`} now={lessons.filter((l) => state.lessonsDone.includes(l.id)).length} target={lessons.length} />
+          <Goal label="売上の累計" now={totalSales(state)} target={goal.sales} unit="円" />
+          <Goal label="帳簿の信用" now={state.trust} target={goal.trust} />
+          <Goal label="営業日数" now={state.day} target={goal.days} unit="日目" />
+          {state.examRetryDay > state.day && <p className="mt-1 text-xs text-dim">審査の再挑戦は {dateLabel(state.examRetryDay)} から</p>}
         </div>
       )}
-      {state.level === 2 && lessonsForLevel(2).every((l) => state.lessonsDone.includes(l.id)) && (
-        <p className="mb-3 rounded border border-white/30 p-2 text-sm">
-          Lv2の講義はすべて修了！ 次の成長「取引の拡大（手形・電子記録債権など）」は、次のアップデートで解禁予定じゃ。それまで店を回して腕を磨こう。
+      {!goal && lessons.every((l) => state.lessonsDone.includes(l.id)) && (
+        <p className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
+          Lv{state.level}の講義はすべて修了！ 次の成長は、次のアップデートで解禁予定じゃ。それまで店を回して腕を磨こう。
         </p>
       )}
       <Btn onClick={onOpen}>開店する！</Btn>
@@ -134,12 +140,7 @@ export function ResultPanel({
         </span>
         <p className="pop text-xl text-ok">{info.firstTry ? "ノーヒントで正解！" : "正解！"}</p>
       </div>
-      <EntryTable entry={tx.answer} />
-      <ul className="mt-2 text-sm">
-        {(["debit", "credit"] as const).flatMap((side) =>
-          tx.answer[side].map((l) => <li key={`${side}-${l.account}`}>・{explainLine(l, side)}</li>),
-        )}
-      </ul>
+      <AnswerExplain entry={tx.answer} />
       {tx.note && (
         <div className="mt-2 flex gap-2 text-sm">
           <Portrait id="hoho" size={32} className="shrink-0" />
@@ -232,17 +233,6 @@ interface Quiz {
   explain: string;
 }
 
-function shuffle<T>(xs: T[], seed: number): T[] {
-  const a = [...xs];
-  let s = seed;
-  for (let i = a.length - 1; i > 0; i--) {
-    s = (s * 9301 + 49297) % 233280;
-    const j = Math.floor((s / 233280) * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 function uniqueOptions(answer: number, distractors: number[]): number[] {
   const opts = [answer];
   for (const d of [...distractors, answer + 5000, answer - 3000, answer + 12000]) {
@@ -260,7 +250,7 @@ function makeQuizzes(state: GameState): Quiz[] {
   const q1: Quiz = {
     q: "試算表を見て答えよう。今期ここまでの当期純利益（収益 − 費用）はいくら？",
     answer: s.netIncome,
-    options: shuffle(uniqueOptions(s.netIncome, [rev, rev - purchase]), state.day),
+    options: shuffle(uniqueOptions(s.netIncome, [rev, rev - purchase]), seededRand(state.day)),
     explain:
       `収益の合計 ${fmt(rev)}円 − 費用の合計 ${fmt(exp)}円 = ${fmt(s.netIncome)}円。仕入以外の費用（家賃など）も忘れずに引くのじゃ。` +
       (s.netIncome < 0 && Object.values(state.stock).some((v) => v > 0)
@@ -275,13 +265,13 @@ function makeQuizzes(state: GameState): Quiz[] {
       ? {
           q: "まだ回収していないツケ（売掛金）の残高はいくら？",
           answer: ar,
-          options: shuffle(uniqueOptions(ar, [cash, balance(state, "買掛金")]), state.day + 1),
+          options: shuffle(uniqueOptions(ar, [cash, balance(state, "買掛金")]), seededRand(state.day + 1)),
           explain: "試算表の売掛金の行（借方残高）を見ればわかる。売掛金は資産だから、残高は借方に出るのじゃ。",
         }
       : {
           q: "普通預金の残高はいくら？",
           answer: dep,
-          options: shuffle(uniqueOptions(dep, [cash, 300000]), state.day + 1),
+          options: shuffle(uniqueOptions(dep, [cash, 300000]), seededRand(state.day + 1)),
           explain: "試算表の普通預金の行（借方残高）を見ればわかる。資産の残高は借方に出るのじゃ。",
         };
   return [q1, q2];
@@ -358,13 +348,14 @@ export function LevelUpPanel({ level, onNext }: { level: number; onNext: () => v
         「{LEVELS[level - 1]?.name}」から「<span className="text-gold">{LEVELS[level].name}</span>」へ！
       </p>
       <ul className="mx-auto mt-3 max-w-sm text-left text-sm">
-        <li>・ギルドの審査に合格し、通りに面した店舗を借りた（家賃 {fmt(LEVELS[level].rent)}円）</li>
-        <li>・新商品「魔法の巻物」を扱えるようになった</li>
-        <li>・取引先が増え、新しい講義が始まる</li>
+        {LEVELS[level].perks.map((p) => (
+          <li key={p}>・{p}</li>
+        ))}
+        <li>・家賃は月{fmt(LEVELS[level].rent)}円になる</li>
       </ul>
       <div className="mt-4 flex justify-center gap-3">
         <Portrait id="hoho" size={56} />
-        <p className="max-w-xs text-left text-sm">ホッホ、立派になったのう。ここからは「ツケ」の世界じゃ。帳簿の腕がますます試されるぞ。</p>
+        <p className="max-w-xs text-left text-sm">{LEVELS[level].hoho}</p>
       </div>
       <div className="mt-4">
         <Btn onClick={onNext}>新しい店で開店する</Btn>

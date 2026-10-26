@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type AccountName, CATEGORY_LABEL, categoryOf, homeSide, sideWithPos } from "@/engine/accounts";
+import { type AccountName, CATEGORY_LABEL, categoryOf, homeSide, inMasterOrder, sideWithPos } from "@/engine/accounts";
 import { trialBalance, trialBalanceTotals } from "@/engine/ledger";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LESSONS, LESSON_BY_ID } from "@/content/lessons";
@@ -19,7 +19,8 @@ const TABS: [Tab, string][] = [
   ["tb", "試算表"],
 ];
 
-const ALL_CARDS = Object.keys(ACCOUNT_INFO) as AccountName[];
+// 説明のある科目をカードにする（勘定科目マスタの並び）
+const ALL_CARDS = inMasterOrder(Object.keys(ACCOUNT_INFO) as AccountName[]);
 
 function Cards({ state }: { state: GameState }) {
   const owned = new Set(unlockedAccounts(state));

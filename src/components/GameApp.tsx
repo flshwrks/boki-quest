@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { balanceIn, netBalances } from "@/engine/ledger";
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
   advance,
+  beginExam,
+  examScore,
+  finishExam,
+  gradeExam,
+  setExamAnswer,
+  EXAM_PASS,
   answerMonthQuiz,
-  balance,
   choose,
   closeDay,
-  entriesOf,
   newGame,
   nextDay,
   submitEntry,
@@ -21,7 +26,8 @@ import {
 import { clearGame, loadGame, saveGame } from "@/game/save";
 import type { CharacterId, GameState } from "@/game/types";
 import { BookModal } from "./BookModal";
-import { JournalInput } from "./JournalInput";
+import { ExamPanel } from "./ExamPanel";
+import { type InputMode, JournalInput } from "./JournalInput";
 import { LedgerViz } from "./LedgerViz";
 import { LessonView } from "./LessonView";
 import {
@@ -40,6 +46,7 @@ import { AnimatedNumber, Btn, Modal, Portrait, Win, fmt } from "./ui";
 
 const SOUND_KEY = "boki-quest-sound";
 const DEFAULT_SHOP = "星のしずく";
+const INPUT_KEY = "boki-quest-input";
 const rand = Math.random;
 
 /** 場面に合わせた時間帯・感情アイコン・お金のポップアップ */
@@ -83,6 +90,8 @@ function speakerOf(state: GameState): CharacterId | undefined {
       return p.speaker;
     case "lesson":
       return "hoho";
+    case "exam":
+      return "luke";
     default:
       return undefined;
   }
@@ -157,6 +166,8 @@ export default function GameApp() {
   const [book, setBook] = useState(false);
   const [ledger, setLedger] = useState(false);
   const [sound, setSound] = useState(true);
+  // 仕訳の入力方式。null なら Lv に合わせて自動（Lv3から本番と同じCBT形式）
+  const [inputPref, setInputPref] = useState<InputMode | null>(null);
 
   useEffect(() => {
     setSaved(loadGame());
@@ -164,6 +175,8 @@ export default function GameApp() {
       const on = localStorage.getItem(SOUND_KEY) !== "off";
       setSound(on);
       setSoundEnabled(on);
+      const pref = localStorage.getItem(INPUT_KEY);
+      if (pref === "card" || pref === "cbt") setInputPref(pref);
     } catch {
       // 既定値（音あり）のまま
     }
@@ -181,6 +194,16 @@ export default function GameApp() {
       window.removeEventListener("pagehide", flush);
     };
   }, [state]);
+
+  // 帳簿の集計は仕訳が増えたときだけやり直す（審査の入力中などは使い回す）
+  const journal = state?.journal;
+  const entries = useMemo(() => (journal ?? []).map((r) => r.entry), [journal]);
+  const net = useMemo(() => netBalances(entries), [entries]);
+  const phase = state?.phase;
+  const highlight = useMemo(
+    () => (phase?.kind === "result" ? [...phase.info.tx.answer.debit, ...phase.info.tx.answer.credit].map((l) => l.account) : []),
+    [phase],
+  );
 
   const prevPhase = state?.phase.kind;
   useEffect(() => {
@@ -202,7 +225,23 @@ export default function GameApp() {
     );
   }
 
+  const inputMode: InputMode = inputPref ?? (LEVELS[state.level].cbt ? "cbt" : "card");
   const update = (f: (s: GameState) => GameState) => setState((s) => (s ? f(s) : s));
+  const grade = () => {
+    const graded = gradeExam(state);
+    if (graded === state || graded.phase.kind !== "exam") return;
+    play(examScore(graded.phase.exam) >= EXAM_PASS ? "correct" : "wrong");
+    setState(graded);
+  };
+  const toggleInputMode = () => {
+    const next: InputMode = inputMode === "cbt" ? "card" : "cbt";
+    setInputPref(next);
+    try {
+      localStorage.setItem(INPUT_KEY, next);
+    } catch {
+      // 保存できなくても切り替えは効く
+    }
+  };
   const toggleSound = () => {
     const on = !sound;
     setSound(on);
@@ -215,8 +254,6 @@ export default function GameApp() {
   };
 
   const p = state.phase;
-  const highlight =
-    p.kind === "result" ? [...p.info.tx.answer.debit, ...p.info.tx.answer.credit].map((l) => l.account) : [];
 
   let panel: React.ReactNode;
   switch (p.kind) {
@@ -241,6 +278,8 @@ export default function GameApp() {
           key={state.journal.length}
           session={p.session}
           accounts={unlockedAccounts(state)}
+          mode={inputMode}
+          onToggleMode={toggleInputMode}
           onHint={() => update(takeHint)}
           onSubmit={(entry) => {
             const next = submitEntry(state, entry);
@@ -266,6 +305,18 @@ export default function GameApp() {
             update((s) => answerMonthQuiz(s, i, ok));
           }}
           onNext={() => update((s) => nextDay(s, rand))}
+        />
+      );
+      break;
+    case "exam":
+      panel = (
+        <ExamPanel
+          exam={p.exam}
+          accounts={unlockedAccounts(state)}
+          onBegin={(now) => update((s) => beginExam(s, now))}
+          onAnswer={(i, entry) => update((s) => setExamAnswer(s, i, entry))}
+          onGrade={grade}
+          onFinish={() => update((s) => finishExam(s, rand))}
         />
       );
       break;
@@ -310,13 +361,13 @@ export default function GameApp() {
           <div className="flex gap-1">
             <dt className="text-dim">現金</dt>
             <dd>
-              <AnimatedNumber value={balance(state, "現金")} />円
+              <AnimatedNumber value={balanceIn(net, "現金")} />円
             </dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-dim">普通預金</dt>
             <dd>
-              <AnimatedNumber value={balance(state, "普通預金")} />円
+              <AnimatedNumber value={balanceIn(net, "普通預金")} />円
             </dd>
           </div>
           <div className="flex gap-1">
@@ -346,7 +397,7 @@ export default function GameApp() {
         </main>
         <aside className="hidden lg:block">
           <Win title="帳簿のすがた" className="sticky top-28">
-            <LedgerViz entries={entriesOf(state)} highlight={highlight} />
+            <LedgerViz entries={entries} highlight={highlight} />
           </Win>
         </aside>
       </div>
@@ -354,7 +405,7 @@ export default function GameApp() {
       {book && <BookModal state={state} onClose={() => setBook(false)} />}
       {ledger && (
         <Modal title="帳簿のすがた" onClose={() => setLedger(false)}>
-          <LedgerViz entries={entriesOf(state)} highlight={highlight} />
+          <LedgerViz entries={entries} highlight={highlight} />
         </Modal>
       )}
     </div>

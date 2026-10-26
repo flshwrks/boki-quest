@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { type AccountName, categoryOf } from "@/engine/accounts";
 import { type Entry, sumAmounts } from "@/engine/journal";
 import { statements } from "@/engine/ledger";
@@ -37,8 +38,8 @@ function Column({ blocks, scale, highlight }: { blocks: Block[]; scale: number; 
   );
 }
 
-/** 期中の貸借対照表と損益計算書をブロックの高さで見せる */
-export function LedgerViz({ entries, highlight = [] }: { entries: Entry[]; highlight?: AccountName[] }) {
+/** 期中の貸借対照表と損益計算書をブロックの高さで見せる。仕訳と強調が変わらなければ描き直さない */
+export const LedgerViz = memo(function LedgerViz({ entries, highlight = [] }: { entries: Entry[]; highlight?: AccountName[] }) {
   const s = statements(entries);
   const lit = new Set<string>(highlight);
   const toBlocks = (xs: { account: AccountName; amount: number }[]): Block[] =>
@@ -97,4 +98,4 @@ export function LedgerViz({ entries, highlight = [] }: { entries: Entry[]; highl
       </figure>
     </div>
   );
-}
+});

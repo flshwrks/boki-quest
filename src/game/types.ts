@@ -1,6 +1,6 @@
 import type { Entry } from "@/engine/journal";
 
-export type ItemId = "potion" | "herb" | "antidote" | "scroll";
+export type ItemId = "potion" | "herb" | "antidote" | "scroll" | "ether";
 
 export type CharacterId =
   | "hoho"
@@ -23,12 +23,32 @@ export type LessonId =
   | "returns"
   | "advances"
   | "charges"
-  | "cashdiff";
+  | "cashdiff"
+  | "notes"
+  | "erecords"
+  | "creditcard"
+  | "giftcert"
+  | "payables"
+  | "pettycash";
 
-/** 掛け取引の相手ごとの未決済残高（ゲーム進行用。金額は帳簿の売掛金・買掛金と一致させる） */
+/** 相手ごとに追跡する債権・債務の科目。合計は帳簿の残高と一致させる（通しプレイのテストで検証） */
+export const CREDIT_KINDS = [
+  "売掛金",
+  "買掛金",
+  "受取手形",
+  "支払手形",
+  "電子記録債権",
+  "電子記録債務",
+  "クレジット売掛金",
+  "受取商品券",
+  "未払金",
+] as const;
+export type CreditKind = (typeof CREDIT_KINDS)[number];
+
+/** 相手ごとの未決済残高（ゲーム進行用） */
 export interface Credit {
   id: string;
-  kind: "売掛金" | "買掛金";
+  kind: CreditKind;
   who: CharacterId;
   amount: number;
   item?: ItemId;
@@ -124,7 +144,26 @@ export type Phase =
   | { kind: "result"; info: ResultInfo; speaker: CharacterId }
   | { kind: "dayEnd" }
   | { kind: "monthEnd"; answered: (boolean | null)[] }
+  | { kind: "exam"; exam: ExamSession }
   | { kind: "levelUp"; level: number };
+
+export interface ExamQuestion {
+  text: string;
+  answer: Entry;
+  lesson: LessonId;
+}
+
+/** 昇格審査。本番CBTと同じく、問題を行き来して最後にまとめて採点する */
+export interface ExamSession {
+  toLevel: number;
+  questions: ExamQuestion[];
+  answers: (Entry | null)[];
+  /** 試験開始の時刻（ミリ秒）。案内を読んでいる間は null。再読み込みしても残り時間が続くように保存する */
+  startedAt: number | null;
+  minutes: number;
+  /** 採点後に入る。各問の正誤 */
+  graded: boolean[] | null;
+}
 
 export interface DayStats {
   sales: number;
@@ -134,8 +173,11 @@ export interface DayStats {
   bestCombo: number;
 }
 
+/** 一日の予定。講義か取引イベントのどちらか */
+export type QueueItem = { kind: "lesson"; id: LessonId } | { kind: "event"; id: string; guided?: boolean };
+
 export interface GameState {
-  version: 1;
+  version: 2;
   shopName: string;
   level: number;
   day: number;
@@ -145,12 +187,14 @@ export interface GameState {
   stock: Record<ItemId, number>;
   journal: JournalRecord[];
   lessonsDone: LessonId[];
-  queue: string[];
+  queue: QueueItem[];
   credits: Credit[];
   creditSeq: number;
   quest: Quest | null;
   cashDiff: { amount: number; day: number } | null;
   mistakes: Mistake[];
+  /** 昇格審査に落ちたとき、次に受けられる日 */
+  examRetryDay: number;
   today: DayStats;
   phase: Phase;
 }

@@ -77,8 +77,13 @@ export function statements(entries: Entry[]): Statements {
   return s;
 }
 
+/** 集計済みの netBalances から、科目の残高を増える側から見た値で返す */
+export function balanceIn(net: Map<AccountName, number>, account: AccountName): number {
+  return fromHome(account, net.get(account) ?? 0);
+}
+
 export function balanceOf(entries: Entry[], account: AccountName): number {
-  return fromHome(account, netBalances(entries).get(account) ?? 0);
+  return balanceIn(netBalances(entries), account);
 }
 
 export function trialBalanceTotals(rows: TrialBalanceRow[]): { debit: number; credit: number } {

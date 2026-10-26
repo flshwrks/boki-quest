@@ -1,15 +1,15 @@
 import type { AccountName } from "@/engine/accounts";
-import { diagnose, sumAmounts, type Entry } from "@/engine/journal";
-import { balanceOf } from "@/engine/ledger";
-import { TEMPLATES, type Ctx } from "@/content/events";
+import { diagnose, sameEntry, sumAmounts, type Entry } from "@/engine/journal";
+import { balanceIn, balanceOf, netBalances } from "@/engine/ledger";
+import { TEMPLATES } from "@/content/events";
+import type { Ctx } from "@/content/eventKit";
+import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel, type Lesson } from "@/content/lessons";
 import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth } from "@/content/world";
-import type { Choice, DayStats, Effect, GameState, LessonId, ResultInfo, TxSession } from "./types";
+export type { Rand } from "./random";
+import { type Rand, shuffle } from "./random";
+import type { Choice, DayStats, Effect, ExamQuestion, ExamSession, GameState, LessonId, QueueItem, ResultInfo, TxSession } from "./types";
 
-export type Rand = () => number;
-
-const GUIDED = "!";
-const LESSON = "lesson:";
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
@@ -32,23 +32,24 @@ export function totalSales(state: GameState): number {
 
 /** 今日の予定に入っている講義 */
 export function todaysLesson(state: GameState): LessonId | undefined {
-  return state.queue.find((q) => q.startsWith(LESSON))?.slice(LESSON.length) as LessonId | undefined;
+  return state.queue.find((q) => q.kind === "lesson")?.id as LessonId | undefined;
 }
 
 export function expectedCustomers(state: GameState): number {
-  return state.queue.filter((q) => q.endsWith("customer")).length;
+  return state.queue.filter((q) => q.kind === "event" && q.id.startsWith("customer")).length;
 }
 
-export function newGame(shopName: string, rand: Rand): GameState {
-  const state: GameState = {
-    version: 1,
+/** 新しいゲームの状態。セーブの読み込みでも、後から増えた項目の初期値として使う */
+export function initialState(shopName: string): GameState {
+  return {
+    version: 2,
     shopName,
     level: 1,
     day: 1,
     trust: 50,
     reputation: 20,
     combo: 0,
-    stock: { potion: 0, herb: 0, antidote: 0, scroll: 0 },
+    stock: { potion: 0, herb: 0, antidote: 0, scroll: 0, ether: 0 },
     journal: [],
     lessonsDone: [],
     queue: [],
@@ -57,9 +58,14 @@ export function newGame(shopName: string, rand: Rand): GameState {
     quest: null,
     cashDiff: null,
     mistakes: [],
+    examRetryDay: 0,
     today: emptyDay(),
     phase: { kind: "dayStart" },
   };
+}
+
+export function newGame(shopName: string, rand: Rand): GameState {
+  const state = initialState(shopName);
   return { ...state, queue: planDay(state, rand) };
 }
 
@@ -68,60 +74,56 @@ function nextLesson(state: GameState): Lesson | undefined {
   return lessonsForLevel(state.level).find((l) => !state.lessonsDone.includes(l.id));
 }
 
-/** 講義と、その直後の練習取引 */
-const lessonItems = (l: Lesson) => [`${LESSON}${l.id}`, ...l.practice.map((t) => GUIDED + t)];
+const ev = (id: string, guided = false): QueueItem => ({ kind: "event", id, guided });
 
-export function planDay(state: GameState, rand: Rand): string[] {
+/** 講義と、その直後の練習取引 */
+const lessonItems = (l: Lesson): QueueItem[] => [{ kind: "lesson", id: l.id }, ...l.practice.map((t) => ev(t, true))];
+
+/** 講義を受けた後の取引。毎日判定するものと、ときどき起きるもの（確率つき） */
+const DAILY = Object.entries(TEMPLATES).filter(([, t]) => t.schedule === "daily");
+const EXTRAS = Object.entries(TEMPLATES).filter(([, t]) => typeof t.schedule === "number");
+
+export function planDay(state: GameState, rand: Rand): QueueItem[] {
   // 開業日は開業に必要な講義をまとめて受け、お客さんを1人だけ迎える
-  if (state.day === 1) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), "customer"];
+  if (state.day === 1) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
   const has = (id: LessonId) => state.lessonsDone.includes(id);
   const dim = dayInMonth(state.day);
-  const q: string[] = [];
+  const q: QueueItem[] = [];
 
   const lesson = nextLesson(state);
   if (lesson) q.push(...lessonItems(lesson));
   const willHave = (id: LessonId) => has(id) || lesson?.id === id;
 
-  if (willHave("expenses") && dim === 1) q.push("rent");
-  if (willHave("expenses") && dim === 3) q.push("utility");
-  if (has("advances")) q.push("receive-staff", "deliver-staff");
-  if (has("cashdiff")) q.push("cashdiff-resolve");
-  if (has("credit")) q.push("pay-supplier", "collect");
-  if (has("credit") && state.credits.filter((c) => c.kind === "売掛金").length > 1 && rand() < 0.5) q.push("collect");
+  if (willHave("expenses") && dim === 1) q.push(ev("rent"));
+  if (willHave("expenses") && dim === 3) q.push(ev("utility"));
+  for (const [id, t] of DAILY) if (has(t.lesson)) q.push(ev(id));
+  if (has("credit") && state.credits.filter((c) => c.kind === "売掛金").length > 1 && rand() < 0.5) q.push(ev("collect"));
 
-  q.push("bank", "wholesale");
-  if (rand() < 0.5) q.push("wholesale");
-  if (has("returns") && rand() < 0.3) q.push("purchase-return");
+  q.push(ev("bank"), ev("wholesale"));
+  if (rand() < 0.5) q.push(ev("wholesale"));
+  if (has("returns") && rand() < 0.3) q.push(ev("purchase-return"));
 
-  const extras: string[] = [];
-  if (willHave("expenses")) {
-    if (rand() < 0.35) extras.push("supplies");
-    if (rand() < 0.25) extras.push("letter");
-    if (rand() < 0.2) extras.push("ad");
-  }
-  if (has("returns") && rand() < 0.25) extras.push("sales-return");
-  if (has("cashdiff") && rand() < 0.2) extras.push("cashdiff");
-  if (has("advances") && !state.quest && rand() < 0.15) extras.push("order-staff");
-
+  const extras = EXTRAS.filter(([, t]) => willHave(t.lesson) && rand() < (t.schedule as number)).map(([id]) => ev(id));
   const customers = 2 + Math.floor(state.reputation / 25);
-  const rest = [...Array(customers).fill("customer"), ...extras];
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
-  }
-  q.push(...rest.slice(0, Math.ceil(rest.length / 2)), "bank", ...rest.slice(Math.ceil(rest.length / 2)));
+  const rest = shuffle([...Array.from({ length: customers }, () => ev("customer")), ...extras], rand);
+  const half = Math.ceil(rest.length / 2);
+  q.push(...rest.slice(0, half), ev("bank"), ...rest.slice(half));
   // 特注クエストの手付金はクエストの段階で判定するので、常に最後に置いておけばよい
-  if (has("advances")) q.push("advance-dwarf");
+  if (has("advances")) q.push(ev("advance-dwarf"));
   return q;
 }
 
 function ctxOf(state: GameState, rand: Rand, guided: boolean): Ctx {
+  // 残高は最初に必要になったときに一度だけ集計し、使い回す
+  let net: Map<AccountName, number> | undefined;
   return {
     state,
     rand,
     guided,
-    cash: balance(state, "現金"),
-    deposit: balance(state, "普通預金"),
+    balance: (account) => {
+      net ??= netBalances(entriesOf(state));
+      return balanceIn(net, account);
+    },
     has: (id) => state.lessonsDone.includes(id),
   };
 }
@@ -129,27 +131,29 @@ function ctxOf(state: GameState, rand: Rand, guided: boolean): Ctx {
 /** キューから次の講義・イベントを取り出す。空になったら一日の終わり */
 export function advance(state: GameState, rand: Rand): GameState {
   const queue = [...state.queue];
+  const ctx = ctxOf(state, rand, false);
   while (queue.length > 0) {
     const head = queue.shift()!;
-    if (head.startsWith(LESSON)) {
-      const lesson = head.slice(LESSON.length) as LessonId;
-      if (state.lessonsDone.includes(lesson)) continue;
-      return { ...state, queue, phase: { kind: "lesson", lesson, page: 0 } };
+    if (head.kind === "lesson") {
+      if (state.lessonsDone.includes(head.id)) continue;
+      return { ...state, queue, phase: { kind: "lesson", lesson: head.id, page: 0 } };
     }
-    const guided = head.startsWith(GUIDED);
-    const id = guided ? head.slice(1) : head;
+    const { id } = head;
+    const guided = !!head.guided;
     const template = TEMPLATES[id];
     if (!template || !state.lessonsDone.includes(template.lesson)) continue;
-    const built = template.build(ctxOf(state, rand, guided));
+    const built = template.build({ ...ctx, guided });
     if (!built) continue;
-    if (built.choices.every((c) => c.disabled)) {
-      built.choices.push({
+    // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
+    const choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
+    if (choices.every((c) => c.disabled)) {
+      choices.push({
         label: "今は見送る（お金が足りない）",
         reply: "ホーホー「お金が足りんときは、銀行で引き出すか、商品を売って現金を作るのじゃ」",
         effect: { reputation: -1 },
       });
     }
-    return { ...state, queue, phase: { kind: "event", event: { ...built, templateId: id, guided: built.guided ?? guided } } };
+    return { ...state, queue, phase: { kind: "event", event: { ...built, choices, templateId: id, guided } } };
   }
   return { ...state, queue, phase: { kind: "dayEnd" } };
 }
@@ -282,14 +286,20 @@ export function isMonthEnd(state: GameState): boolean {
   return dayInMonth(state.day) === DAYS_PER_MONTH;
 }
 
-/** Lv1 → Lv2 の条件（朝の画面の目標表示と共通） */
-export const LEVEL_UP = { days: 4, sales: 50000, trust: 55 };
+/** 次のLvへの昇格条件と、昇格審査の形式（朝の画面の目標表示と共通） */
+export const LEVEL_UP: Record<number, { days: number; sales: number; trust: number; questions: number; minutes: number }> = {
+  1: { days: 4, sales: 50000, trust: 55, questions: 4, minutes: 12 },
+  2: { days: 12, sales: 250000, trust: 60, questions: 5, minutes: 15 },
+};
 
-/** Lv1 → Lv2：Lv1の講義をすべて受け、売上累計と帳簿の信用が十分なとき */
+export const EXAM_PASS = 70;
+
+/** 今のLvの講義をすべて受け、売上累計と帳簿の信用が十分なら昇格審査を受けられる */
 export function canLevelUp(state: GameState): boolean {
-  if (state.level !== 1) return false;
-  const lv1Done = lessonsForLevel(1).every((l) => state.lessonsDone.includes(l.id));
-  return lv1Done && state.day >= LEVEL_UP.days && totalSales(state) >= LEVEL_UP.sales && state.trust >= LEVEL_UP.trust;
+  const goal = LEVEL_UP[state.level];
+  if (!goal) return false;
+  const lessonsDone = lessonsForLevel(state.level).every((l) => state.lessonsDone.includes(l.id));
+  return lessonsDone && state.day >= goal.days && totalSales(state) >= goal.sales && state.trust >= goal.trust;
 }
 
 export function closeDay(state: GameState): GameState {
@@ -297,16 +307,83 @@ export function closeDay(state: GameState): GameState {
   return nextDay(state);
 }
 
+/** その日の予定を立て、昇格の条件がそろっていれば朝いちばんに審査を行う */
+function startDay(state: GameState, rand: Rand): GameState {
+  const planned = { ...state, queue: planDay(state, rand) };
+  if (canLevelUp(planned) && planned.day >= planned.examRetryDay) return { ...planned, phase: { kind: "exam", exam: makeExam(planned, rand) } };
+  return { ...planned, phase: { kind: "dayStart" } };
+}
+
 export function nextDay(state: GameState, rand: Rand = Math.random): GameState {
-  const levelUp = canLevelUp(state);
-  const base: GameState = {
-    ...state,
-    day: state.day + 1,
-    level: levelUp ? state.level + 1 : state.level,
-    today: emptyDay(),
+  return startDay({ ...state, day: state.day + 1, today: emptyDay() }, rand);
+}
+
+/** これまでに習った論点から、なるべく論点が重ならないように出題する */
+export function makeExam(state: GameState, rand: Rand): ExamSession {
+  const goal = LEVEL_UP[state.level];
+  const learned = new Set(LESSONS.filter((l) => l.level <= state.level).map((l) => l.id));
+  // 今のLvで習った論点を優先し、同じ論点の2問目以降は後回しにする
+  const pool = shuffle(
+    EXAM_BANK.filter((q) => learned.has(q.lesson)),
+    rand,
+  ).sort((a, b) => LESSON_BY_ID[b.lesson].level - LESSON_BY_ID[a.lesson].level);
+  const seen = new Set<LessonId>();
+  const firsts: ExamQuestion[] = [];
+  const repeats: ExamQuestion[] = [];
+  for (const q of pool) {
+    if (seen.has(q.lesson)) repeats.push(q);
+    else {
+      seen.add(q.lesson);
+      firsts.push(q);
+    }
+  }
+  const questions = [...firsts, ...repeats].slice(0, goal.questions);
+  return {
+    toLevel: state.level + 1,
+    questions,
+    answers: questions.map(() => null),
+    startedAt: null,
+    minutes: goal.minutes,
+    graded: null,
   };
-  const planned = { ...base, queue: planDay(base, rand) };
-  return { ...planned, phase: levelUp ? { kind: "levelUp", level: base.level } : { kind: "dayStart" } };
+}
+
+function updateExam(state: GameState, f: (e: ExamSession) => ExamSession): GameState {
+  if (state.phase.kind !== "exam") return state;
+  return { ...state, phase: { kind: "exam", exam: f(state.phase.exam) } };
+}
+
+export const beginExam = (state: GameState, now: number) => updateExam(state, (e) => (e.startedAt ? e : { ...e, startedAt: now }));
+
+export const setExamAnswer = (state: GameState, index: number, answer: Entry) =>
+  updateExam(state, (e) => (e.graded ? e : { ...e, answers: e.answers.map((a, i) => (i === index ? answer : a)) }));
+
+export function examScore(e: ExamSession): number {
+  return e.graded ? Math.round((e.graded.filter(Boolean).length / e.graded.length) * 100) : 0;
+}
+
+/** 採点する。間違えた問題は苦手として記録する */
+export function gradeExam(state: GameState): GameState {
+  if (state.phase.kind !== "exam" || state.phase.exam.graded) return state;
+  const e = state.phase.exam;
+  const graded = e.questions.map((q, i) => {
+    const a = e.answers[i];
+    return !!a && sameEntry(a, q.answer);
+  });
+  const mistakes = e.questions
+    .filter((_, i) => !graded[i])
+    .map((q) => ({ day: state.day, templateId: `exam:${q.lesson}`, exam: q.text }));
+  return updateExam({ ...state, mistakes: [...state.mistakes, ...mistakes] }, (x) => ({ ...x, graded }));
+}
+
+/** 結果を見終えたあと。合格なら昇格、不合格なら2日後に再挑戦 */
+export function finishExam(state: GameState, rand: Rand): GameState {
+  if (state.phase.kind !== "exam" || !state.phase.exam.graded) return state;
+  if (examScore(state.phase.exam) >= EXAM_PASS) {
+    const promoted = startDay({ ...state, level: state.level + 1 }, rand);
+    return { ...promoted, phase: { kind: "levelUp", level: promoted.level } };
+  }
+  return { ...state, examRetryDay: state.day + 2, phase: { kind: "dayStart" } };
 }
 
 export function answerMonthQuiz(state: GameState, index: number, correct: boolean): GameState {

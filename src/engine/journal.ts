@@ -30,6 +30,9 @@ export function entry(debit: [AccountName, number][], credit: [AccountName, numb
   };
 }
 
+/** 1行も記入されていない仕訳か */
+export const isEmptyEntry = (e: Entry) => e.debit.length === 0 && e.credit.length === 0;
+
 export function isBalanced(entry: Entry): boolean {
   const d = sumAmounts(entry.debit);
   return d > 0 && d === sumAmounts(entry.credit);

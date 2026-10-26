@@ -1,29 +1,9 @@
 import type { AccountName } from "@/engine/accounts";
-import { fmt as n } from "@/engine/format";
-import { entry as je, sumAmounts } from "@/engine/journal";
-import type { CharacterId, Choice, GameEvent, GameState, ItemId, LessonId, Transaction } from "@/game/types";
-import { CHARACTERS, DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
-
-export interface Ctx {
-  state: GameState;
-  rand: () => number;
-  cash: number;
-  deposit: number;
-  has: (lesson: LessonId) => boolean;
-  /** 講義直後の練習。断る・半分だけなどの寄り道を出さない */
-  guided: boolean;
-}
-
-export interface EventTemplate {
-  lesson: LessonId;
-  build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;
-}
-
-const pick = <T,>(rand: () => number, xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)];
-const name = (id: CharacterId) => CHARACTERS[id].name;
-const decline = (label: string, reply: string, reputation = 0): Choice => ({ label, reply, effect: { reputation } });
-const needCash = (ctx: Ctx, amount: number) => (ctx.cash < amount ? "現金が足りない" : undefined);
-const needDeposit = (ctx: Ctx, amount: number) => (ctx.deposit < amount ? "普通預金が足りない" : undefined);
+import { sumAmounts } from "@/engine/journal";
+import type { CharacterId, Choice, ItemId, Transaction } from "@/game/types";
+import { CUSTOMER_PREFS, type EventTemplate, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll } from "./eventKit";
+import { LV3_TEMPLATES } from "./eventsLv3";
+import { DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
 
 // ───────── 設立・銀行 ─────────
 
@@ -87,22 +67,24 @@ const withdraw: EventTemplate = {
 const bank: EventTemplate = {
   lesson: "founding",
   build: (ctx) => {
-    if (ctx.cash < 15000 && ctx.deposit >= 30000) {
+    const cash = ctx.balance("現金");
+    const deposit = ctx.balance("普通預金");
+    if (cash < 15000 && deposit >= 30000) {
       return {
         speaker: "luke",
-        lines: ["レジのお金が心細いようですね。普通預金から引き出しますか？", `（現金 ${n(ctx.cash)}円／普通預金 ${n(ctx.deposit)}円）`],
+        lines: ["レジのお金が心細いようですね。普通預金から引き出しますか？", `（現金 ${n(cash)}円／普通預金 ${n(deposit)}円）`],
         choices: [
           ...[30000, 50000]
-            .filter((a) => a <= ctx.deposit)
+            .filter((a) => a <= deposit)
             .map((amt) => ({ label: `${n(amt)}円を引き出す`, tx: withdrawTx(amt) })),
           decline("今日は大丈夫", "ルーク「では、またいつでもどうぞ」"),
         ],
       };
     }
-    if (ctx.cash > 150000) {
+    if (cash > 150000) {
       return {
         speaker: "luke",
-        lines: ["レジに現金が多すぎると、いたずら妖精に狙われますよ。預け入れますか？", `（現金 ${n(ctx.cash)}円）`],
+        lines: ["レジに現金が多すぎると、いたずら妖精に狙われますよ。預け入れますか？", `（現金 ${n(cash)}円）`],
         choices: [{ label: "100,000円を預け入れる", tx: depositTx(100000) }, decline("やめておく", "ルーク「お気をつけて」")],
       };
     }
@@ -145,7 +127,7 @@ function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee:
   };
 }
 
-const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10] };
+const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10] };
 
 function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
   return {
@@ -170,7 +152,7 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
       }
       if (mode === "any" && !ctx.guided) {
         const half = qty / 2;
-        if (!canCredit && ctx.cash < amount + fee && ctx.deposit >= amount + fee) {
+        if (!canCredit && ctx.balance("現金") < amount + fee && ctx.balance("普通預金") >= amount + fee) {
           choices.push({ label: "普通預金から払って仕入れる", tx: purchaseTx(item, qty, "現金", fee, "普通預金") });
         }
         choices.push({
@@ -196,12 +178,6 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
 
 // ───────── 販売 ─────────
 
-const CUSTOMER_PREFS: Record<string, { items: ItemId[]; greet: string; creditRate: number; qty: Partial<Record<ItemId, number[]>> }> = {
-  allen: { items: ["potion", "antidote"], greet: "よう店主！ 明日からダンジョンに潜るんだ。", creditRate: 0.7, qty: { potion: [5, 10], antidote: [5] } },
-  mina: { items: ["scroll", "antidote"], greet: "こんにちは。魔法の研究に使うの。", creditRate: 0.2, qty: { scroll: [2, 3], antidote: [5, 10] } },
-  gord: { items: ["potion"], greet: "おう、仲間の分もまとめて買いに来た。", creditRate: 0.2, qty: { potion: [10, 15, 20] } },
-  lily: { items: ["herb", "antidote"], greet: "神殿の治療室で使いたいのです。", creditRate: 0.2, qty: { herb: [10, 20], antidote: [5, 10] } },
-};
 
 function saleTx(who: CharacterId, item: ItemId, qty: number, amount: number, mode: "現金" | "売掛金", fee: number): Transaction {
   const it = ITEMS[item];
@@ -312,6 +288,7 @@ function customer(mode: "any" | "credit"): EventTemplate {
 
 const supplies: EventTemplate = {
   lesson: "expenses",
+  schedule: 0.35,
   build: (ctx) => {
     const [thing, examThing] = pick(ctx.rand, [
       ["帳面用の羊皮紙とインク", "事務用の文房具"],
@@ -332,7 +309,7 @@ const supplies: EventTemplate = {
             idea: "すぐに使い切る物を買った。費用が増えて、現金が減ったね。",
           },
         },
-        ...(ctx.guided ? [] : [decline("今回は見送る", "ホーホー「包み紙がないと、お客さんが少し困るかもしれんのう」", -1)]),
+        decline("今回は見送る", "ホーホー「包み紙がないと、お客さんが少し困るかもしれんのう」", -1),
       ],
     };
   },
@@ -385,6 +362,7 @@ const utility: EventTemplate = {
 
 const letter: EventTemplate = {
   lesson: "expenses",
+  schedule: 0.25,
   build: (ctx) => {
     const amt = pick(ctx.rand, [500, 800, 1000]);
     return {
@@ -409,6 +387,7 @@ const letter: EventTemplate = {
 
 const ad: EventTemplate = {
   lesson: "expenses",
+  schedule: 0.2,
   build: (ctx) => {
     if (ctx.state.reputation >= 90) return null;
     const amt = 10000;
@@ -437,8 +416,9 @@ const ad: EventTemplate = {
 
 const collect: EventTemplate = {
   lesson: "credit",
+  schedule: "daily",
   build: ({ state, rand }) => {
-    const due = state.credits.filter((c) => c.kind === "売掛金" && c.day < state.day);
+    const due = creditsOf(state, "売掛金").filter((c) => c.day < state.day);
     if (due.length === 0) return null;
     const c = pick(rand, due);
     const partial = c.amount >= 10000 && rand() < 0.3;
@@ -469,14 +449,15 @@ const collect: EventTemplate = {
 
 const paySupplier: EventTemplate = {
   lesson: "credit",
+  schedule: "daily",
   build: (ctx) => {
     const { state } = ctx;
-    const mine = state.credits.filter((c) => c.kind === "買掛金" && c.who === "gantetsu");
+    const mine = creditsOf(state, "買掛金", "gantetsu");
     if (mine.length === 0) return null;
     const due = mine.some((c) => c.day <= state.day - 2) || dayInMonth(state.day) === DAYS_PER_MONTH;
     if (!due) return null;
     const amt = sumAmounts(mine);
-    const settle = mine.map((c) => ({ id: c.id, amount: c.amount }));
+    const settle = settleAll(mine);
     const tx = (via: "普通預金" | "現金"): Transaction => ({
       story: `ガンテツに掛け代金${n(amt)}円を払った。`,
       exam: via === "普通預金" ? `買掛金${n(amt)}円を普通預金口座から支払った。` : `買掛金${n(amt)}円を現金で支払った。`,
@@ -526,8 +507,9 @@ const purchaseReturn: EventTemplate = {
 
 const salesReturn: EventTemplate = {
   lesson: "returns",
+  schedule: 0.25,
   build: ({ state, rand }) => {
-    const cs = state.credits.filter((c) => c.kind === "売掛金" && c.item && (c.qty ?? 0) >= 2);
+    const cs = creditsOf(state, "売掛金").filter((c) => c.item && (c.qty ?? 0) >= 2);
     if (cs.length === 0) return null;
     const c = pick(rand, cs);
     if (!c.item || !c.qty) return null;
@@ -560,6 +542,7 @@ const STAFF = { price: 60000, deposit: 20000, cost: 40000, advance: 10000 };
 
 const orderStaff: EventTemplate = {
   lesson: "advances",
+  schedule: 0.15,
   build: (ctx) => {
     if (ctx.state.quest) return null;
     return {
@@ -580,7 +563,7 @@ const orderStaff: EventTemplate = {
             effect: { quest: { stage: "ordered", day: ctx.state.day } },
           },
         },
-        ...(ctx.guided ? [] : [decline("お断りする", "ミーナ「そう…また今度お願いするわ」")]),
+        decline("お断りする", "ミーナ「そう…また今度お願いするわ」"),
       ],
     };
   },
@@ -610,6 +593,7 @@ const advanceDwarf: EventTemplate = {
 
 const receiveStaff: EventTemplate = {
   lesson: "advances",
+  schedule: "daily",
   build: ({ state }) => {
     if (state.quest?.stage !== "advanced" || state.quest.day >= state.day) return null;
     const rest = STAFF.cost - STAFF.advance;
@@ -640,6 +624,7 @@ const receiveStaff: EventTemplate = {
 
 const deliverStaff: EventTemplate = {
   lesson: "advances",
+  schedule: "daily",
   build: ({ state }) => {
     if (state.quest?.stage !== "received") return null;
     const rest = STAFF.price - STAFF.deposit;
@@ -673,8 +658,10 @@ const deliverStaff: EventTemplate = {
 
 const cashdiff: EventTemplate = {
   lesson: "cashdiff",
+  schedule: 0.2,
   build: (ctx) => {
-    const { state, rand, cash } = ctx;
+    const { state, rand } = ctx;
+    const cash = ctx.balance("現金");
     if (state.cashDiff || cash < 3000) return null;
     const amt = pick(rand, [500, 1000, 1500, 2000]);
     const short = ctx.guided || rand() < 0.7;
@@ -711,6 +698,7 @@ const cashdiff: EventTemplate = {
 
 const cashdiffResolve: EventTemplate = {
   lesson: "cashdiff",
+  schedule: "daily",
   build: ({ state }) => {
     const d = state.cashDiff;
     if (!d || d.day >= state.day) return null;
@@ -777,4 +765,5 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   "deliver-staff": deliverStaff,
   cashdiff,
   "cashdiff-resolve": cashdiffResolve,
+  ...LV3_TEMPLATES,
 };

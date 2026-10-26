@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type AccountName, type Category, categoryOf } from "@/engine/accounts";
 import { fmt } from "@/engine/format";
-import type { Entry } from "@/engine/journal";
+import { type Entry, explainLine } from "@/engine/journal";
 import { CHARACTERS } from "@/content/world";
 import type { CharacterId } from "@/game/types";
 import { Sprite } from "./Sprite";
@@ -114,6 +114,20 @@ export function EntryTable({ entry, highlight = false }: { entry: Entry; highlig
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** 正解の仕訳と、1行ごとの「なぜその側に書くか」 */
+export function AnswerExplain({ entry, highlight = false }: { entry: Entry; highlight?: boolean }) {
+  return (
+    <>
+      <EntryTable entry={entry} highlight={highlight} />
+      <ul className="mt-1 text-sm">
+        {(["debit", "credit"] as const).flatMap((side) =>
+          entry[side].map((l) => <li key={`${side}-${l.account}`}>・{explainLine(l, side)}</li>),
+        )}
+      </ul>
+    </>
   );
 }
 

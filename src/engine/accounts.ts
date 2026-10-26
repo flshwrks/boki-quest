@@ -12,19 +12,28 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   suspense: "仮勘定",
 };
 
+// 試算表に並べる標準的な順（資産→負債→純資産→収益→費用）で書く
 export const ACCOUNTS = {
   現金: "asset",
-  普通預金: "asset",
+  小口現金: "asset",
   当座預金: "asset",
+  普通預金: "asset",
+  受取手形: "asset",
+  電子記録債権: "asset",
   売掛金: "asset",
+  クレジット売掛金: "asset",
+  受取商品券: "asset",
   前払金: "asset",
+  未収入金: "asset",
   立替金: "asset",
   仮払金: "asset",
   備品: "asset",
+  支払手形: "liability",
+  電子記録債務: "liability",
   買掛金: "liability",
   前受金: "liability",
-  預り金: "liability",
   未払金: "liability",
+  預り金: "liability",
   借入金: "liability",
   資本金: "equity",
   繰越利益剰余金: "equity",
@@ -39,12 +48,18 @@ export const ACCOUNTS = {
   支払家賃: "expense",
   広告宣伝費: "expense",
   旅費交通費: "expense",
+  支払手数料: "expense",
   雑損: "expense",
   // 原因が判明するまでの一時的な勘定。借方・貸方どちらの残高にもなりうる
   現金過不足: "suspense",
 } as const satisfies Record<string, Category>;
 
 export type AccountName = keyof typeof ACCOUNTS;
+
+/** 科目の一覧を、勘定科目マスタの並び（資産→負債→純資産→収益→費用）にそろえる */
+export function inMasterOrder(accounts: readonly AccountName[]): AccountName[] {
+  return (Object.keys(ACCOUNTS) as AccountName[]).filter((a) => accounts.includes(a));
+}
 
 export function categoryOf(account: AccountName): Category {
   return ACCOUNTS[account];
