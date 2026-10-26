@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@theme {
+  --font-dot: var(--font-dotgothic), ui-monospace, monospace;
+  --color-ink: #0d0d22;
+  --color-night: #161a3a;
+  --color-dusk: #252a52;
+  --color-gold: #f0c850;
+  --color-parch: #f4e4c0;
+  --color-ok: #6ee69a;
+  --color-ng: #ff8a8a;
+  --color-dim: #a8acc8;
+  /* 勘定科目の区分色（白文字でAA以上のコントラスト） */
+  --color-asset: #2f5fb3;
+  --color-liability: #b3412f;
+  --color-equity: #2e7d4f;
+  --color-revenue: #8a5a00;
+  --color-expense: #7a3fa0;
+  --color-suspense: #55556a;
+}
+
+html,
+body {
+  background: var(--color-night);
+  color: #fff;
+}
+
+body {
+  font-family: var(--font-dot);
+  -webkit-font-smoothing: none;
+  line-height: 1.7;
+}
+
+/* RPGのメッセージウィンドウ */
+.win {
+  background: var(--color-ink);
+  border: 3px solid #fff;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 3px var(--color-ink),
+    0 6px 0 3px rgb(0 0 0 / 0.35);
+}
+
+.pixel {
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
+}
+
+.choice {
+  position: relative;
+  padding-left: 1.5em;
+  text-align: left;
+}
+.choice:not(:disabled):hover::before,
+.choice:not(:disabled):focus-visible::before {
+  content: "▶";
+  position: absolute;
+  left: 0.25em;
+  color: var(--color-gold);
+  animation: blink 0.8s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.pop {
+  animation: pop 0.35s ease-out both;
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.rise {
+  animation: rise 0.25s ease-out both;
+}
+
+@keyframes bob {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+.bob {
+  animation: bob 1.6s steps(2) infinite;
+}
+
+@keyframes shake {
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+.shake {
+  animation: shake 0.25s 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop,
+  .rise,
+  .bob,
+  .shake,
+  .choice::before {
+    animation: none !important;
+  }
+}

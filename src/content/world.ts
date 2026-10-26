@@ -1,0 +1,130 @@
+import type { CharacterId, ItemId } from "@/game/types";
+
+export interface Character {
+  name: string;
+  title: string;
+  sprite: "owl" | "human" | "dwarf" | "fairy";
+  palette: Record<string, string>;
+}
+
+const human = (hair: string, cloth: string, clothDark: string, pants: string): Record<string, string> => ({
+  o: "#1d1d2b",
+  h: hair,
+  s: "#f2c9a0",
+  e: "#1d1d2b",
+  c: cloth,
+  d: clothDark,
+  p: pants,
+  b: "#4a2e1a",
+});
+
+export const CHARACTERS: Record<CharacterId, Character> = {
+  hoho: {
+    name: "ホーホー先生",
+    title: "元・王国財務院の帳簿官",
+    sprite: "owl",
+    palette: {
+      o: "#3b2414",
+      b: "#8a5a2b",
+      l: "#e8d2a6",
+      v: "#c9a46a",
+      w: "#ffffff",
+      k: "#1a1a1a",
+      y: "#f0b030",
+      g: "#d4af37",
+    },
+  },
+  cecil: { name: "セシル", title: "商人ギルドの受付", sprite: "human", palette: human("#c8553d", "#2f5fb3", "#203f78", "#3a3a4a") },
+  gantetsu: {
+    name: "ガンテツ",
+    title: "ドワーフ商会の問屋",
+    sprite: "dwarf",
+    palette: { o: "#1d1d2b", m: "#8c8c9c", s: "#e0a878", e: "#1d1d2b", r: "#b8642a", c: "#5a7d2a", d: "#3e5a1c", p: "#5a3e2a", b: "#2e1e12" },
+  },
+  allen: { name: "アレン", title: "ツケ払い常連の戦士", sprite: "human", palette: human("#e0b030", "#a83232", "#6e1f1f", "#3a3a4a") },
+  mina: { name: "ミーナ", title: "魔法使い", sprite: "human", palette: human("#6b3fa0", "#3a2a6a", "#24183f", "#24183f") },
+  gord: { name: "ゴルド", title: "まとめ買いの盾使い", sprite: "human", palette: human("#5a3a1a", "#7a7a8a", "#4a4a5a", "#3a2a1a") },
+  lily: { name: "リリィ", title: "薬草好きの僧侶", sprite: "human", palette: human("#f0e0b0", "#f0f0f0", "#b0b0c0", "#8090b0") },
+  pipi: {
+    name: "ピピ",
+    title: "いたずら妖精",
+    sprite: "fairy",
+    palette: { o: "#1d1d2b", w: "#a8e8f8", h: "#f878b8", s: "#f8d8b8", e: "#1d1d2b", c: "#58c878", y: "#f8e858" },
+  },
+  rose: { name: "マダム・ローズ", title: "店舗の大家", sprite: "human", palette: human("#d04070", "#802050", "#501030", "#301020") },
+  luke: { name: "ルーク", title: "王都銀行の窓口係", sprite: "human", palette: human("#303040", "#e8e8f0", "#202838", "#202838") },
+};
+
+export interface Item {
+  name: string;
+  unit: string;
+  cost: number;
+  price: number;
+  level: number;
+  palette: Record<string, string>;
+  sprite: "bottle" | "herb" | "scroll";
+}
+
+export const ITEMS: Record<ItemId, Item> = {
+  potion: {
+    name: "ポーション",
+    unit: "本",
+    cost: 600,
+    price: 1000,
+    level: 1,
+    sprite: "bottle",
+    palette: { o: "#1d1d2b", k: "#8a5a2b", w: "#d8f0f8", r: "#e04848" },
+  },
+  herb: {
+    name: "薬草",
+    unit: "束",
+    cost: 200,
+    price: 400,
+    level: 1,
+    sprite: "herb",
+    palette: { g: "#3a9a3a", l: "#8ad84a", s: "#6a4a2a" },
+  },
+  antidote: {
+    name: "毒消し",
+    unit: "個",
+    cost: 400,
+    price: 700,
+    level: 1,
+    sprite: "bottle",
+    palette: { o: "#1d1d2b", k: "#8a5a2b", w: "#d8f0f8", r: "#9a48d8" },
+  },
+  scroll: {
+    name: "魔法の巻物",
+    unit: "巻",
+    cost: 3000,
+    price: 5000,
+    level: 2,
+    sprite: "scroll",
+    palette: { o: "#1d1d2b", t: "#b07a3a", p: "#f4e4c0", k: "#6a5a8a" },
+  },
+};
+
+export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
+
+export const LEVELS: Record<number, { name: string; rent: number }> = {
+  1: { name: "露店", rent: 20000 },
+  2: { name: "小さな店舗", rent: 40000 },
+};
+
+export const DAYS_PER_MONTH = 5;
+
+/** その月の何営業日目か（1〜DAYS_PER_MONTH） */
+export function dayInMonth(day: number): number {
+  return ((day - 1) % DAYS_PER_MONTH) + 1;
+}
+
+export function dateLabel(day: number): string {
+  const monthIndex = Math.floor((day - 1) / DAYS_PER_MONTH);
+  const month = ((monthIndex + 3) % 12) + 1; // 4月始まり
+  return `${month}月 第${dayInMonth(day)}営業日`;
+}
+
+/** そのレベルの店で扱える商品 */
+export function itemsForLevel(level: number): ItemId[] {
+  return ITEM_IDS.filter((id) => ITEMS[id].level <= level);
+}
