@@ -53,6 +53,7 @@ export const CHARACTERS: Record<CharacterId, Character> = {
   },
   rose: { name: "マダム・ローズ", title: "店舗の大家", sprite: "human", palette: human("#d04070", "#802050", "#501030", "#301020") },
   luke: { name: "ルーク", title: "王都銀行の窓口係", sprite: "human", palette: human("#303040", "#e8e8f0", "#202838", "#202838") },
+  noel: { name: "ノエル", title: "住み込みの見習い店員", sprite: "human", palette: human("#3a8a5a", "#e8c860", "#a88a30", "#3a3a4a") },
 };
 
 export interface Item {
@@ -144,6 +145,14 @@ export const LEVELS: Record<number, Level> = {
     exam: "王都銀行の融資審査",
     perks: ["銀行の融資審査に合格し、商店街の大きな店に移った", "新商品「エーテル」を扱えるようになった", "手形やカード払いなど、支払い方が多彩になる"],
     hoho: "見事じゃ！ これからは手形や電子記録など、お金の「形」がいろいろになる。ここからは記帳も本番の試験と同じ形式でやってみよう。",
+  },
+  4: {
+    name: "城下町の大店",
+    rent: 80000,
+    cbt: true,
+    exam: "王都銀行の大口融資審査",
+    perks: ["大口融資の審査に合格し、城下町の大通りに店を構えた", "見習い店員ノエルを雇う", "借入・設備投資・給料など、会社らしいお金の動きが始まる"],
+    hoho: "ここまで来たか！ 人を雇い、お金を借り、設備を買う。立派な会社の帳簿じゃ。3級の範囲もいよいよ終盤じゃぞ。",
   },
 };
 

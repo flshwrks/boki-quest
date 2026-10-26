@@ -12,7 +12,8 @@ export type CharacterId =
   | "lily"
   | "pipi"
   | "rose"
-  | "luke";
+  | "luke"
+  | "noel";
 
 export type LessonId =
   | "basics"
@@ -29,7 +30,12 @@ export type LessonId =
   | "creditcard"
   | "giftcert"
   | "payables"
-  | "pettycash";
+  | "pettycash"
+  | "deposit"
+  | "loans"
+  | "fixedassets"
+  | "payroll"
+  | "suspense";
 
 /** 相手ごとに追跡する債権・債務の科目。合計は帳簿の残高と一致させる（通しプレイのテストで検証） */
 export const CREDIT_KINDS = [
@@ -42,6 +48,13 @@ export const CREDIT_KINDS = [
   "クレジット売掛金",
   "受取商品券",
   "未払金",
+  "借入金",
+  "貸付金",
+  "立替金",
+  "所得税預り金",
+  "社会保険料預り金",
+  "仮払金",
+  "仮受金",
 ] as const;
 export type CreditKind = (typeof CREDIT_KINDS)[number];
 
@@ -53,6 +66,11 @@ export interface Credit {
   amount: number;
   item?: ItemId;
   qty?: number;
+  /** 借入金・貸付金の年利と期間（月）。返済のときに利息を計算する */
+  rate?: number;
+  months?: number;
+  /** 正体のわからない入金（仮受金）の原因として確認待ち。ほかの取引では使わない */
+  held?: boolean;
   day: number;
 }
 
@@ -67,6 +85,7 @@ export interface Effect {
   reputation?: number;
   addCredits?: Omit<Credit, "id" | "day">[];
   settleCredits?: { id: string; amount: number }[];
+  holdCredit?: string;
   quest?: Quest | null;
   /** 正なら現金不足、負なら現金過剰。null で解消 */
   cashDiff?: { amount: number; day: number } | null;

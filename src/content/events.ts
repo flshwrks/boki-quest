@@ -3,6 +3,7 @@ import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, ItemId, Transaction } from "@/game/types";
 import { CUSTOMER_PREFS, type EventTemplate, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll } from "./eventKit";
 import { LV3_TEMPLATES } from "./eventsLv3";
+import { LV4_TEMPLATES } from "./eventsLv4";
 import { DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
 
 // ───────── 設立・銀行 ─────────
@@ -766,4 +767,5 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   cashdiff,
   "cashdiff-resolve": cashdiffResolve,
   ...LV3_TEMPLATES,
+  ...LV4_TEMPLATES,
 };

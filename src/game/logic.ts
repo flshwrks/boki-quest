@@ -192,6 +192,7 @@ function applyEffect(state: GameState, effect: Effect | undefined): GameState {
     for (const c of effect.addCredits ?? []) credits.push({ ...c, id: `c${++seq}`, day: next.day });
     next = { ...next, credits, creditSeq: seq };
   }
+  if (effect.holdCredit) next.credits = next.credits.map((c) => (c.id === effect.holdCredit ? { ...c, held: true } : c));
   if (effect.quest !== undefined) next.quest = effect.quest;
   if (effect.cashDiff !== undefined) next.cashDiff = effect.cashDiff;
   return next;
@@ -290,6 +291,7 @@ export function isMonthEnd(state: GameState): boolean {
 export const LEVEL_UP: Record<number, { days: number; sales: number; trust: number; questions: number; minutes: number }> = {
   1: { days: 4, sales: 50000, trust: 55, questions: 4, minutes: 12 },
   2: { days: 12, sales: 250000, trust: 60, questions: 5, minutes: 15 },
+  3: { days: 22, sales: 600000, trust: 65, questions: 5, minutes: 15 },
 };
 
 export const EXAM_PASS = 70;

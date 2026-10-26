@@ -35,8 +35,9 @@ export const need = (ctx: Ctx, account: AccountName, amount: number) =>
 export const needCash = (ctx: Ctx, amount: number) => need(ctx, "現金", amount);
 export const needDeposit = (ctx: Ctx, amount: number) => need(ctx, "普通預金", amount);
 
+/** その種類の債権・債務。確認待ち（held）のものは、ふだんの取引では使わないので除く */
 export function creditsOf(state: GameState, kind: CreditKind, who?: CharacterId): Credit[] {
-  return state.credits.filter((c) => c.kind === kind && (!who || c.who === who));
+  return state.credits.filter((c) => c.kind === kind && !c.held && (!who || c.who === who));
 }
 
 /** その種類の債権・債務のうち、発生から days 日以上たったもの */

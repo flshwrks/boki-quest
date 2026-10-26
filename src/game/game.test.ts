@@ -134,8 +134,8 @@ describe("採点", () => {
 });
 
 describe("通しプレイ", () => {
-  it.each([1, 2, 3, 4, 5, 6, 7, 8])("seed %i：120日間、帳簿とゲーム状態が矛盾しない", (seed) => {
-    const { s } = play(seed, 120, 0.2);
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])("seed %i：200日間、帳簿とゲーム状態が矛盾しない", (seed) => {
+    const { s } = play(seed, 200, 0.2);
     checkInvariants(s);
   });
 
@@ -143,11 +143,11 @@ describe("通しプレイ", () => {
     const seen = new Set<string>();
     let last: GameState | undefined;
     for (let seed = 1; seed <= 8; seed++) {
-      const r = play(seed, 120);
+      const r = play(seed, 200);
       r.seenTemplates.forEach((t) => seen.add(t));
       last = r.s;
     }
-    expect(last!.level).toBe(3);
+    expect(last!.level).toBe(4);
     expect(last!.lessonsDone).toEqual(LESSONS.map((l) => l.id));
     for (const t of [
       "founding",
@@ -188,10 +188,25 @@ describe("通しプレイ", () => {
       "petty-advance",
       "petty-report",
       "petty-replenish",
+      "bank-loan",
+      "loan-repay",
+      "lend-allen",
+      "loan-collect",
+      "move-in",
+      "buy-wagon",
+      "buy-register",
+      "noel-advance",
+      "payday",
+      "pay-income-tax",
+      "pay-insurance",
+      "trip-advance",
+      "trip-settle",
+      "unknown-deposit",
+      "unknown-resolve",
     ]) {
       expect(seen.has(t), `${t} が一度も登場しない`).toBe(true);
     }
-  }, 60000);
+  }, 120000);
 });
 
 describe("審査の問題", () => {
