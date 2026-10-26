@@ -50,12 +50,16 @@ export function JournalInput({
   // 勘定科目マスタは区分順に並んでいるので、その順に絞り込むだけでよい
   const ordered = (Object.keys(ACCOUNTS) as AccountName[]).filter((a) => accounts.includes(a));
 
+  /** 側を切り替えると、金額の入力先もその側の行へ移す */
   const selectSide = (side: Side) => {
     if (side === activeSide) return;
     play("select");
     setActiveSide(side);
-    const empty = rows.find((r) => r.side === side && r.account === null);
-    if (empty) setFocusId(empty.id);
+    const sideRows = rows.filter((r) => r.side === side);
+    const target = sideRows.find((r) => r.account === null) ?? sideRows.find((r) => r.amount === "") ?? sideRows[0];
+    if (target) setFocusId(target.id);
+    // 反対側の金額欄にカーソルが残らないようにする
+    if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
   };
 
   const placeCard = (account: AccountName, side: Side) => {
@@ -77,7 +81,10 @@ export function JournalInput({
     // 借方を置き終えたら、空いている貸方へ自動で移る
     if (side === "debit" && !next.some((r) => r.side === "debit" && r.account === null)) {
       const emptyCredit = next.find((r) => r.side === "credit" && r.account === null);
-      if (emptyCredit) setActiveSide("credit");
+      if (emptyCredit) {
+        setActiveSide("credit");
+        setFocusId(emptyCredit.id);
+      }
     } else {
       setActiveSide(side);
     }
@@ -256,22 +263,9 @@ export function JournalInput({
 
         {/* 勘定科目カード */}
         <div className="mt-3 border-t border-white/20 pt-3">
-          <div role="radiogroup" aria-label="カードの置き場所" className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-black/40 p-1">
-            {SIDES.map((side) => (
-              <button
-                key={side}
-                type="button"
-                role="radio"
-                aria-checked={activeSide === side}
-                onClick={() => selectSide(side)}
-                className={`rounded-full py-1.5 text-sm transition-colors ${
-                  activeSide === side ? "bg-gold text-ink shadow" : "text-dim hover:text-white"
-                }`}
-              >
-                {side === "debit" ? "◀ 借方（左）に置く" : "貸方（右）に置く ▶"}
-              </button>
-            ))}
-          </div>
+          <p className="mb-1.5 text-xs text-dim">
+            カードをタップすると、<span className="text-gold">金色の枠</span>（{sideWithPos(activeSide)}）に置かれる。左右の枠をタップで切り替え
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {ordered.map((acc) => (
               <button
