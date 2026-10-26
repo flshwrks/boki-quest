@@ -3,7 +3,7 @@
 import { LESSON_BY_ID, type Diagram } from "@/content/lessons";
 import type { LessonId } from "@/game/types";
 import { CATEGORY_LABEL } from "@/engine/accounts";
-import { Btn, CATEGORY_BG, EntryTable, Portrait, Speaker, Win } from "./ui";
+import { Btn, CATEGORY_BG, Dialogue, EntryTable, Portrait, Speaker, Win } from "./ui";
 
 const FIVE = (
   [
@@ -120,14 +120,15 @@ export function LessonView({
         <Portrait id={speaker} size={56} className="shrink-0" />
         <div className="min-w-0 flex-1">
           <Speaker id={speaker} />
-          <p>{p.text}</p>
+          <Dialogue text={p.text}>
+            {p.diagram && (
+              <div className="rise mt-3">
+                <DiagramView d={p.diagram} />
+              </div>
+            )}
+          </Dialogue>
         </div>
       </div>
-      {p.diagram && (
-        <div key={`d${page}`} className="rise mt-3">
-          <DiagramView d={p.diagram} />
-        </div>
-      )}
       <div className="mt-4 flex justify-between">
         <Btn variant="ghost" onClick={() => onTurn(-1)} disabled={page === 0}>
           もどる

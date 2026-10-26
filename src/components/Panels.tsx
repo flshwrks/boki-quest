@@ -11,7 +11,7 @@ import type { AccountName } from "@/engine/accounts";
 import type { GameEvent, GameState, LessonId, ResultInfo } from "@/game/types";
 import { TrialBalanceTable } from "./BookModal";
 import { LedgerViz } from "./LedgerViz";
-import { AccountChip, Btn, EntryTable, Portrait, Speaker, Win, fmt } from "./ui";
+import { AccountChip, Btn, Dialogue, EntryTable, Portrait, Speaker, Win, fmt } from "./ui";
 
 export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () => void }) {
   const lesson = todaysLesson(state);
@@ -86,22 +86,17 @@ export function EventPanel({ event, onChoose }: { event: GameEvent; onChoose: (i
   return (
     <Win>
       <Speaker id={event.speaker} />
-      <div className="mb-3 flex flex-col gap-1">
-        {event.lines.map((l, i) => (
-          <p key={i} className="rise" style={{ animationDelay: `${i * 80}ms` }}>
-            {l}
-          </p>
-        ))}
-      </div>
-      {event.guided && <p className="mb-2 text-xs text-gold">✦ 講義の練習：ヒントを1つ無料で見られる</p>}
-      <div className="flex flex-col border-t border-white/30 pt-2">
-        {event.choices.map((c, i) => (
-          <Btn key={c.label} variant="choice" disabled={!!c.disabled} onClick={() => onChoose(i)}>
-            {c.label}
-            {c.disabled && <span className="ml-2 text-xs text-ng">（{c.disabled}）</span>}
-          </Btn>
-        ))}
-      </div>
+      <Dialogue text={event.lines.join("\n")}>
+        {event.guided && <p className="mt-2 text-xs text-gold">✦ 講義の練習：ヒントを1つ無料で見られる</p>}
+        <div className="rise mt-3 flex flex-col gap-1.5 border-t border-white/20 pt-3">
+          {event.choices.map((c, i) => (
+            <Btn key={c.label} variant="choice" disabled={!!c.disabled} onClick={() => onChoose(i)}>
+              {c.label}
+              {c.disabled && <span className="ml-2 text-xs text-ng">（{c.disabled}）</span>}
+            </Btn>
+          ))}
+        </div>
+      </Dialogue>
     </Win>
   );
 }
@@ -109,8 +104,11 @@ export function EventPanel({ event, onChoose }: { event: GameEvent; onChoose: (i
 export function ReplyPanel({ text, onNext }: { text: string; onNext: () => void }) {
   return (
     <Win>
-      <p className="mb-3">{text}</p>
-      <Btn onClick={onNext}>つぎへ</Btn>
+      <Dialogue text={text}>
+        <div className="mt-3">
+          <Btn onClick={onNext}>つぎへ</Btn>
+        </div>
+      </Dialogue>
     </Win>
   );
 }
@@ -130,7 +128,12 @@ export function ResultPanel({
   const [showViz, setShowViz] = useState(false);
   return (
     <Win>
-      <p className="pop mb-2 text-xl text-ok">{info.firstTry ? "◎ ノーヒントで正解！" : "○ 正解！"}</p>
+      <div className="mb-2 flex items-center gap-3">
+        <span className="stamp h-14 w-14 shrink-0 text-lg" aria-hidden>
+          記帳
+        </span>
+        <p className="pop text-xl text-ok">{info.firstTry ? "ノーヒントで正解！" : "正解！"}</p>
+      </div>
       <EntryTable entry={tx.answer} />
       <ul className="mt-2 text-sm">
         {(["debit", "credit"] as const).flatMap((side) =>
@@ -348,7 +351,9 @@ export function MonthEndPanel({
 export function LevelUpPanel({ level, onNext }: { level: number; onNext: () => void }) {
   return (
     <Win className="text-center">
-      <p className="pop text-2xl text-gold">★ 店が成長した！ ★</p>
+      <p className="pop text-2xl text-gold">
+        <span className="twinkle inline-block">✦</span> 店が成長した！ <span className="twinkle inline-block" style={{ animationDelay: "0.7s" }}>✦</span>
+      </p>
       <p className="mt-2">
         「{LEVELS[level - 1]?.name}」から「<span className="text-gold">{LEVELS[level].name}</span>」へ！
       </p>

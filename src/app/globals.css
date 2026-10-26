@@ -21,7 +21,10 @@
 
 html,
 body {
-  background: var(--color-night);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #2a3170 0%, transparent 60%),
+    var(--color-night);
+  background-attachment: fixed;
   color: #fff;
 }
 
@@ -31,14 +34,15 @@ body {
   line-height: 1.7;
 }
 
-/* RPGのメッセージウィンドウ */
+/* メッセージウィンドウ。角丸と影で今風に、白い縁でRPGらしさを残す */
 .win {
-  background: var(--color-ink);
-  border: 3px solid #fff;
-  border-radius: 8px;
+  background: linear-gradient(180deg, #1a1f48 0%, #0f1230 100%);
+  border: 2px solid rgb(255 255 255 / 0.85);
+  border-radius: 14px;
   box-shadow:
-    0 0 0 3px var(--color-ink),
-    0 6px 0 3px rgb(0 0 0 / 0.35);
+    inset 0 1px 0 rgb(255 255 255 / 0.15),
+    0 0 0 3px rgb(13 13 34 / 0.9),
+    0 10px 24px rgb(0 0 0 / 0.45);
 }
 
 .pixel {
@@ -125,5 +129,140 @@ body {
   .shake,
   .choice::before {
     animation: none !important;
+  }
+}
+
+/* ───────── 演出 ───────── */
+
+.caret {
+  animation: blink 0.6s steps(2) infinite;
+  color: var(--color-gold);
+}
+
+/* 正解のハンコ */
+@keyframes stamp {
+  0% {
+    transform: scale(2.4) rotate(-24deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.92) rotate(-12deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-12deg);
+    opacity: 1;
+  }
+}
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #e85a5a;
+  border-radius: 50%;
+  color: #ff7070;
+  animation: stamp 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* お金の増減がふわっと浮かぶ */
+@keyframes float-up {
+  0% {
+    transform: translate(-50%, 10px);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -36px);
+    opacity: 0;
+  }
+}
+.float-up {
+  animation: float-up 1.6s ease-out both;
+}
+
+/* キャラクターの感情アイコン */
+@keyframes bubble {
+  0% {
+    transform: scale(0) translateY(6px);
+  }
+  60% {
+    transform: scale(1.2) translateY(-2px);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.bubble {
+  animation: bubble 0.3s ease-out both;
+}
+
+/* 話し手がカウンターへ歩いてくる */
+@keyframes walk-in {
+  from {
+    transform: translateX(-60px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.walk-in {
+  animation: walk-in 0.45s ease-out both;
+}
+
+/* 朝の場面転換 */
+@keyframes day-banner {
+  0% {
+    opacity: 0;
+    letter-spacing: 0.6em;
+  }
+  25%,
+  70% {
+    opacity: 1;
+    letter-spacing: 0.15em;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.day-banner {
+  animation: day-banner 2s ease-out both;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+.twinkle {
+  animation: twinkle 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp,
+  .float-up,
+  .bubble,
+  .walk-in,
+  .day-banner,
+  .twinkle,
+  .caret {
+    animation: none !important;
+  }
+  .day-banner,
+  .float-up {
+    display: none;
   }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { type AccountName, type Category, categoryOf } from "@/engine/accounts";
 import { fmt } from "@/engine/format";
 import type { Entry } from "@/engine/journal";
@@ -46,7 +47,7 @@ export function Btn({
   const styles = {
     primary: "bg-gold text-ink px-4 py-2 rounded hover:brightness-110",
     ghost: "border-2 border-white/70 px-3 py-1.5 rounded hover:bg-white/10",
-    choice: "choice w-full py-2 pr-2 rounded hover:bg-white/10",
+    choice: "choice w-full py-2 pr-2 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/10 hover:pl-7 transition-all",
   }[variant];
   return (
     <button
@@ -136,4 +137,57 @@ export function Modal({ children, onClose, title }: { children: React.ReactNode;
       </div>
     </div>
   );
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * 文字送りのセリフ。タップで全文を出し、出し終えたら children（選択肢など）を見せる。
+ * 新しいセリフに切り替えるときは key を変えて作り直す。
+ */
+export function Dialogue({ text, children, className = "" }: { text: string; children?: React.ReactNode; className?: string }) {
+  const [n, setN] = useState(() => (prefersReducedMotion() ? text.length : 0));
+  const done = n >= text.length;
+  useEffect(() => {
+    if (done) return;
+    const t = setTimeout(() => setN((v) => Math.min(text.length, v + 2)), 28);
+    return () => clearTimeout(t);
+  }, [n, done, text.length]);
+  return (
+    <div className={className}>
+      <p className="cursor-pointer whitespace-pre-line" onClick={() => setN(text.length)}>
+        {text.slice(0, n)}
+        {!done && <span className="caret">▼</span>}
+      </p>
+      {done ? children : <p className="mt-1 text-right text-[10px] text-dim">タップで全文表示</p>}
+    </div>
+  );
+}
+
+/** 値が変わると、前の値から数字がくるくる変わって追いつく */
+export function AnimatedNumber({ value }: { value: number }) {
+  const [shown, setShown] = useState(value);
+  const shownRef = useRef(value);
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from === value || prefersReducedMotion()) {
+      shownRef.current = value;
+      setShown(value);
+      return;
+    }
+    const start = performance.now();
+    let raf = 0;
+    const step = (t: number) => {
+      const p = Math.min(1, (t - start) / 600);
+      const v = Math.round(from + (value - from) * (1 - (1 - p) ** 3));
+      shownRef.current = v;
+      setShown(v);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{fmt(shown)}</>;
 }

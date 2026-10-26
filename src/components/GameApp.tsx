@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AccountName } from "@/engine/accounts";
+import { sumAmounts } from "@/engine/journal";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
   advance,
@@ -32,13 +34,41 @@ import {
   ReplyPanel,
   ResultPanel,
 } from "./Panels";
-import { Scene } from "./Scene";
+import { Scene, type SceneFx, type TimeOfDay } from "./Scene";
 import { play, setSoundEnabled } from "./sfx";
-import { Btn, Modal, Portrait, Win, fmt } from "./ui";
+import { AnimatedNumber, Btn, Modal, Portrait, Win, fmt } from "./ui";
 
 const SOUND_KEY = "boki-quest-sound";
 const DEFAULT_SHOP = "星のしずく";
 const rand = Math.random;
+
+/** 場面に合わせた時間帯・感情アイコン・お金のポップアップ */
+function sceneOf(state: GameState): { time: TimeOfDay; fx: SceneFx } {
+  const p = state.phase;
+  switch (p.kind) {
+    case "dayStart":
+      return { time: "morning", fx: { banner: dateLabel(state.day) } };
+    case "dayEnd":
+    case "monthEnd":
+      return { time: "evening", fx: {} };
+    case "event":
+      return { time: "day", fx: { emote: p.event.speaker === "hoho" ? undefined : "！" } };
+    case "journal":
+      return { time: "day", fx: { emote: "…" } };
+    case "reply":
+      return { time: "day", fx: { emote: "💭" } };
+    case "result": {
+      const { debit, credit } = p.info.tx.answer;
+      const isMoney = (a: AccountName) => a === "現金" || a === "普通預金";
+      const delta = sumAmounts(debit.filter((l) => isMoney(l.account))) - sumAmounts(credit.filter((l) => isMoney(l.account)));
+      const popup =
+        delta === 0 ? undefined : { key: state.journal.length, text: `${delta > 0 ? "+" : "−"}${fmt(Math.abs(delta))}円`, good: delta > 0 };
+      return { time: "day", fx: { emote: "♪", popup } };
+    }
+    default:
+      return { time: "day", fx: {} };
+  }
+}
 
 function speakerOf(state: GameState): CharacterId | undefined {
   const p = state.phase;
@@ -279,11 +309,15 @@ export default function GameApp() {
         <dl className="mt-1 flex flex-wrap gap-x-4 text-xs tabular-nums sm:text-sm">
           <div className="flex gap-1">
             <dt className="text-dim">現金</dt>
-            <dd>{fmt(balance(state, "現金"))}円</dd>
+            <dd>
+              <AnimatedNumber value={balance(state, "現金")} />円
+            </dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-dim">普通預金</dt>
-            <dd>{fmt(balance(state, "普通預金"))}円</dd>
+            <dd>
+              <AnimatedNumber value={balance(state, "普通預金")} />円
+            </dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-dim">信用</dt>
@@ -295,13 +329,17 @@ export default function GameApp() {
               {stars}
             </dd>
           </div>
-          {state.combo >= 2 && <div className="text-gold">{state.combo}コンボ中</div>}
+          {state.combo >= 2 && (
+            <div key={state.combo} className="pop text-gold">
+              🔥{state.combo}コンボ中
+            </div>
+          )}
         </dl>
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <main className="flex min-w-0 flex-col gap-3">
-          <Scene state={state} speaker={speakerOf(state)} />
+          <Scene state={state} speaker={speakerOf(state)} {...sceneOf(state)} />
           <div key={p.kind} className="rise">
             {panel}
           </div>
