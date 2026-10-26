@@ -28,31 +28,94 @@ function migrate(raw: Saved): GameState | null {
   return { ...base, ...saved, stock: { ...base.stock, ...saved.stock } };
 }
 
-// Phase 2 でクラウド保存に置き換える。それまでは端末内に保存する。
+// 端末内の保存。キー名は最初の版のまま（変えると既存のセーブが読めなくなる）
 const KEY = "boki-quest-save-v1";
+const SAVED_AT_KEY = "boki-quest-saved-at";
+const PASSCODE_KEY = "boki-quest-passcode";
 
-export function loadGame(): GameState | null {
+export interface LocalSave {
+  state: GameState;
+  savedAt: number;
+}
+
+export function loadGame(): LocalSave | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
-    return migrate(JSON.parse(raw));
+    const state = migrate(JSON.parse(raw));
+    return state ? { state, savedAt: Number(localStorage.getItem(SAVED_AT_KEY)) || 0 } : null;
   } catch {
     return null;
   }
 }
 
-export function saveGame(state: GameState) {
+/** 端末に保存し、保存した時刻を返す（クラウドと新しさを比べるのに使う） */
+export function saveGame(state: GameState): number {
+  const savedAt = Date.now();
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
+    localStorage.setItem(SAVED_AT_KEY, String(savedAt));
   } catch {
     // 保存できない環境（プライベートモード等）でもプレイは続けられる
   }
+  return savedAt;
 }
 
 export function clearGame() {
   try {
     localStorage.removeItem(KEY);
+    localStorage.removeItem(SAVED_AT_KEY);
   } catch {
     // 同上
+  }
+}
+
+// ───────── クラウド保存（合言葉を知っている本人だけが使える） ─────────
+
+export function getPasscode(): string {
+  try {
+    return localStorage.getItem(PASSCODE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setPasscode(passcode: string) {
+  try {
+    if (passcode) localStorage.setItem(PASSCODE_KEY, passcode);
+    else localStorage.removeItem(PASSCODE_KEY);
+  } catch {
+    // 保存できなくても、この画面を開いている間は使える
+  }
+}
+
+export type CloudResult = { status: "ok"; save: LocalSave | null } | { status: "unauthorized" } | { status: "offline" };
+
+export async function fetchCloud(passcode: string): Promise<CloudResult> {
+  try {
+    const res = await fetch("/api/save", { headers: { "x-passcode": passcode }, cache: "no-store" });
+    if (res.status === 401) return { status: "unauthorized" };
+    if (!res.ok) return { status: "offline" };
+    const body = (await res.json()) as { savedAt: number; state: Saved | null };
+    const state = body.state ? migrate(body.state) : null;
+    return { status: "ok", save: state ? { state, savedAt: body.savedAt } : null };
+  } catch {
+    return { status: "offline" };
+  }
+}
+
+/** クラウドへ送る。別の端末のほうが新しいときは送らずに "conflict" を返す */
+export async function pushCloud(passcode: string, save: LocalSave): Promise<"ok" | "conflict" | "unauthorized" | "offline"> {
+  try {
+    const res = await fetch("/api/save", {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-passcode": passcode },
+      body: JSON.stringify(save),
+    });
+    if (res.status === 401) return "unauthorized";
+    if (res.status === 409) return "conflict";
+    return res.ok ? "ok" : "offline";
+  } catch {
+    return "offline";
   }
 }

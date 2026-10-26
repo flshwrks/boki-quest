@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { balanceIn, netBalances } from "@/engine/ledger";
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
@@ -23,7 +23,7 @@ import {
   unlockedAccounts,
   takeHint,
 } from "@/game/logic";
-import { clearGame, loadGame, saveGame } from "@/game/save";
+import { type LocalSave, clearGame, fetchCloud, getPasscode, loadGame, pushCloud, saveGame, setPasscode } from "@/game/save";
 import type { CharacterId, GameState } from "@/game/types";
 import { BookModal } from "./BookModal";
 import { ExamPanel } from "./ExamPanel";
@@ -97,7 +97,60 @@ function speakerOf(state: GameState): CharacterId | undefined {
   }
 }
 
-function Title({ saved, onContinue, onNew }: { saved: GameState | null; onContinue: () => void; onNew: (name: string) => void }) {
+type CloudStatus = "off" | "checking" | "ok" | "unauthorized" | "offline" | "conflict";
+
+const CLOUD_LABEL: Record<CloudStatus, string> = {
+  off: "未接続（この端末だけに保存）",
+  checking: "確認中…",
+  ok: "接続中（ほかの端末と同期）",
+  unauthorized: "合言葉が違います",
+  offline: "つながりません（この端末には保存されています）",
+  conflict: "別の端末に新しいセーブがあります。タイトルから読み込み直してください",
+};
+
+function CloudPanel({ status, onConnect }: { status: CloudStatus; onConnect: (passcode: string) => void }) {
+  const [passcode, setPasscodeInput] = useState("");
+  return (
+    <div className="mt-4 border-t border-white/20 pt-3 text-sm">
+      <p className="mb-1">
+        ☁ クラウド保存：<span className={status === "ok" ? "text-ok" : status === "off" ? "text-dim" : "text-ng"}>{CLOUD_LABEL[status]}</span>
+      </p>
+      {status !== "ok" && (
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (passcode.trim()) onConnect(passcode.trim());
+          }}
+        >
+          <input
+            value={passcode}
+            onChange={(e) => setPasscodeInput(e.target.value)}
+            placeholder="合言葉"
+            aria-label="クラウド保存の合言葉"
+            autoComplete="off"
+            className="min-w-0 flex-1 rounded border-2 border-white/60 bg-black/30 px-3 py-1.5"
+          />
+          <Btn variant="ghost">接続</Btn>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function Title({
+  saved,
+  cloud,
+  onContinue,
+  onNew,
+  onConnect,
+}: {
+  saved: LocalSave | null;
+  cloud: CloudStatus;
+  onContinue: () => void;
+  onNew: (name: string) => void;
+  onConnect: (passcode: string) => void;
+}) {
   const [name, setName] = useState(DEFAULT_SHOP);
   const submitName = () => onNew(name.trim() || DEFAULT_SHOP);
   const [confirming, setConfirming] = useState(false);
@@ -117,7 +170,7 @@ function Title({ saved, onContinue, onNew }: { saved: GameState | null; onContin
         {saved && !confirming && (
           <div className="mb-4">
             <Btn className="w-full" onClick={onContinue}>
-              つづきから（{saved.shopName}・{dateLabel(saved.day)}）
+              つづきから（{saved.state.shopName}・{LEVELS[saved.state.level].name}・{dateLabel(saved.state.day)}）
             </Btn>
           </div>
         )}
@@ -154,6 +207,7 @@ function Title({ saved, onContinue, onNew }: { saved: GameState | null; onContin
             </button>
           </form>
         )}
+        <CloudPanel status={cloud} onConnect={onConnect} />
       </Win>
     </main>
   );
@@ -161,7 +215,9 @@ function Title({ saved, onContinue, onNew }: { saved: GameState | null; onContin
 
 export default function GameApp() {
   const [loaded, setLoaded] = useState(false);
-  const [saved, setSaved] = useState<GameState | null>(null);
+  const [saved, setSaved] = useState<LocalSave | null>(null);
+  const [cloud, setCloud] = useState<CloudStatus>("off");
+  const passcodeRef = useRef("");
   const [state, setState] = useState<GameState | null>(null);
   const [book, setBook] = useState(false);
   const [ledger, setLedger] = useState(false);
@@ -169,8 +225,25 @@ export default function GameApp() {
   // 仕訳の入力方式。null なら Lv に合わせて自動（Lv3から本番と同じCBT形式）
   const [inputPref, setInputPref] = useState<InputMode | null>(null);
 
+  /** クラウドにつなぎ、端末よりクラウドのセーブが新しければ「つづきから」をそちらにする */
+  const connectCloud = async (passcode: string) => {
+    setCloud("checking");
+    const res = await fetchCloud(passcode);
+    if (res.status !== "ok") {
+      setCloud(res.status);
+      return;
+    }
+    passcodeRef.current = passcode;
+    setPasscode(passcode);
+    setCloud("ok");
+    const remote = res.save;
+    if (remote) setSaved((local) => (!local || remote.savedAt > local.savedAt ? remote : local));
+  };
+
   useEffect(() => {
     setSaved(loadGame());
+    const passcode = getPasscode();
+    if (passcode) void connectCloud(passcode);
     try {
       const on = localStorage.getItem(SOUND_KEY) !== "off";
       setSound(on);
@@ -195,6 +268,18 @@ export default function GameApp() {
     };
   }, [state]);
 
+  // クラウドへは、場面が切り替わる区切りごとにまとめて送る（入力のたびには送らない）
+  const checkpoint = state ? `${state.day}:${state.phase.kind}:${state.journal.length}` : "";
+  useEffect(() => {
+    if (!state || cloud !== "ok") return;
+    const timer = setTimeout(async () => {
+      const result = await pushCloud(passcodeRef.current, { state, savedAt: Date.now() });
+      if (result !== "ok") setCloud(result);
+    }, 1500);
+    return () => clearTimeout(timer);
+    // 区切り（checkpoint）が変わったときだけ送るので、state そのものは依存に入れない
+  }, [checkpoint, cloud]);
+
   // 帳簿の集計は仕訳が増えたときだけやり直す（審査の入力中などは使い回す）
   const journal = state?.journal;
   const entries = useMemo(() => (journal ?? []).map((r) => r.entry), [journal]);
@@ -216,7 +301,9 @@ export default function GameApp() {
     return (
       <Title
         saved={saved}
-        onContinue={() => setState(saved)}
+        cloud={cloud}
+        onConnect={(passcode) => void connectCloud(passcode)}
+        onContinue={() => saved && setState(saved.state)}
         onNew={(name) => {
           clearGame();
           setState(newGame(name, rand));
@@ -335,8 +422,7 @@ export default function GameApp() {
             type="button"
             className="text-gold"
             onClick={() => {
-              saveGame(state);
-              setSaved(state);
+              setSaved({ state, savedAt: saveGame(state) });
               setState(null);
             }}
             title="タイトルへ（自動保存済み）"
@@ -344,7 +430,13 @@ export default function GameApp() {
             {LEVELS[state.level].name}「{state.shopName}」
           </button>
           <span className="text-sm">{dateLabel(state.day)}</span>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex items-center gap-1.5">
+            {cloud !== "off" && (
+              <span className={`text-sm ${cloud === "ok" || cloud === "checking" ? "text-dim" : "text-ng"}`} title={CLOUD_LABEL[cloud]}>
+                {cloud === "ok" || cloud === "checking" ? "☁" : "☁!"}
+                <span className="sr-only">{CLOUD_LABEL[cloud]}</span>
+              </span>
+            )}
             <Btn variant="ghost" className="text-sm" onClick={() => setBook(true)}>
               📖 簿記の書
             </Btn>
