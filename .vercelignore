@@ -1,0 +1,6 @@
+.env*
+.claude
+improvement_list
+*.test.ts
+node_modules
+.next
