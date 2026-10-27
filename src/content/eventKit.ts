@@ -24,6 +24,8 @@ export interface EventTemplate {
   schedule?: "daily" | number;
   /** game：一度起きたら二度と起きない／day：1日に1回まで（進行側でまとめて判定する） */
   once?: "game" | "day";
+  /** その日の予定のいちばん初めに行う（年度初めの再振替仕訳など） */
+  first?: boolean;
   build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;
 }
 

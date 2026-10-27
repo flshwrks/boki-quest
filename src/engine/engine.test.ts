@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { categoryHint, diagnose, explainLine, isBalanced, sameEntry, type Entry } from "./journal";
-import { balanceOf, statements, trialBalance } from "./ledger";
+import { balanceOf, statements, trialBalance, worksheet } from "./ledger";
 
 const credit_purchase: Entry = {
   debit: [{ account: "仕入", amount: 50000 }],
@@ -80,5 +80,38 @@ describe("ledger", () => {
   it("科目の残高を自然な符号で返す", () => {
     expect(balanceOf(entries, "現金")).toBe(47000);
     expect(balanceOf(entries, "買掛金")).toBe(50000);
+  });
+});
+
+describe("精算表", () => {
+  const before: Entry[] = [
+    { debit: [{ account: "普通預金", amount: 300000 }], credit: [{ account: "資本金", amount: 300000 }] },
+    { debit: [{ account: "仕入", amount: 100000 }], credit: [{ account: "普通預金", amount: 100000 }] },
+    { debit: [{ account: "売掛金", amount: 150000 }], credit: [{ account: "売上", amount: 150000 }] },
+  ];
+  const adjustments: Entry[] = [
+    { debit: [{ account: "繰越商品", amount: 20000 }], credit: [{ account: "仕入", amount: 20000 }] },
+    { debit: [{ account: "貸倒引当金繰入", amount: 3000 }], credit: [{ account: "貸倒引当金", amount: 3000 }] },
+  ];
+  const { rows, netIncome } = worksheet(before, adjustments);
+  const sum = (k: "trial" | "adjust" | "income" | "balance", s: "debit" | "credit") => rows.reduce((a, r) => a + r[k][s], 0);
+
+  it("試算表と修正記入は、それぞれ左右が一致する", () => {
+    expect(sum("trial", "debit")).toBe(sum("trial", "credit"));
+    expect(sum("adjust", "debit")).toBe(sum("adjust", "credit"));
+  });
+
+  it("当期純利益を足すと、損益計算書と貸借対照表の欄が左右一致する", () => {
+    expect(netIncome).toBe(150000 - (100000 - 20000) - 3000);
+    expect(sum("income", "debit") + netIncome).toBe(sum("income", "credit"));
+    expect(sum("balance", "debit")).toBe(sum("balance", "credit") + netIncome);
+  });
+
+  it("売上原価は、仕入の修正後の残高になる", () => {
+    expect(rows.find((r) => r.account === "仕入")?.income.debit).toBe(80000);
+  });
+
+  it("当期純利益は、決算整理後の損益計算書と一致する", () => {
+    expect(statements([...before, ...adjustments]).netIncome).toBe(netIncome);
   });
 });

@@ -5,7 +5,7 @@ import { sumAmounts } from "@/engine/journal";
 import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
-import { LEVELS, dateLabel } from "@/content/world";
+import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
 import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
 import type { AccountName } from "@/engine/accounts";
 import { seededRand, shuffle } from "@/game/random";
@@ -19,6 +19,19 @@ export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () 
   const lessons = lessonsForLevel(state.level);
   const goal = LEVEL_UP[state.level];
   const next = LEVELS[state.level + 1];
+  if (state.closingFrom !== null) {
+    return (
+      <Win title={`${fiscalYear(state.day)}年目の決算日`}>
+        <div className="mb-3 flex gap-3 text-sm">
+          <Portrait id="hoho" size={48} className="shrink-0" />
+          <p>
+            1年間おつかれさまじゃった。今日はお店を休んで、1年分の帳簿を整理する「決算」をするぞ。売上原価、貸倒れの見込み、設備の目減り、まだ払っていない利息…。最後に精算表と財務諸表で、この1年の成績を確かめよう。
+          </p>
+        </div>
+        <Btn onClick={onOpen}>決算を始める</Btn>
+      </Win>
+    );
+  }
   return (
     <Win title={`${dateLabel(state.day)} の朝`}>
       <ul className="mb-3 text-sm">

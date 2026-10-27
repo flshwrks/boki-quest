@@ -42,6 +42,8 @@ export interface Row {
 
 export interface Statements {
   assets: Row[];
+  /** 資産から差し引く科目（貸倒引当金・減価償却累計額） */
+  contras: Row[];
   liabilities: Row[];
   equity: Row[];
   revenues: Row[];
@@ -51,6 +53,7 @@ export interface Statements {
 
 const BUCKET = {
   asset: "assets",
+  contra: "contras",
   liability: "liabilities",
   equity: "equity",
   revenue: "revenues",
@@ -62,8 +65,11 @@ const BUCKET = {
  * 当期純利益は純資産側に足すことで、資産 = 負債 + 純資産 + 当期純利益 が成り立つ。
  */
 export function statements(entries: Entry[]): Statements {
-  const s: Statements = { assets: [], liabilities: [], equity: [], revenues: [], expenses: [], netIncome: 0 };
-  for (const [account, n] of netBalances(entries)) {
+  const s: Statements = { assets: [], contras: [], liabilities: [], equity: [], revenues: [], expenses: [], netIncome: 0 };
+  const net = netBalances(entries);
+  // 勘定科目マスタの並び（資産→負債→…）で並べる
+  for (const account of Object.keys(ACCOUNTS) as AccountName[]) {
+    const n = net.get(account) ?? 0;
     if (n === 0) continue;
     const cat = categoryOf(account);
     if (cat === "suspense") {
@@ -88,4 +94,45 @@ export function balanceOf(entries: Entry[], account: AccountName): number {
 
 export function trialBalanceTotals(rows: TrialBalanceRow[]): { debit: number; credit: number } {
   return { debit: rows.reduce((a, r) => a + r.debit, 0), credit: rows.reduce((a, r) => a + r.credit, 0) };
+}
+
+export interface WorksheetRow {
+  account: AccountName;
+  trial: { debit: number; credit: number };
+  adjust: { debit: number; credit: number };
+  income: { debit: number; credit: number };
+  balance: { debit: number; credit: number };
+}
+
+/**
+ * 精算表。試算表（決算整理前）に修正記入（決算整理仕訳）を加え、
+ * 収益・費用は損益計算書の欄へ、それ以外は貸借対照表の欄へ移す。
+ */
+export function worksheet(before: Entry[], adjustments: Entry[]): { rows: WorksheetRow[]; netIncome: number } {
+  const trial = netBalances(before);
+  const adj = { debit: new Map<AccountName, number>(), credit: new Map<AccountName, number>() };
+  for (const e of adjustments) {
+    for (const side of ["debit", "credit"] as const) for (const l of e[side]) adj[side].set(l.account, (adj[side].get(l.account) ?? 0) + l.amount);
+  }
+  const rows: WorksheetRow[] = [];
+  let netIncome = 0;
+  for (const account of Object.keys(ACCOUNTS) as AccountName[]) {
+    const t = trial.get(account) ?? 0;
+    const ad = adj.debit.get(account) ?? 0;
+    const ac = adj.credit.get(account) ?? 0;
+    if (t === 0 && ad === 0 && ac === 0) continue;
+    const after = t + ad - ac;
+    const cat = categoryOf(account);
+    const toIncome = cat === "revenue" || cat === "expense";
+    const split = (n: number) => ({ debit: n > 0 ? n : 0, credit: n < 0 ? -n : 0 });
+    if (toIncome) netIncome -= after;
+    rows.push({
+      account,
+      trial: split(t),
+      adjust: { debit: ad, credit: ac },
+      income: toIncome ? split(after) : { debit: 0, credit: 0 },
+      balance: toIncome ? { debit: 0, credit: 0 } : split(after),
+    });
+  }
+  return { rows, netIncome };
 }

@@ -58,26 +58,48 @@ const loanRepay: EventTemplate = {
     return {
       speaker: "luke",
       lines: [`借入金${n(c.amount)}円の返済期日です。`, `利息${n(interest)}円（${n(c.amount)} × ${pct(c.rate!)} × ${c.months}/12）とあわせて${n(total)}円をお願いします。`],
-      choices: (["普通預金", "当座預金", "現金"] as const).map((via) => ({
-        label: `${via}から返済する`,
-        disabled: need(ctx, via, total),
-        tx: {
-          story: `借入金${n(c.amount)}円を、利息${n(interest)}円とともに返した。`,
-          exam: `借入金${n(c.amount)}円の返済期日となり、利息${n(interest)}円とともに${via === "現金" ? "現金で" : `${via}口座から`}返済した。`,
-          answer: je(
-            [
-              ["借入金", c.amount],
-              ["支払利息", interest],
-            ],
-            [[via, total]],
-          ),
-          idea: "元本の返済で借入金が減る。利息は借りたことへの費用だね。",
-          effect: { settleCredits: [{ id: c.id, amount: c.amount }] },
-        },
-      })),
+      choices: [
+        ...(["普通預金", "当座預金", "現金"] as const).map((via) => ({
+          label: `${via}から返済する`,
+          disabled: need(ctx, via, total),
+          tx: repayTx(c.amount, interest, [[via, total]], `${via === "現金" ? "現金で" : `${via}口座から`}返済した`),
+        })),
+        // 1つの口座では足りなくても、普通預金と現金をあわせれば払えるとき
+        ...(ctx.balance("普通預金") < total && ctx.balance("現金") < total && ctx.balance("普通預金") + ctx.balance("現金") >= total
+          ? [
+              {
+                label: "普通預金と現金をあわせて返済する",
+                tx: repayTx(
+                  c.amount,
+                  interest,
+                  [
+                    ["普通預金", ctx.balance("普通預金")],
+                    ["現金", total - ctx.balance("普通預金")],
+                  ],
+                  `普通預金口座から${n(ctx.balance("普通預金"))}円、現金で${n(total - ctx.balance("普通預金"))}円を支払って返済した`,
+                ),
+              },
+            ]
+          : []),
+      ].map((choice) => ({ ...choice, tx: { ...choice.tx, effect: { settleCredits: [{ id: c.id, amount: c.amount }] } } })),
     };
   },
 };
+
+function repayTx(principal: number, interest: number, paid: [AccountName, number][], how: string) {
+  return {
+    story: `借入金${n(principal)}円を、利息${n(interest)}円とともに返した。`,
+    exam: `借入金${n(principal)}円の返済期日となり、利息${n(interest)}円とともに${how}。`,
+    answer: je(
+      [
+        ["借入金", principal],
+        ["支払利息", interest],
+      ],
+      paid,
+    ),
+    idea: "元本の返済で借入金が減る。利息は借りたことへの費用だね。支払ったお金は、出どころごとに分けて書くよ。",
+  };
+}
 
 const LEND = { amount: 50000, rate: 0.06, months: 4 };
 
@@ -231,6 +253,16 @@ const buyRegister: EventTemplate = {
             effect: { reputation: 8 },
           },
         })),
+        {
+          label: "月末払いで買う",
+          tx: {
+            story: `魔導レジスターを${n(price)}円で買った。据付費${n(fee)}円とあわせて月末払い。`,
+            exam: `店舗用のレジスター${n(price)}円を購入し、据付費${n(fee)}円とともに代金は月末に支払うこととした。`,
+            answer: je([["備品", price + fee]], [["未払金", price + fee]]),
+            idea: "長く使う設備を後払いで買った。商品ではない物の後払いは何だったかな？",
+            effect: { reputation: 8, addCredits: [{ kind: "未払金", who: "cecil", amount: price + fee }] },
+          },
+        },
         decline("今回は見送る", "セシル「またいつでもどうぞ！」"),
       ],
     };

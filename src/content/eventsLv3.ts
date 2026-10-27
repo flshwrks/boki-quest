@@ -368,10 +368,11 @@ const buyFixture: EventTemplate = {
 
 const payPayable = settleDue("未払金", {
   lesson: "payables",
-  speaker: "gantetsu",
-  lines: (amt) => [`この前の備品の代金、${n(amt)}円の支払いを頼むぞ。`],
-  story: (amt) => `備品の代金${n(amt)}円を普通預金から払った。`,
-  exam: (amt) => `備品の購入代金の未払分${n(amt)}円を普通預金口座から支払った。`,
+  speaker: "hoho",
+  label: "普通預金から支払う",
+  lines: (amt) => [`後払いにしていた設備の代金、${n(amt)}円の支払日じゃ。`],
+  story: (amt) => `設備の代金の未払分${n(amt)}円を普通預金から払った。`,
+  exam: (amt) => `未払金${n(amt)}円を普通預金口座から支払った。`,
   idea: "後払いにしていた代金を払った。支払う義務（未払金）はどうなる？",
 });
 

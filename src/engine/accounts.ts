@@ -1,10 +1,11 @@
 // 勘定科目マスタ。区分とホームポジションは日商簿記3級の標準に従う。
 
-export type Category = "asset" | "liability" | "equity" | "revenue" | "expense" | "suspense";
+export type Category = "asset" | "contra" | "liability" | "equity" | "revenue" | "expense" | "suspense";
 export type Side = "debit" | "credit";
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   asset: "資産",
+  contra: "資産の控除",
   liability: "負債",
   equity: "純資産",
   revenue: "収益",
@@ -23,19 +24,29 @@ export const ACCOUNTS = {
   売掛金: "asset",
   クレジット売掛金: "asset",
   受取商品券: "asset",
+  // 貸倒引当金・減価償却累計額は、資産から差し引く科目（貸方に残高が出る）
+  貸倒引当金: "contra",
+  繰越商品: "asset",
+  貯蔵品: "asset",
+  前払保険料: "asset",
+  未収利息: "asset",
   前払金: "asset",
   未収入金: "asset",
   貸付金: "asset",
   立替金: "asset",
   仮払金: "asset",
   備品: "asset",
+  備品減価償却累計額: "contra",
   車両運搬具: "asset",
+  車両運搬具減価償却累計額: "contra",
   差入保証金: "asset",
   支払手形: "liability",
   電子記録債務: "liability",
   買掛金: "liability",
   前受金: "liability",
   未払金: "liability",
+  未払利息: "liability",
+  未払法人税等: "liability",
   仮受金: "liability",
   預り金: "liability",
   所得税預り金: "liability",
@@ -47,6 +58,7 @@ export const ACCOUNTS = {
   受取手数料: "revenue",
   受取利息: "revenue",
   雑益: "revenue",
+  貸倒引当金戻入: "revenue",
   仕入: "expense",
   発送費: "expense",
   消耗品費: "expense",
@@ -59,9 +71,16 @@ export const ACCOUNTS = {
   給料: "expense",
   法定福利費: "expense",
   支払利息: "expense",
+  支払保険料: "expense",
+  貸倒引当金繰入: "expense",
+  貸倒損失: "expense",
+  減価償却費: "expense",
   雑損: "expense",
+  "法人税、住民税及び事業税": "expense",
   // 原因が判明するまでの一時的な勘定。借方・貸方どちらの残高にもなりうる
   現金過不足: "suspense",
+  // 決算で収益・費用をまとめて繰越利益剰余金へ振り替えるための集合勘定
+  損益: "suspense",
 } as const satisfies Record<string, Category>;
 
 export type AccountName = keyof typeof ACCOUNTS;
@@ -85,6 +104,7 @@ export function homeSide(category: Category): Side | null {
     case "asset":
     case "expense":
       return "debit";
+    case "contra":
     case "liability":
     case "equity":
     case "revenue":

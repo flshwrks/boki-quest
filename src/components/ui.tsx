@@ -11,6 +11,7 @@ import { play } from "./sfx";
 
 export const CATEGORY_BG: Record<Category, string> = {
   asset: "bg-asset",
+  contra: "bg-contra",
   liability: "bg-liability",
   equity: "bg-equity",
   revenue: "bg-revenue",

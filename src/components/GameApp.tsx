@@ -7,6 +7,8 @@ import { sumAmounts } from "@/engine/journal";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
   advance,
+  answerWorksheetQuiz,
+  finishReport,
   beginExam,
   examScore,
   finishExam,
@@ -38,6 +40,7 @@ import {
 } from "@/game/save";
 import type { CharacterId, GameState } from "@/game/types";
 import { BookModal } from "./BookModal";
+import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
 import { ExamPanel } from "./ExamPanel";
 import { type InputMode, JournalInput } from "./JournalInput";
 import { LedgerViz } from "./LedgerViz";
@@ -67,7 +70,7 @@ function sceneOf(state: GameState): { time: TimeOfDay; fx: SceneFx } {
   const p = state.phase;
   switch (p.kind) {
     case "dayStart":
-      return { time: "morning", fx: { banner: dateLabel(state.day) } };
+      return { time: "morning", fx: { banner: state.closingFrom !== null ? "決算日" : dateLabel(state.day) } };
     case "dayEnd":
     case "monthEnd":
       return { time: "evening", fx: {} };
@@ -105,6 +108,9 @@ function speakerOf(state: GameState): CharacterId | undefined {
       return "hoho";
     case "exam":
       return "luke";
+    case "worksheet":
+    case "report":
+      return "hoho";
     default:
       return undefined;
   }
@@ -417,6 +423,30 @@ export default function GameApp() {
           onAnswer={(i, entry) => update((s) => setExamAnswer(s, i, entry))}
           onGrade={grade}
           onFinish={() => update((s) => finishExam(s, rand))}
+        />
+      );
+      break;
+    case "worksheet":
+      panel = (
+        <WorksheetPanel
+          state={state}
+          answered={p.answered}
+          onAnswer={(i, ok) => {
+            play(ok ? "correct" : "wrong");
+            update((s) => answerWorksheetQuiz(s, i, ok));
+          }}
+          onNext={() => update((s) => advance(s, rand))}
+        />
+      );
+      break;
+    case "report":
+      panel = (
+        <ReportPanel
+          state={state}
+          onFinish={() => {
+            play("fanfare");
+            update((s) => finishReport(s, rand));
+          }}
         />
       );
       break;

@@ -1,14 +1,15 @@
-import type { AccountName } from "@/engine/accounts";
+import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances } from "@/engine/ledger";
 import { TEMPLATES } from "@/content/events";
 import type { Ctx } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel, type Lesson } from "@/content/lessons";
-import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth } from "@/content/world";
+import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth, fiscalYear, isYearEnd } from "@/content/world";
+import { CLOSING_PLAN } from "@/content/eventsClosing";
 export type { Rand } from "./random";
 import { type Rand, shuffle } from "./random";
-import type { Choice, DayStats, Effect, ExamQuestion, ExamSession, GameState, LessonId, QueueItem, ResultInfo, TxSession } from "./types";
+import type { Choice, DayStats, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, TxSession } from "./types";
 
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
@@ -59,6 +60,8 @@ export function initialState(shopName: string): GameState {
     cashDiff: null,
     mistakes: [],
     examRetryDay: 0,
+    closingFrom: null,
+    closedYears: 0,
     today: emptyDay(),
     phase: { kind: "dayStart" },
   };
@@ -90,13 +93,14 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   const dim = dayInMonth(state.day);
   const q: QueueItem[] = [];
 
+  for (const [id, t] of DAILY) if (t.first && has(t.lesson)) q.push(ev(id));
   const lesson = nextLesson(state);
   if (lesson) q.push(...lessonItems(lesson));
   const willHave = (id: LessonId) => has(id) || lesson?.id === id;
 
   if (willHave("expenses") && dim === 1) q.push(ev("rent"));
   if (willHave("expenses") && dim === 3) q.push(ev("utility"));
-  for (const [id, t] of DAILY) if (has(t.lesson)) q.push(ev(id));
+  for (const [id, t] of DAILY) if (!t.first && has(t.lesson)) q.push(ev(id));
   if (has("credit") && state.credits.filter((c) => c.kind === "売掛金").length > 1 && rand() < 0.5) q.push(ev("collect"));
 
   q.push(ev("bank"), ev("wholesale"));
@@ -138,6 +142,8 @@ export function advance(state: GameState, rand: Rand): GameState {
       if (state.lessonsDone.includes(head.id)) continue;
       return { ...state, queue, phase: { kind: "lesson", lesson: head.id, page: 0 } };
     }
+    if (head.kind === "worksheet") return { ...state, queue, phase: { kind: "worksheet", answered: [null, null] } };
+    if (head.kind === "report") return { ...state, queue, phase: { kind: "report" } };
     const { id } = head;
     const guided = !!head.guided;
     const template = TEMPLATES[id];
@@ -305,8 +311,57 @@ export function canLevelUp(state: GameState): boolean {
 }
 
 export function closeDay(state: GameState): GameState {
+  // 決算日を終えたら、その年度は締めて新しい年度へ
+  if (state.closingFrom !== null) return nextDay({ ...state, closingFrom: null, closedYears: fiscalYear(state.day) });
   if (isMonthEnd(state)) return { ...state, phase: { kind: "monthEnd", answered: [null, null] } };
   return nextDay(state);
+}
+
+/** 3月の最終営業日を終えたら、同じ日を決算日にする */
+function startClosing(state: GameState): GameState {
+  const queue = CLOSING_PLAN.map((p): QueueItem =>
+    "lesson" in p
+      ? { kind: "lesson", id: p.lesson }
+      : "event" in p
+        ? // 初めての決算では、各整理仕訳を講義の練習として扱う
+          { kind: "event", id: p.event, guided: !state.lessonsDone.includes(TEMPLATES[p.event].lesson) }
+        : p.step === "worksheet"
+          ? { kind: "worksheet" }
+          : { kind: "report" },
+  );
+  return { ...state, closingFrom: state.journal.length, today: emptyDay(), queue, phase: { kind: "dayStart" } };
+}
+
+/** 損益振替：収益・費用の残高を損益勘定に集め、当期純利益を繰越利益剰余金へ移す */
+export function transferEntries(state: GameState): JournalRecord[] {
+  const net = netBalances(entriesOf(state));
+  const pick = (cat: "revenue" | "expense") =>
+    (Object.keys(ACCOUNTS) as AccountName[])
+      .filter((a) => categoryOf(a) === cat)
+      .map((account) => ({ account, amount: balanceIn(net, account) }))
+      .filter((l) => l.amount !== 0);
+  const revenues = pick("revenue");
+  const expenses = pick("expense");
+  const income = sumAmounts(revenues) - sumAmounts(expenses);
+  const record = (exam: string, entry: Entry): JournalRecord => ({ day: state.day, templateId: "closing-transfer", exam, entry });
+  const records: JournalRecord[] = [];
+  if (revenues.length) records.push(record("収益の各勘定の残高を損益勘定に振り替えた。", { debit: revenues, credit: [{ account: "損益", amount: sumAmounts(revenues) }] }));
+  if (expenses.length) records.push(record("費用の各勘定の残高を損益勘定に振り替えた。", { debit: [{ account: "損益", amount: sumAmounts(expenses) }], credit: expenses }));
+  if (income > 0) records.push(record(`当期純利益${income.toLocaleString("ja-JP")}円を繰越利益剰余金勘定に振り替えた。`, { debit: [{ account: "損益", amount: income }], credit: [{ account: "繰越利益剰余金", amount: income }] }));
+  if (income < 0) records.push(record(`当期純損失${(-income).toLocaleString("ja-JP")}円を繰越利益剰余金勘定に振り替えた。`, { debit: [{ account: "繰越利益剰余金", amount: -income }], credit: [{ account: "損益", amount: -income }] }));
+  return records;
+}
+
+export function answerWorksheetQuiz(state: GameState, index: number, correct: boolean): GameState {
+  if (state.phase.kind !== "worksheet" || state.phase.answered[index] !== null) return state;
+  const answered = state.phase.answered.map((a, i) => (i === index ? correct : a));
+  return { ...state, trust: clamp(state.trust + (correct ? 3 : 0)), phase: { kind: "worksheet", answered } };
+}
+
+/** 財務諸表を確認したら、損益を振り替えて決算日を終える */
+export function finishReport(state: GameState, rand: Rand): GameState {
+  if (state.phase.kind !== "report") return state;
+  return advance({ ...state, journal: [...state.journal, ...transferEntries(state)] }, rand);
 }
 
 /** その日の予定を立て、昇格の条件がそろっていれば朝いちばんに審査を行う */
@@ -317,13 +372,14 @@ function startDay(state: GameState, rand: Rand): GameState {
 }
 
 export function nextDay(state: GameState, rand: Rand = Math.random): GameState {
+  if (isYearEnd(state.day) && state.closedYears < fiscalYear(state.day)) return startClosing(state);
   return startDay({ ...state, day: state.day + 1, today: emptyDay() }, rand);
 }
 
 /** これまでに習った論点から、なるべく論点が重ならないように出題する */
 export function makeExam(state: GameState, rand: Rand): ExamSession {
   const goal = LEVEL_UP[state.level];
-  const learned = new Set(LESSONS.filter((l) => l.level <= state.level).map((l) => l.id));
+  const learned = new Set(state.lessonsDone);
   // 今のLvで習った論点を優先し、同じ論点の2問目以降は後回しにする
   const pool = shuffle(
     EXAM_BANK.filter((q) => learned.has(q.lesson)),

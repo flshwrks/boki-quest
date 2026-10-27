@@ -108,7 +108,7 @@ function Notes({ state }: { state: GameState }) {
           </li>
         ) : (
           <li key={l.id} className="rounded border-2 border-dashed border-white/20 p-3 text-sm text-dim">
-            ？？？（Lv{l.level}で解禁）
+            ？？？（{l.level === 0 ? "決算日" : `Lv${l.level}`}で解禁）
           </li>
         ),
       )}

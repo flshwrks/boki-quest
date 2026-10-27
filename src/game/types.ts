@@ -35,7 +35,12 @@ export type LessonId =
   | "loans"
   | "fixedassets"
   | "payroll"
-  | "suspense";
+  | "suspense"
+  | "kessan"
+  | "allowance"
+  | "depreciation"
+  | "accruals"
+  | "closing";
 
 /** 相手ごとに追跡する債権・債務の科目。合計は帳簿の残高と一致させる（通しプレイのテストで検証） */
 export const CREDIT_KINDS = [
@@ -163,6 +168,8 @@ export type Phase =
   | { kind: "dayEnd" }
   | { kind: "monthEnd"; answered: (boolean | null)[] }
   | { kind: "exam"; exam: ExamSession }
+  | { kind: "worksheet"; answered: (boolean | null)[] }
+  | { kind: "report" }
   | { kind: "levelUp"; level: number };
 
 export interface ExamQuestion {
@@ -192,7 +199,12 @@ export interface DayStats {
 }
 
 /** 一日の予定。講義か取引イベントのどちらか */
-export type QueueItem = { kind: "lesson"; id: LessonId } | { kind: "event"; id: string; guided?: boolean };
+export type QueueItem =
+  | { kind: "lesson"; id: LessonId }
+  | { kind: "event"; id: string; guided?: boolean }
+  // 決算日の最後に見る精算表と財務諸表
+  | { kind: "worksheet" }
+  | { kind: "report" };
 
 export interface GameState {
   version: 2;
@@ -213,6 +225,10 @@ export interface GameState {
   mistakes: Mistake[];
   /** 昇格審査に落ちたとき、次に受けられる日 */
   examRetryDay: number;
+  /** 決算日の間だけ、決算整理を始めた時点の仕訳の件数（精算表の「修正記入」をここから数える） */
+  closingFrom: number | null;
+  /** 決算を終えた年度（1年目、2年目…）。0 ならまだ一度も決算していない */
+  closedYears: number;
   today: DayStats;
   phase: Phase;
 }

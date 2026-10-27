@@ -3,6 +3,7 @@ import { isBalanced } from "@/engine/journal";
 import { trialBalance } from "@/engine/ledger";
 import { LESSONS } from "@/content/lessons";
 import { ITEM_IDS } from "@/content/world";
+import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSON_BY_ID } from "@/content/lessons";
 import {
@@ -13,6 +14,7 @@ import {
   closeDay,
   entriesOf,
   finishExam,
+  finishReport,
   gradeExam,
   newGame,
   nextDay,
@@ -88,6 +90,19 @@ function play(seed: number, days: number, mistakeRate = 0) {
       case "monthEnd":
         s = nextDay(s, rand);
         break;
+      case "worksheet":
+        s = advance(s, rand);
+        break;
+      case "report": {
+        s = finishReport(s, rand);
+        // 損益振替のあと、収益・費用の残高はすべてゼロになる
+        for (const a of Object.keys(ACCOUNTS) as AccountName[]) {
+          const cat = categoryOf(a);
+          if (cat === "revenue" || cat === "expense") expect(balance(s, a), `${a} が振替後に残っている`).toBe(0);
+        }
+        expect(balance(s, "損益")).toBe(0);
+        break;
+      }
       case "exam": {
         // 審査はすべて正解して進む
         const e = p.exam;
@@ -203,6 +218,24 @@ describe("通しプレイ", () => {
       "trip-settle",
       "unknown-deposit",
       "unknown-resolve",
+      "close-cogs-open",
+      "close-cogs-end",
+      "close-allowance",
+      "close-dep-fixture",
+      "close-dep-vehicle",
+      "close-prepaid",
+      "close-unpaid-interest",
+      "close-accrued-interest",
+      "close-supplies",
+      "close-cashdiff",
+      "close-tax",
+      "bad-debt",
+      "insurance",
+      "pay-corp-tax",
+      "reverse-prepaid",
+      "reverse-unpaid-interest",
+      "reverse-accrued-interest",
+      "reverse-supplies",
     ]) {
       expect(seen.has(t), `${t} が一度も登場しない`).toBe(true);
     }
@@ -213,7 +246,8 @@ describe("審査の問題", () => {
   it("すべての正解が貸借一致し、出題する講義までに習う科目だけを使う", () => {
     for (const q of EXAM_BANK) {
       expect(isBalanced(q.answer), q.text).toBe(true);
-      const level = LESSON_BY_ID[q.lesson].level;
+      // 決算の講義（Lv0）は決算日に受けるので、それまでのすべての科目を使える
+      const level = LESSON_BY_ID[q.lesson].level || Infinity;
       const learned = new Set(
         Object.values(LESSON_BY_ID)
           .filter((l) => l.level <= level)

@@ -163,6 +163,24 @@ export function dayInMonth(day: number): number {
   return ((day - 1) % DAYS_PER_MONTH) + 1;
 }
 
+/** 会計年度は4月〜3月。1年は12か月 × DAYS_PER_MONTH 営業日 */
+export const DAYS_PER_YEAR = 12 * DAYS_PER_MONTH;
+
+/** 何年目の会計年度か（1始まり） */
+export const fiscalYear = (day: number) => Math.floor((day - 1) / DAYS_PER_YEAR) + 1;
+
+/** 会計年度の初日 */
+export const yearStartDay = (day: number) => (fiscalYear(day) - 1) * DAYS_PER_YEAR + 1;
+
+/** 会計年度の何か月目か（4月 = 1 … 3月 = 12） */
+export const monthOfYear = (day: number) => Math.floor(((day - 1) % DAYS_PER_YEAR) / DAYS_PER_MONTH) + 1;
+
+/** 年度の最終営業日（3月の最終日）か */
+export const isYearEnd = (day: number) => day % DAYS_PER_YEAR === 0;
+
+/** 4月 = 1 として、カレンダーの月（4〜12, 1〜3）にする */
+export const calendarMonth = (monthIndex: number) => ((monthIndex + 2) % 12) + 1;
+
 export function dateLabel(day: number): string {
   const monthIndex = Math.floor((day - 1) / DAYS_PER_MONTH);
   const month = ((monthIndex + 3) % 12) + 1; // 4月始まり

@@ -53,7 +53,9 @@ export const LedgerViz = memo(function LedgerViz({ entries, highlight = [] }: { 
     profit < 0 ? [{ key, label: "当期純損失", amount: -profit, bg: "bg-ng/40" }] : [];
 
   const bsLeftBlocks = [...toBlocks(s.assets), ...lossBlock("bs-loss")];
-  const bsRightBlocks = [...toBlocks(s.liabilities), ...toBlocks(s.equity), ...profitBlock("bs-profit")];
+  // 貸倒引当金・減価償却累計額は資産から差し引く科目。T字では貸方（右）に置くと左右がそろう
+  const contraBlocks = s.contras.map((x) => ({ key: x.account, label: `${x.account}（資産から控除）`, amount: x.amount, bg: CATEGORY_BG.contra }));
+  const bsRightBlocks = [...contraBlocks, ...toBlocks(s.liabilities), ...toBlocks(s.equity), ...profitBlock("bs-profit")];
   const plLeft = [...toBlocks(s.expenses), ...profitBlock("pl-profit")];
   const plRight = [...toBlocks(s.revenues), ...lossBlock("pl-loss")];
 
