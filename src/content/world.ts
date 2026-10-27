@@ -125,6 +125,9 @@ export const ITEMS: Record<ItemId, Item> = {
 
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 
+/** 商品ごとの値を作る（在庫の数・在庫の原価など） */
+export const perItem = (f: (id: ItemId) => number) => Object.fromEntries(ITEM_IDS.map((id) => [id, f(id)])) as Record<ItemId, number>;
+
 export interface Level {
   name: string;
   rent: number;

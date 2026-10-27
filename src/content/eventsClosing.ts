@@ -33,10 +33,9 @@ const cogsOpen: EventTemplate = {
 const cogsEnd: EventTemplate = {
   lesson: "kessan",
   build: (ctx) => {
-    const { stock } = ctx.state;
+    const { stock, stockValue } = ctx.state;
     const counted = ITEM_IDS.filter((i) => stock[i] > 0);
-    const { stockValue } = ctx.state;
-    const closingStock = sumAmounts(counted.map((i) => ({ amount: stockValue[i] })));
+    const closingStock = counted.reduce((a, i) => a + stockValue[i], 0);
     if (closingStock <= 0) return null;
     const detail = counted.map((i) => `${ITEMS[i].name}${stock[i]}${ITEMS[i].unit}（${n(stockValue[i])}円）`).join("、");
     return adjustment("hoho", ["次は棚卸しじゃ。棚に残っている商品を数えて、仕入値で金額にする。特価で安く仕入れた分もあるから、平均の仕入値で数えておいたぞ。", `${detail}。合計${n(closingStock)}円じゃ。`], {

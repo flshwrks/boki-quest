@@ -1,4 +1,4 @@
-import { ITEMS, ITEM_IDS } from "@/content/world";
+import { ITEMS, perItem } from "@/content/world";
 import { initialState, practiceFromHistory } from "./logic";
 import type { GameState, LessonId, QueueItem } from "./types";
 
@@ -28,7 +28,7 @@ function migrate(raw: Saved): GameState | null {
   const base = initialState(saved.shopName);
   const stock = { ...base.stock, ...saved.stock };
   // 在庫の原価は後から増えた項目。古いセーブでは、いつもの仕入値で数え直す
-  const stockValue = saved.stockValue ?? (Object.fromEntries(ITEM_IDS.map((id) => [id, stock[id] * ITEMS[id].cost])) as GameState["stockValue"]);
+  const stockValue = saved.stockValue ?? perItem((id) => stock[id] * ITEMS[id].cost);
   const merged = { ...base, ...saved, stock, stockValue };
   // 正誤の記録は後から増えた項目。古いセーブでは、これまでの記帳から作り直す
   return saved.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };

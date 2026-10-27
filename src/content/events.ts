@@ -101,8 +101,8 @@ const bank: EventTemplate = {
 /** 仕入代金の払い方。運び賃は掛けのときも現金で払う */
 export type PurchasePay = "現金" | "普通預金" | "買掛金";
 
-/** unit を渡すと、いつもの仕入値ではなくその単価で仕入れる（ガンテツの特価） */
-export function purchaseTx(item: ItemId, qty: number, pay: PurchasePay, fee = 0, unit = ITEMS[item].cost): Transaction {
+/** fee：店が負担する運び賃。unit：仕入単価（省くといつもの仕入値。ガンテツの特価のときに渡す） */
+export function purchaseTx(item: ItemId, qty: number, pay: PurchasePay, { fee = 0, unit = ITEMS[item].cost }: { fee?: number; unit?: number } = {}): Transaction {
   const it = ITEMS[item];
   const amount = unit * qty;
   const credit: [AccountName, number][] =
@@ -159,22 +159,23 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
       const amount = unit * qty;
       const fee = mode === "freight" || (mode === "any" && ctx.has("charges") && rand() < 0.35) ? pick(rand, [500, 1000]) : 0;
       const canCredit = ctx.has("credit");
+      const buy = (q: number, pay: PurchasePay) => purchaseTx(item, q, pay, { fee, unit });
 
       const choices: Choice[] = [];
       if (mode === "any") {
-        choices.push({ label: "現金で仕入れる", tx: purchaseTx(item, qty, "現金", fee, unit), disabled: needCash(ctx, amount + fee) });
+        choices.push({ label: "現金で仕入れる", tx: buy(qty, "現金"), disabled: needCash(ctx, amount + fee) });
       }
       if (canCredit) {
-        choices.push({ label: "掛けで仕入れる（月末払い）", tx: purchaseTx(item, qty, "買掛金", fee, unit), disabled: needCash(ctx, fee) });
+        choices.push({ label: "掛けで仕入れる（月末払い）", tx: buy(qty, "買掛金"), disabled: needCash(ctx, fee) });
       }
       if (mode === "any" && !ctx.guided) {
         const half = qty / 2;
         if (!canCredit && ctx.balance("現金") < amount + fee && ctx.balance("普通預金") >= amount + fee) {
-          choices.push({ label: "普通預金から払って仕入れる", tx: purchaseTx(item, qty, "普通預金", fee, unit) });
+          choices.push({ label: "普通預金から払って仕入れる", tx: buy(qty, "普通預金") });
         }
         choices.push({
           label: `半分（${half}${it.unit}）だけ現金で仕入れる`,
-          tx: purchaseTx(item, half, "現金", fee, unit),
+          tx: buy(half, "現金"),
           disabled: needCash(ctx, unit * half + fee),
         });
         choices.push(decline("今日はやめておく", "ガンテツ「そうか。また良い品を持ってくるわい」"));

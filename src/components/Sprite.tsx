@@ -141,14 +141,30 @@ export type Pose = "walk" | "crouch" | "armsUp" | "think" | "sleep" | "sweat" | 
 /** [x, y, 文字]。文字はパレットの色（"." は透明、"x" は汗のしずく） */
 type Edit = [number, number, string];
 
-/** 左右対称に差し替える（x と 15−x） */
-const sym = (...edits: Edit[]): Edit[] => edits.flatMap(([x, y, c]) => [[x, y, c] as Edit, [15 - x, y, c] as Edit]);
+/** ポーズの作り方：ドットの差し替え、または絵全体の変換 */
+type PoseDef = Edit[] | ((rows: readonly string[]) => readonly string[]);
+
+/** キャラクターの絵の幅（どれも16ドット） */
+const CHARACTER_WIDTH = 16;
+
+/** 左右対称に差し替える（x と 幅−1−x） */
+const sym = (...edits: Edit[]): Edit[] => edits.flatMap(([x, y, c]) => [[x, y, c] as Edit, [CHARACTER_WIDTH - 1 - x, y, c] as Edit]);
+
+/** 目を閉じる：まばたきと同じく、目の色をまぶたの色に変える */
+const eyesShut =
+  (closed: Record<string, string>) =>
+  (rows: readonly string[]): readonly string[] =>
+    rows.map((r) => [...r].map((c) => closed[c] ?? c).join(""));
+
+/** かがむ：全体を1ドット下げ、下から3行目（腰）を詰める */
+const crouch = (rows: readonly string[]): readonly string[] => [".".repeat(rows[0].length), ...rows.slice(0, -3), ...rows.slice(-2)];
 
 /** 人とドワーフ：手はふだん腰のあたり（11行目の x=2 と 13） */
 const HANDS_DOWN = sym([1, 11, "."], [2, 11, "o"]);
-const BIPED: Partial<Record<Pose, Edit[]>> = {
+const BIPED: Partial<Record<Pose, PoseDef>> = {
   // 両足を開く（登場のときに、ふだんの足と交互に見せて歩かせる）
   walk: [...sym([2, 14, "o"], [3, 14, "p"], [4, 14, "p"], [5, 14, "o"], [6, 14, "."]), ...sym([2, 15, "o"], [3, 15, "b"], [4, 15, "b"], [5, 15, "o"], [6, 15, "."])],
+  crouch,
   // 両手を頭より高く上げる（袖を肩から上へのばし、てっぺんに手）
   armsUp: [
     ...HANDS_DOWN,
@@ -162,7 +178,7 @@ const BIPED: Partial<Record<Pose, Edit[]>> = {
   gesture: [[14, 11, "."], [13, 11, "o"], [14, 10, "s"], [14, 9, "o"]],
   sweat: [[14, 4, "x"], [14, 5, "x"]],
 };
-const POSES: Partial<Record<SpriteName, Partial<Record<Pose, Edit[]>>>> = {
+const POSES: Partial<Record<SpriteName, Partial<Record<Pose, PoseDef>>>> = {
   human: BIPED,
   // ドワーフは目が人より1行上（5行目の x=4）
   dwarf: { ...BIPED, sleep: sym([4, 5, "s"], [4, 6, "o"], [5, 6, "o"]) },
@@ -172,28 +188,32 @@ const POSES: Partial<Record<SpriteName, Partial<Record<Pose, Edit[]>>>> = {
     gesture: [[0, 5, "o"], [0, 6, "b"], [0, 7, "o"]],
     // 目を上に向ける
     think: sym([5, 6, "w"], [5, 5, "k"]),
+    sleep: eyesShut(BLINK.owl!),
     sweat: [[14, 3, "x"], [14, 4, "x"]],
   },
-  fairy: { sweat: [[12, 2, "x"], [12, 3, "x"]] },
+  fairy: { sleep: eyesShut(BLINK.fairy!), sweat: [[12, 2, "x"], [12, 3, "x"]] },
 };
 
-/** ポーズの絵。眠りは目を閉じたコマ、かがむのは全体を1ドット下げて腰を詰める */
+/** 作ったポーズの絵は使い回す（コマ送りのたびに作り直さない） */
+const posedCache = new Map<string, readonly string[]>();
+
+/** ポーズの絵。そのキャラクターにないポーズなら元の絵 */
 function posed(name: SpriteName, pose: Pose | undefined): readonly string[] {
   const rows = SPRITES[name];
-  if (!pose) return rows;
-  if (pose === "sleep" && !POSES[name]?.sleep) {
-    const closed = BLINK[name] ?? {};
-    return rows.map((r) => [...r].map((c) => closed[c] ?? c).join(""));
+  const def = pose && POSES[name]?.[pose];
+  if (!def) return rows;
+  const key = `${name}:${pose}`;
+  let result = posedCache.get(key);
+  if (!result) {
+    if (typeof def === "function") result = def(rows);
+    else {
+      const grid = rows.map((r) => [...r]);
+      for (const [x, y, c] of def) if (grid[y]?.[x] !== undefined) grid[y][x] = c;
+      result = grid.map((r) => r.join(""));
+    }
+    posedCache.set(key, result);
   }
-  if (pose === "crouch") {
-    if (!POSES[name]?.walk) return rows;
-    return [".".repeat(rows[0].length), ...rows.slice(0, 13), ...rows.slice(14)];
-  }
-  const edits = POSES[name]?.[pose];
-  if (!edits) return rows;
-  const grid = rows.map((r) => [...r]);
-  for (const [x, y, c] of edits) if (grid[y]?.[x] !== undefined) grid[y][x] = c;
-  return grid.map((r) => r.join(""));
+  return result;
 }
 
 /** ポーズで使う、キャラクターのパレットにない色 */
@@ -229,6 +249,7 @@ export const Sprite = memo(function Sprite({
   pose?: Pose;
 }) {
   const rows = posed(name, pose);
+  const colors = { ...EXTRA_COLORS, ...palette };
   const w = rows[0].length;
   const h = rows.length;
   const blink = animate ? BLINK[name] : undefined;
@@ -240,7 +261,7 @@ export const Sprite = memo(function Sprite({
   const mouthRow = talking ? MOUTH_ROW[name] : undefined;
   rows.forEach((row, y) => {
     [...row].forEach((ch, x) => {
-      const fill = palette[ch] ?? EXTRA_COLORS[ch];
+      const fill = colors[ch];
       if (!fill) return;
       const rect = (key: string, color: string) => <rect key={key} x={x} y={y} width={1.02} height={1.02} fill={color} />;
       if (flap === ch) wings.push(rect(`w${x}-${y}`, fill));
