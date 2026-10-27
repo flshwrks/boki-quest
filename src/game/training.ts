@@ -5,7 +5,18 @@ import { parseAmount } from "@/engine/format";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
 import { pick } from "@/content/eventKit";
-import { closingProblem, inventoryProblem, ledgerProblem, slipsProblem, subBookProblem, theoryProblem, trialAfterProblem } from "@/content/mockExam";
+import {
+  closingProblem,
+  inventoryProblem,
+  ledgerProblem,
+  slipsProblem,
+  subBookProblem,
+  theoryProblem,
+  trialAfterProblem,
+  receivableLedgerProblem,
+  totalsTrialProblem,
+  worksheetProblem,
+} from "@/content/mockExam";
 import { advance, gradeQuestions, lessonOfTemplate, logPractice, logPractices, pickQuestions } from "./logic";
 import { type Rand, shuffle } from "./random";
 import type { DrillSession, ExamQuestion, FillAnswer, FillBlank, FillProblem, GameState, LessonId, MockSession, Mistake } from "./types";
@@ -154,9 +165,9 @@ export function makeMock(state: GameState, rand: Rand): MockSession {
   const questions = pickQuestions(state, MOCK_QUESTIONS, rand, false);
   // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ
   const problems = [
-    pick(rand, [ledgerProblem, inventoryProblem, slipsProblem]),
+    pick(rand, [ledgerProblem, inventoryProblem, slipsProblem, receivableLedgerProblem]),
     pick(rand, [subBookProblem, theoryProblem]),
-    pick(rand, [closingProblem, trialAfterProblem]),
+    pick(rand, [closingProblem, trialAfterProblem, worksheetProblem, totalsTrialProblem]),
   ].map((make) => make(rand));
   return {
     questions,

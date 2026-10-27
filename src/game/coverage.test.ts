@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import { parseAmount } from "@/engine/format";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS, PREP_LEVEL } from "@/content/lessons";
-import { THEORY, inventoryProblem, slipsProblem, theoryProblem, trialAfterProblem } from "@/content/mockExam";
+import {
+  THEORY,
+  inventoryProblem,
+  receivableLedgerProblem,
+  slipsProblem,
+  theoryProblem,
+  totalsTrialProblem,
+  trialAfterProblem,
+  worksheetProblem,
+} from "@/content/mockExam";
 import { TEMPLATES } from "@/content/events";
 import { choose, newGame, nextLesson, skipLesson, submitEntry } from "./logic";
 import { seededRand } from "./random";
@@ -66,6 +75,57 @@ describe("模擬試験の追加形式", () => {
       const total = value(p, rows.at(-1)![0]);
       expect(body.reduce((a, r) => a + (r[0] === "" ? 0 : value(p, r[0])), 0)).toBe(total);
       expect(body.reduce((a, r) => a + (r[2] === "" ? 0 : value(p, r[2])), 0)).toBe(total);
+    }
+  });
+
+  it("精算表：各欄の左右の合計が一致し、合計の行と等しい", () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const p = worksheetProblem(seededRand(seed));
+      expect(points(p)).toBe(35);
+      const rows = p.sheet[0].rows;
+      const total = rows.at(-1)!;
+      for (let col = 1; col <= 8; col++) {
+        const sum = rows.slice(0, -1).reduce((a, r) => a + (r[col] === "" ? 0 : value(p, r[col])), 0);
+        expect(sum, `${col}列目`).toBe(value(p, total[col]));
+      }
+      for (const pair of [1, 3, 5, 7]) expect(value(p, total[pair])).toBe(value(p, total[pair + 1]));
+    }
+  });
+
+  it("合計残高試算表：合計の列どうし・残高の列どうしが一致し、各行の残高は合計の差", () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const p = totalsTrialProblem(seededRand(seed));
+      expect(points(p)).toBe(35);
+      const rows = p.sheet[0].rows;
+      const v = (c: FillCell) => (c === "" ? 0 : value(p, c));
+      for (const r of rows.slice(0, -1)) {
+        expect(v(r[0]) - v(r[4]), String(r[2])).toBe(v(r[1]) - v(r[3]));
+        expect(v(r[0]) * v(r[4])).toBe(0);
+      }
+      const sum = (col: number) => rows.slice(0, -1).reduce((a, r) => a + v(r[col]), 0);
+      const total = rows.at(-1)!;
+      for (const col of [0, 1, 3, 4]) expect(sum(col)).toBe(v(total[col]));
+      expect(sum(1)).toBe(sum(3));
+      expect(sum(0)).toBe(sum(4));
+    }
+  });
+
+  it("売掛金元帳：残高は借方−貸方の累計で、締め切りの左右が一致する", () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const p = receivableLedgerProblem(seededRand(seed));
+      expect(points(p)).toBe(10);
+      const rows = p.sheet[0].rows;
+      const v = (c: FillCell) => (c === "" ? 0 : value(p, c));
+      let bal = 0;
+      for (const r of rows.slice(0, 4)) {
+        bal += v(r[2]) - v(r[3]);
+        expect(v(r[5])).toBe(bal);
+        expect(bal).toBeGreaterThan(0);
+      }
+      expect(v(rows[4][3])).toBe(bal);
+      const total = rows.at(-1)!;
+      expect(rows.slice(0, -1).reduce((a, r) => a + v(r[2]), 0)).toBe(v(total[2]));
+      expect(rows.slice(0, -1).reduce((a, r) => a + v(r[3]), 0)).toBe(v(total[3]));
     }
   });
 
