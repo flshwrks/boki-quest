@@ -137,3 +137,16 @@ export const opposite = (side: Side): Side => (side === "debit" ? "credit" : "de
 export function sideWithPos(side: Side): string {
   return `${SIDE_LABEL[side]}（${side === "debit" ? "左" : "右"}）`;
 }
+
+/** 財務諸表での表示名（3級の表示ルール） */
+const STATEMENT_LABEL: Partial<Record<AccountName, string>> = {
+  仕入: "売上原価",
+  売上: "売上高",
+  繰越商品: "商品",
+  前払保険料: "前払費用",
+  未払利息: "未払費用",
+  未収利息: "未収収益",
+  備品減価償却累計額: "減価償却累計額",
+  車両運搬具減価償却累計額: "減価償却累計額",
+};
+export const statementLabel = (account: AccountName) => STATEMENT_LABEL[account] ?? account;

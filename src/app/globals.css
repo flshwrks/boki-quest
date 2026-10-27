@@ -307,10 +307,99 @@ body {
   animation: sprite-flap 0.3s steps(1) var(--sprite-delay, 0s) infinite;
 }
 
+/* 口パク：話しはじめに数回だけ、口のコマを出す */
+@keyframes sprite-talk {
+  50% {
+    opacity: 1;
+  }
+}
+.sprite-talk {
+  opacity: 0;
+  animation: sprite-talk 0.32s steps(1) 8;
+}
+
+/* ───────── 場面ごとの動き（Scene の mood） ───────── */
+
+/* うれしい：ぴょんぴょん2回 */
+@keyframes mood-hop {
+  0%,
+  100% {
+    transform: none;
+  }
+  30% {
+    transform: translateY(-14px);
+  }
+  50% {
+    transform: none;
+  }
+  70% {
+    transform: translateY(-8px);
+  }
+}
+.mood-happy {
+  animation: mood-hop 0.7s ease-out;
+}
+/* お祝い：跳ね続ける */
+.mood-cheer {
+  animation: mood-hop 0.7s ease-out infinite;
+}
+/* あわてる：ぷるぷる */
+@keyframes mood-shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+.mood-oops {
+  animation: mood-shake 0.4s steps(4) 2;
+}
+/* 考え中：首をかしげる（2コマ） */
+@keyframes mood-tilt {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+.mood-think {
+  transform-origin: 50% 100%;
+  animation: mood-tilt 1.6s steps(1) infinite;
+}
+/* 眠そう：ゆっくり舟をこぐ */
+@keyframes mood-doze {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: translateY(3px) rotate(6deg);
+  }
+}
+.mood-sleepy {
+  transform-origin: 50% 100%;
+  animation: mood-doze 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sprite-idle,
   .sprite-eyes-closed,
-  .sprite-flap {
+  .sprite-flap,
+  .sprite-talk,
+  .mood-happy,
+  .mood-cheer,
+  .mood-oops,
+  .mood-think,
+  .mood-sleepy {
     animation: none !important;
   }
 }

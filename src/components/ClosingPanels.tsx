@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { CONTRA_TARGETS, type AccountName, categoryOf } from "@/engine/accounts";
+import { CONTRA_TARGETS, type AccountName, categoryOf, statementLabel as label } from "@/engine/accounts";
 import { type Entry, sumAmounts } from "@/engine/journal";
 import { type Row, statements, worksheet } from "@/engine/ledger";
 import { fiscalYear } from "@/content/world";
@@ -11,9 +11,6 @@ import { Btn, Portrait, Win, fmt } from "./ui";
 
 const cell = (n: number) => (n ? fmt(n) : "");
 
-/** 財務諸表での表示名（3級の表示ルール） */
-const DISPLAY: Partial<Record<AccountName, string>> = { 仕入: "売上原価", 売上: "売上高", 繰越商品: "商品", 前払保険料: "前払費用", 未払利息: "未払費用", 未収利息: "未収収益" };
-const label = (a: AccountName) => DISPLAY[a] ?? a;
 
 const COLUMNS = ["trial", "adjust", "income", "balance"] as const;
 const SIDES = ["debit", "credit"] as const;
@@ -184,7 +181,7 @@ export function ReportPanel({ state, onFinish }: { state: GameState; onFinish: (
               <div key={a.account}>
                 <Line name={label(a.account)} amount={a.amount} indent />
                 {(contraUnder.get(a.account) ?? []).map((c) => (
-                  <Line key={c.account} name={c.account} amount={c.amount} indent minus />
+                  <Line key={c.account} name={label(c.account)} amount={c.amount} indent minus />
                 ))}
               </div>
             ))}

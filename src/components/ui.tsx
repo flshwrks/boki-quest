@@ -74,9 +74,22 @@ export function Btn({
 }
 
 /** キャラクターの顔。ふだんは、まばたきと待機の動きつき */
-export function Portrait({ id, size = 64, className = "", still = false }: { id: CharacterId; size?: number; className?: string; still?: boolean }) {
+export function Portrait({
+  id,
+  size = 64,
+  className = "",
+  still = false,
+  talking = false,
+}: {
+  id: CharacterId;
+  size?: number;
+  className?: string;
+  still?: boolean;
+  /** 口をぱくぱくさせる */
+  talking?: boolean;
+}) {
   const c = CHARACTERS[id];
-  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} />;
+  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} talking={talking} />;
 }
 
 export function Speaker({ id }: { id: CharacterId }) {

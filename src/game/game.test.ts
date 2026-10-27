@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isBalanced } from "@/engine/journal";
 import { trialBalance } from "@/engine/ledger";
-import { LESSONS } from "@/content/lessons";
+import { LESSONS, PREP_LEVEL } from "@/content/lessons";
 import { ITEM_IDS } from "@/content/world";
 import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { EXAM_BANK } from "@/content/examBank";
@@ -166,7 +166,8 @@ describe("通しプレイ", () => {
       last = r.s;
     }
     expect(last!.level).toBe(5);
-    expect([...last!.lessonsDone].sort()).toEqual(LESSONS.map((l) => l.id).sort());
+    // 試験対策の講義は、朝の「試験対策」から自分で受ける
+    expect([...last!.lessonsDone].sort()).toEqual(LESSONS.filter((l) => l.level !== PREP_LEVEL).map((l) => l.id).sort());
     for (const t of [
       "founding",
       "withdraw",

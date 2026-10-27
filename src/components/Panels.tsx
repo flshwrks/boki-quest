@@ -16,7 +16,17 @@ import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { LedgerViz } from "./LedgerViz";
 import { AccountChip, AnswerExplain, Btn, Dialogue, Portrait, Speaker, Win, fmt } from "./ui";
 
-export function DayStartPanel({ state, onOpen, onOrder }: { state: GameState; onOpen: () => void; onOrder: (item: ItemId, qty: number, pay: PurchasePay) => void }) {
+export function DayStartPanel({
+  state,
+  onOpen,
+  onOrder,
+  onTraining,
+}: {
+  state: GameState;
+  onOpen: () => void;
+  onOrder: (item: ItemId, qty: number, pay: PurchasePay) => void;
+  onTraining: () => void;
+}) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
   const goal = LEVEL_UP[state.level];
@@ -62,12 +72,19 @@ export function DayStartPanel({ state, onOpen, onOrder }: { state: GameState; on
       {!goal && lessons.every((l) => state.lessonsDone.includes(l.id)) && (
         <p className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
           {state.level >= 5
-            ? "3級の講義はすべて修了じゃ！ あとは店を回して、仕訳を体に覚えさせるのじゃ。実績集めもよいぞ。"
+            ? "3級の講義はすべて修了じゃ！ 「試験対策」の講義2つを受けたら、模擬試験に挑戦してみよう。店を回して仕訳を体に覚えさせるのも大事じゃぞ。"
             : `Lv${state.level}の講義はすべて修了！ 次の成長は、次のアップデートで解禁予定じゃ。それまで店を回して腕を磨こう。`}
         </p>
       )}
       {state.lessonsDone.includes("trade") && <OrderPanel state={state} onOrder={onOrder} />}
-      <Btn onClick={onOpen}>開店する！</Btn>
+      <div className="flex flex-wrap gap-2">
+        <Btn onClick={onOpen}>開店する！</Btn>
+        {state.day > 1 && (
+          <Btn variant="ghost" onClick={onTraining}>
+            📚 試験対策
+          </Btn>
+        )}
+      </div>
     </Win>
   );
 }

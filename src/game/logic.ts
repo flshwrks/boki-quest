@@ -11,7 +11,7 @@ import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
 import { type Rand, shuffle } from "./random";
-import type { CharacterId, Choice, DayStats, ItemId, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
+import type { CharacterId, Choice, DayStats, ItemId, PracticeRecord, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
 
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
@@ -69,6 +69,8 @@ export function initialState(shopName: string): GameState {
     closingFrom: null,
     achievements: [],
     bestCombo: 0,
+    practice: [],
+    mocks: [],
     today: emptyDay(),
     phase: { kind: "dayStart" },
   };
@@ -156,6 +158,33 @@ function prepareTx(state: GameState, ctx: Ctx, tx: Transaction): { tx: Transacti
   return { tx: taxed, disabled: moneyShortage(ctx, taxed) };
 }
 
+/** 朝の仕入れ注文の記録に使う templateId */
+const ORDER = "order";
+
+/** 取引の種類（templateId）から、その論点の講義を引く。朝の注文は商品売買 */
+export function lessonOfTemplate(templateId: string): LessonId | undefined {
+  if (templateId === ORDER) return "trade";
+  return TEMPLATES[templateId]?.lesson;
+}
+
+/** 論点ごとの正誤を記録する（習熟度マップ・苦手ドリルのもと） */
+export function logPractice(state: GameState, lesson: LessonId | undefined, ok: boolean): GameState {
+  return lesson ? { ...state, practice: [...state.practice, { day: state.day, lesson, ok }] } : state;
+}
+
+/** 正誤の記録がない古いセーブ向けに、記帳と苦手の記録から作り直す */
+export function practiceFromHistory(state: GameState): PracticeRecord[] {
+  const missed = new Set(state.mistakes.map((m) => `${m.day}:${m.templateId}`));
+  const fromJournal = state.journal.flatMap((r): PracticeRecord[] => {
+    const lesson = lessonOfTemplate(r.templateId);
+    return lesson ? [{ day: r.day, lesson, ok: !missed.has(`${r.day}:${r.templateId}`) }] : [];
+  });
+  const fromExams = state.mistakes
+    .filter((m) => m.templateId.startsWith("exam:"))
+    .map((m): PracticeRecord => ({ day: m.day, lesson: m.templateId.slice("exam:".length) as LessonId, ok: false }));
+  return [...fromJournal, ...fromExams].sort((a, b) => a.day - b.day);
+}
+
 /** 仕訳の入力を始める */
 const txSession = (tx: Transaction, speaker: CharacterId, templateId: string, guided = false): TxSession => ({
   tx,
@@ -168,8 +197,6 @@ const txSession = (tx: Transaction, speaker: CharacterId, templateId: string, gu
   feedback: null,
 });
 
-/** 朝の仕入れ注文の記録に使う templateId */
-const ORDER = "order";
 
 /** 朝の仕入れ注文の仕訳と、注文できない理由（お金が足りないなど） */
 export function orderPreview(state: GameState, item: ItemId, qty: number, pay: PurchasePay): { tx: Transaction; disabled?: string } {
@@ -239,7 +266,7 @@ export function turnLessonPage(state: GameState, delta: number): GameState {
   if (page >= lesson.pages.length) {
     return {
       ...state,
-      lessonsDone: [...state.lessonsDone, lesson.id],
+      lessonsDone: state.lessonsDone.includes(lesson.id) ? state.lessonsDone : [...state.lessonsDone, lesson.id],
       phase: { kind: "lessonDone", lesson: lesson.id },
     };
   }
@@ -306,8 +333,9 @@ export function submitEntry(state: GameState, input: Entry): GameState {
       return { ...state, phase: { kind: "journal", session: { ...s, feedback: d.messages } } };
     }
     const firstMiss = s.attempts === 0;
+    const logged = firstMiss ? logPractice(state, lessonOfTemplate(s.templateId), false) : state;
     return {
-      ...state,
+      ...logged,
       trust: firstMiss && !s.guided ? clamp(state.trust - 2) : state.trust,
       combo: 0,
       mistakes: firstMiss ? [...state.mistakes, { day: state.day, templateId: s.templateId, exam: s.tx.exam }] : state.mistakes,
@@ -342,6 +370,8 @@ export function submitEntry(state: GameState, input: Entry): GameState {
     },
   };
   next = applyEffect(next, s.tx.effect);
+  // 最初の答えで合っていたかを記録する（ヒントを使ったら「合っていた」には数えない）
+  if (s.attempts === 0) next = logPractice(next, lessonOfTemplate(s.templateId), firstTry);
   const info: ResultInfo = { tx: s.tx, firstTry, trustDelta, combo, comboMessage };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
 }
@@ -420,15 +450,19 @@ export function nextDay(state: GameState, rand: Rand = Math.random): GameState {
   return startDay({ ...state, day: state.day + 1, today: emptyDay() }, rand);
 }
 
-/** これまでに習った論点から、なるべく論点が重ならないように出題する */
-export function makeExam(state: GameState, rand: Rand): ExamSession {
-  const goal = LEVEL_UP[state.level];
+/** 間違えた審査・模試の問題を、苦手として記録する形にする */
+export const examMistakes = (state: GameState, questions: ExamQuestion[], graded: boolean[]) =>
+  questions.filter((_, i) => !graded[i]).map((q) => ({ day: state.day, templateId: `exam:${q.lesson}`, exam: q.text }));
+
+/** 習った論点の問題から n 問。なるべく論点が重ならないようにし、newestFirst なら新しく習った論点を優先する */
+export function pickQuestions(state: GameState, n: number, rand: Rand, newestFirst = true): ExamQuestion[] {
   const learned = new Set(state.lessonsDone);
-  // 今のLvで習った論点を優先し、同じ論点の2問目以降は後回しにする
-  const pool = shuffle(
+  const shuffled = shuffle(
     EXAM_BANK.filter((q) => learned.has(q.lesson)),
     rand,
-  ).sort((a, b) => LESSON_BY_ID[b.lesson].level - LESSON_BY_ID[a.lesson].level);
+  );
+  const pool = newestFirst ? shuffled.sort((a, b) => LESSON_BY_ID[b.lesson].level - LESSON_BY_ID[a.lesson].level) : shuffled;
+  // 同じ論点の2問目以降は後回しにする
   const seen = new Set<LessonId>();
   const firsts: ExamQuestion[] = [];
   const repeats: ExamQuestion[] = [];
@@ -439,7 +473,13 @@ export function makeExam(state: GameState, rand: Rand): ExamSession {
       firsts.push(q);
     }
   }
-  const questions = [...firsts, ...repeats].slice(0, goal.questions);
+  return [...firsts, ...repeats].slice(0, n);
+}
+
+/** これまでに習った論点から、なるべく論点が重ならないように出題する（今のLvの論点を優先） */
+export function makeExam(state: GameState, rand: Rand): ExamSession {
+  const goal = LEVEL_UP[state.level];
+  const questions = pickQuestions(state, goal.questions, rand);
   return {
     toLevel: state.level + 1,
     questions,
@@ -472,10 +512,8 @@ export function gradeExam(state: GameState): GameState {
     const a = e.answers[i];
     return !!a && sameEntry(a, q.answer);
   });
-  const mistakes = e.questions
-    .filter((_, i) => !graded[i])
-    .map((q) => ({ day: state.day, templateId: `exam:${q.lesson}`, exam: q.text }));
-  return updateExam({ ...state, mistakes: [...state.mistakes, ...mistakes] }, (x) => ({ ...x, graded }));
+  const logged = e.questions.reduce((s, q, i) => logPractice(s, q.lesson, graded[i]), state);
+  return updateExam({ ...logged, mistakes: [...state.mistakes, ...examMistakes(state, e.questions, graded)] }, (x) => ({ ...x, graded }));
 }
 
 /** 結果を見終えたあと。合格なら昇格、不合格なら2日後に再挑戦 */

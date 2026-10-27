@@ -43,7 +43,10 @@ export type LessonId =
   | "closing"
   | "salestax"
   | "interimtax"
-  | "dividends";
+  | "dividends"
+  // 試験対策（模擬試験の第2問で使う）
+  | "ledgerclose"
+  | "subbooks";
 
 /** 相手ごとに追跡する債権・債務の科目。合計は帳簿の残高と一致させる（通しプレイのテストで検証） */
 export const CREDIT_KINDS = [
@@ -144,6 +147,15 @@ export interface Mistake {
   day: number;
   templateId: string;
   exam: string;
+  /** 苦手ドリルで正解したら克服済み */
+  resolved?: boolean;
+}
+
+/** 論点ごとの正誤の記録（習熟度マップのもと）。最初の答えが合っていたかを1件ずつ残す */
+export interface PracticeRecord {
+  day: number;
+  lesson: LessonId;
+  ok: boolean;
 }
 
 export interface TxSession {
@@ -177,7 +189,72 @@ export type Phase =
   | { kind: "exam"; exam: ExamSession }
   | { kind: "worksheet"; answered: (boolean | null)[] }
   | { kind: "report" }
-  | { kind: "levelUp"; level: number };
+  | { kind: "levelUp"; level: number }
+  // 試験対策（朝の画面から入り、終わったら朝に戻る）
+  | { kind: "training" }
+  | { kind: "drill"; drill: DrillSession }
+  | { kind: "mock"; mock: MockSession };
+
+/** 苦手ドリル。1問ずつ答え合わせする */
+export interface DrillSession {
+  /** 論点を選んで始めたときの論点。おまかせなら null */
+  lesson: LessonId | null;
+  questions: ExamQuestion[];
+  index: number;
+  /** 答え合わせした問題の正誤 */
+  results: (boolean | null)[];
+  answer: Entry | null;
+}
+
+/** 模擬試験の穴埋め問題（第2問・第3問）。表の一部が空欄になっている */
+export type FillCell = string | { blank: number; prefix?: string };
+
+export interface FillTable {
+  title?: string;
+  head?: string[];
+  rows: FillCell[][];
+}
+
+export interface FillBlank {
+  /** amount：金額を入力／select：選択肢から1つ／multi：あてはまるものをすべて */
+  kind: "amount" | "select" | "multi";
+  options?: string[];
+  answer: number | string | string[];
+  points: number;
+}
+
+export type FillAnswer = string | string[] | null;
+
+export interface FillProblem {
+  title: string;
+  lead: string[];
+  /** 決算整理事項などの番号つきの一覧 */
+  items?: string[];
+  /** 問題として与える表（決算整理前残高試算表など） */
+  given?: FillTable[];
+  /** 答案用紙 */
+  sheet: FillTable[];
+  blanks: FillBlank[];
+}
+
+/** 模擬試験。第1問は仕訳15問（各3点）、第2問・第3問は穴埋め */
+export interface MockSession {
+  questions: ExamQuestion[];
+  answers: (Entry | null)[];
+  problems: FillProblem[];
+  fills: FillAnswer[][];
+  startedAt: number | null;
+  minutes: number;
+  /** 採点後に入る。第1問の各問、穴埋めの各空欄の正誤 */
+  graded: { questions: boolean[]; fills: boolean[][] } | null;
+}
+
+export interface MockResult {
+  day: number;
+  score: number;
+  /** 第1問・第2問・第3問の得点 */
+  parts: number[];
+}
 
 export interface ExamQuestion {
   text: string;
@@ -236,6 +313,10 @@ export interface GameState {
   achievements: string[];
   /** ノーヒント連続正解の最高記録 */
   bestCombo: number;
+  /** 論点ごとの正誤の記録 */
+  practice: PracticeRecord[];
+  /** 模擬試験の成績 */
+  mocks: MockResult[];
   /** 決算日の間だけ、決算整理を始めた時点の仕訳の件数（精算表の「修正記入」をここから数える） */
   closingFrom: number | null;
   today: DayStats;

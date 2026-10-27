@@ -1,4 +1,4 @@
-import { initialState } from "./logic";
+import { initialState, practiceFromHistory } from "./logic";
 import type { GameState, LessonId, QueueItem } from "./types";
 
 type Saved = Record<string, unknown> & { version: number };
@@ -25,7 +25,9 @@ function migrate(raw: Saved): GameState | null {
   if (s.version !== 2) return null;
   const saved = s as unknown as GameState;
   const base = initialState(saved.shopName);
-  return { ...base, ...saved, stock: { ...base.stock, ...saved.stock } };
+  const merged = { ...base, ...saved, stock: { ...base.stock, ...saved.stock } };
+  // 正誤の記録は後から増えた項目。古いセーブでは、これまでの記帳から作り直す
+  return saved.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };
 }
 
 // ───────── 端末内の保存 ─────────
