@@ -2,16 +2,19 @@
 
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
-import type { Credit } from "@/game/types";
-import { type EventTemplate, creditsOf, decline, dueCredits, je, n, need, needCash, needDeposit, pick, settleAll } from "./eventKit";
+import type { Credit, GameState } from "@/game/types";
+import { type EventTemplate, creditsOf, decline, dueCredits, je, n, need, needCash, needDeposit, pick, settleAll, settleDue } from "./eventKit";
 import { DAYS_PER_MONTH, LEVELS, dayInMonth } from "./world";
 
 /** 利息 ＝ 元本 × 年利 × 月数 ÷ 12 */
-const interestOf = (c: Credit) => Math.round((c.amount * (c.rate ?? 0) * (c.months ?? 0)) / 12);
+const interestOf = (c: Pick<Credit, "amount" | "rate" | "months">) => Math.round((c.amount * (c.rate ?? 0) * (c.months ?? 0)) / 12);
 const pct = (rate: number) => `${Math.round(rate * 100)}%`;
 
-/** 借入金・貸付金のうち、返済期日（借りた日から months か月後）が来たもの */
-const dueLoans = (credits: Credit[], day: number) => credits.filter((c) => c.day + (c.months ?? 0) * DAYS_PER_MONTH <= day);
+/** 返済期日（借りた日から months か月後）が来た借入金・貸付金と、その利息 */
+function dueLoan(state: GameState, kind: "借入金" | "貸付金") {
+  const c = creditsOf(state, kind).find((c) => c.day + (c.months ?? 0) * DAYS_PER_MONTH <= state.day);
+  return c && { c, interest: interestOf(c) };
+}
 
 // ───────── 借入金・貸付金 ─────────
 
@@ -34,7 +37,7 @@ const bankLoan: EventTemplate = {
             exam: `銀行から${n(amount)}円を借り入れ、普通預金口座に入金された（借入期間${months}か月、年利率${pct(rate)}）。`,
             answer: je([["普通預金", amount]], [["借入金", amount]]),
             idea: "お金が預金に入った。いずれ返さなければならない義務はどの科目？",
-            note: `返すときの利息は ${n(amount)} × ${pct(rate)} × ${months}/12 = ${n((amount * rate * months) / 12)}円になる。覚えておこう。`,
+            note: `返すときの利息は ${n(amount)} × ${pct(rate)} × ${months}/12 = ${n(interestOf(LOAN))}円になる。覚えておこう。`,
             effect: { addCredits: [{ kind: "借入金", who: "luke", amount, rate, months }] },
           },
         },
@@ -48,10 +51,9 @@ const loanRepay: EventTemplate = {
   lesson: "loans",
   schedule: "daily",
   build: (ctx) => {
-    const due = dueLoans(creditsOf(ctx.state, "借入金"), ctx.state.day);
-    if (due.length === 0) return null;
-    const c = due[0];
-    const interest = interestOf(c);
+    const due = dueLoan(ctx.state, "借入金");
+    if (!due) return null;
+    const { c, interest } = due;
     const total = c.amount + interest;
     return {
       speaker: "luke",
@@ -110,10 +112,9 @@ const loanCollect: EventTemplate = {
   lesson: "loans",
   schedule: "daily",
   build: (ctx) => {
-    const due = dueLoans(creditsOf(ctx.state, "貸付金"), ctx.state.day);
-    if (due.length === 0) return null;
-    const c = due[0];
-    const interest = interestOf(c);
+    const due = dueLoan(ctx.state, "貸付金");
+    if (!due) return null;
+    const { c, interest } = due;
     return {
       speaker: "allen",
       lines: ["約束どおり返しに来たぜ！ 新しい剣のおかげでダンジョンの奥まで行けたよ。", `元本${n(c.amount)}円と、利息${n(interest)}円だ。`],
@@ -143,8 +144,8 @@ const loanCollect: EventTemplate = {
 
 const moveIn: EventTemplate = {
   lesson: "deposit",
+  once: "game",
   build: (ctx) => {
-    if (ctx.state.journal.some((r) => r.templateId === "move-in")) return null;
     const rent = LEVELS[4].rent;
     const deposit = rent;
     const fee = rent / 2;
@@ -183,8 +184,8 @@ const moveIn: EventTemplate = {
 
 const buyWagon: EventTemplate = {
   lesson: "fixedassets",
-  build: (ctx) => {
-    if (ctx.state.journal.some((r) => r.templateId === "buy-wagon")) return null;
+  once: "game",
+  build: () => {
     const price = 200000;
     const fee = 10000;
     return {
@@ -211,25 +212,25 @@ const buyWagon: EventTemplate = {
 const buyRegister: EventTemplate = {
   lesson: "fixedassets",
   schedule: 0.08,
+  once: "game",
   build: (ctx) => {
-    if (ctx.state.journal.some((r) => r.templateId === "buy-register")) return null;
     const price = 80000;
     const fee = 5000;
     return {
       speaker: "cecil",
       lines: ["ギルド公認の魔導レジスターはいかが？ 会計がぐっと早くなりますよ。（評判 +8）", `本体${n(price)}円と据付費${n(fee)}円です。`],
       choices: [
-        {
-          label: "普通預金から払って買う",
-          disabled: needDeposit(ctx, price + fee),
+        ...(["普通預金", "現金"] as const).map((via) => ({
+          label: `${via}${via === "現金" ? "で" : "から"}払って買う`,
+          disabled: need(ctx, via, price + fee),
           tx: {
             story: `魔導レジスターを${n(price)}円で買い、据付費${n(fee)}円とともに払った。`,
-            exam: `店舗用のレジスター${n(price)}円を購入し、据付費${n(fee)}円とともに普通預金口座から支払った。`,
-            answer: je([["備品", price + fee]], [["普通預金", price + fee]]),
+            exam: `店舗用のレジスター${n(price)}円を購入し、据付費${n(fee)}円とともに${via === "現金" ? "現金で" : "普通預金口座から"}支払った。`,
+            answer: je([["備品", price + fee]], [[via, price + fee]]),
             idea: "長く使う設備を買った。据付費も設備の金額に含めるよ。",
             effect: { reputation: 8 },
           },
-        },
+        })),
         decline("今回は見送る", "セシル「またいつでもどうぞ！」"),
       ],
     };
@@ -270,10 +271,10 @@ const noelAdvance: EventTemplate = {
 const payday: EventTemplate = {
   lesson: "payroll",
   schedule: "daily",
+  once: "day",
   build: (ctx) => {
     const { state } = ctx;
     if (!ctx.guided && dayInMonth(state.day) !== DAYS_PER_MONTH) return null;
-    if (state.journal.some((r) => r.templateId === "payday" && r.day === state.day)) return null;
     const { gross, tax, insurance } = SALARY;
     const advances = creditsOf(state, "立替金", "noel");
     const advance = sumAmounts(advances);
@@ -310,32 +311,15 @@ const payday: EventTemplate = {
   },
 };
 
-const payIncomeTax: EventTemplate = {
+const payIncomeTax = settleDue("所得税預り金", {
   lesson: "payroll",
-  schedule: "daily",
-  build: (ctx) => {
-    const due = dueCredits(ctx.state, "所得税預り金", 2);
-    if (due.length === 0) return null;
-    const amt = sumAmounts(due);
-    return {
-      speaker: "hoho",
-      lines: [`ノエルの給料から預かった所得税${n(amt)}円を、王国の税務所に納める日じゃ。`],
-      choices: [
-        {
-          label: "普通預金から納付する",
-          disabled: needDeposit(ctx, amt),
-          tx: {
-            story: `預かっていた所得税${n(amt)}円を納めた。`,
-            exam: `従業員の給料から源泉徴収していた所得税${n(amt)}円を、普通預金口座から納付した。`,
-            answer: je([["所得税預り金", amt]], [["普通預金", amt]]),
-            idea: "預かっていたお金を納めたので、納める義務（預り金）が減るね。",
-            effect: { settleCredits: settleAll(due) },
-          },
-        },
-      ],
-    };
-  },
-};
+  speaker: "hoho",
+  label: "普通預金から納付する",
+  lines: (amt) => [`ノエルの給料から預かった所得税${n(amt)}円を、王国の税務所に納める日じゃ。`],
+  story: (amt) => `預かっていた所得税${n(amt)}円を納めた。`,
+  exam: (amt) => `従業員の給料から源泉徴収していた所得税${n(amt)}円を、普通預金口座から納付した。`,
+  idea: "預かっていたお金を納めたので、納める義務（預り金）が減るね。",
+});
 
 const payInsurance: EventTemplate = {
   lesson: "payroll",
@@ -438,7 +422,7 @@ const unknownDeposit: EventTemplate = {
   lesson: "suspense",
   schedule: 0.15,
   build: ({ state, rand }) => {
-    if (state.credits.some((c) => c.kind === "仮受金")) return null;
+    if (creditsOf(state, "仮受金").length > 0) return null;
     const ar = creditsOf(state, "売掛金");
     if (ar.length === 0) return null;
     const c = pick(rand, ar);
@@ -453,7 +437,7 @@ const unknownDeposit: EventTemplate = {
             exam: `普通預金口座に${n(c.amount)}円の入金があったが、その内容は不明である。`,
             answer: je([["普通預金", c.amount]], [["仮受金", c.amount]]),
             idea: "お金は入ったけれど、何のお金かわからない。とりあえずの置き場所になる科目は？",
-            effect: { addCredits: [{ kind: "仮受金", who: c.who, amount: c.amount }], holdCredit: c.id },
+            effect: { addCredits: [{ kind: "仮受金", who: c.who, amount: c.amount, against: c.id }] },
           },
         },
       ],
@@ -468,7 +452,7 @@ const unknownResolve: EventTemplate = {
     const due = dueCredits(state, "仮受金", 1);
     if (due.length === 0) return null;
     const q = due[0];
-    const held = state.credits.find((c) => c.kind === "売掛金" && c.held && c.who === q.who);
+    const held = state.credits.find((c) => c.id === q.against);
     if (!held) return null;
     return {
       speaker: q.who,

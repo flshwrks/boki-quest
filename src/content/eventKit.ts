@@ -22,6 +22,8 @@ export interface EventTemplate {
   lesson: LessonId;
   /** 講義を受けた後の出番。daily：毎日判定（起きるかは build が決める）／数値：その確率でときどき起きる */
   schedule?: "daily" | number;
+  /** game：一度起きたら二度と起きない／day：1日に1回まで（進行側でまとめて判定する） */
+  once?: "game" | "day";
   build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;
 }
 
@@ -35,9 +37,13 @@ export const need = (ctx: Ctx, account: AccountName, amount: number) =>
 export const needCash = (ctx: Ctx, amount: number) => need(ctx, "現金", amount);
 export const needDeposit = (ctx: Ctx, amount: number) => need(ctx, "普通預金", amount);
 
-/** その種類の債権・債務。確認待ち（held）のものは、ふだんの取引では使わないので除く */
+/**
+ * その種類の債権・債務。ほかの債権・債務から against で指されているもの
+ * （内容不明の入金の正体として確認待ちの売掛金など）は、ふだんの取引では使わないので除く
+ */
 export function creditsOf(state: GameState, kind: CreditKind, who?: CharacterId): Credit[] {
-  return state.credits.filter((c) => c.kind === kind && !c.held && (!who || c.who === who));
+  const reserved = new Set(state.credits.map((c) => c.against));
+  return state.credits.filter((c) => c.kind === kind && !reserved.has(c.id) && (!who || c.who === who));
 }
 
 /** その種類の債権・債務のうち、発生から days 日以上たったもの */
@@ -57,6 +63,7 @@ const SETTLEMENT: Partial<Record<CreditKind, { via: AccountName; days: number }>
   クレジット売掛金: { via: "普通預金", days: 2 },
   受取商品券: { via: "普通預金", days: 2 },
   未払金: { via: "普通預金", days: 2 },
+  所得税預り金: { via: "普通預金", days: 2 },
 };
 
 /** 当座預金で決済を待っている債務を差し引いた、新しい支払いに使える当座預金 */
@@ -76,6 +83,7 @@ export function settleDue(
   t: {
     lesson: LessonId;
     speaker: CharacterId;
+    label?: string;
     lines: (amt: number) => string[];
     story: (amt: number) => string;
     exam: (amt: number) => string;
@@ -103,7 +111,7 @@ export function settleDue(
       return {
         speaker: t.speaker,
         lines: t.lines(amt),
-        choices: [{ label: "記帳する", tx, disabled: receivable ? undefined : need(ctx, via, amt) }],
+        choices: [{ label: t.label ?? "記帳する", tx, disabled: receivable ? undefined : need(ctx, via, amt) }],
       };
     },
   };

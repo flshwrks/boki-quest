@@ -28,8 +28,8 @@ function depositTx(amount: number): Transaction {
 
 const founding: EventTemplate = {
   lesson: "founding",
+  once: "game",
   build: ({ state }) => {
-    if (state.journal.some((r) => r.templateId === "founding")) return null;
     return {
       speaker: "cecil",
       lines: [

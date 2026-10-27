@@ -36,6 +36,7 @@ export function Btn({
   disabled,
   className = "",
   sound = "select",
+  type = "button",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -43,6 +44,8 @@ export function Btn({
   disabled?: boolean;
   className?: string;
   sound?: "select" | "card" | null;
+  /** フォームの送信ボタンにするときは submit */
+  type?: "button" | "submit";
 }) {
   const styles = {
     primary: "bg-gold text-ink px-4 py-2 rounded hover:brightness-110",
@@ -51,7 +54,7 @@ export function Btn({
   }[variant];
   return (
     <button
-      type="button"
+      type={type}
       disabled={disabled}
       onClick={() => {
         if (sound) play(sound);

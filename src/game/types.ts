@@ -69,8 +69,8 @@ export interface Credit {
   /** 借入金・貸付金の年利と期間（月）。返済のときに利息を計算する */
   rate?: number;
   months?: number;
-  /** 正体のわからない入金（仮受金）の原因として確認待ち。ほかの取引では使わない */
-  held?: boolean;
+  /** 仮受金が、どの売掛金の入金と思われるか（その売掛金はほかの取引で使わない） */
+  against?: string;
   day: number;
 }
 
@@ -85,7 +85,6 @@ export interface Effect {
   reputation?: number;
   addCredits?: Omit<Credit, "id" | "day">[];
   settleCredits?: { id: string; amount: number }[];
-  holdCredit?: string;
   quest?: Quest | null;
   /** 正なら現金不足、負なら現金過剰。null で解消 */
   cashDiff?: { amount: number; day: number } | null;

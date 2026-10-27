@@ -142,6 +142,7 @@ export function advance(state: GameState, rand: Rand): GameState {
     const guided = !!head.guided;
     const template = TEMPLATES[id];
     if (!template || !state.lessonsDone.includes(template.lesson)) continue;
+    if (template.once && state.journal.some((r) => r.templateId === id && (template.once === "game" || r.day === state.day))) continue;
     const built = template.build({ ...ctx, guided });
     if (!built) continue;
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
@@ -192,7 +193,6 @@ function applyEffect(state: GameState, effect: Effect | undefined): GameState {
     for (const c of effect.addCredits ?? []) credits.push({ ...c, id: `c${++seq}`, day: next.day });
     next = { ...next, credits, creditSeq: seq };
   }
-  if (effect.holdCredit) next.credits = next.credits.map((c) => (c.id === effect.holdCredit ? { ...c, held: true } : c));
   if (effect.quest !== undefined) next.quest = effect.quest;
   if (effect.cashDiff !== undefined) next.cashDiff = effect.cashDiff;
   return next;

@@ -1,14 +1,13 @@
-// クラウド保存。合言葉を知っている本人だけが、1つのセーブを読み書きできる
+// クラウド保存。合言葉を知っている本人だけが、1つのセーブを読み書きできる。
+// セーブ本体は端末側で圧縮した文字列のまま預かり、版（保存時刻）は別のキーで持つ。
 
 import { timingSafeEqual } from "node:crypto";
 import { Redis } from "@upstash/redis";
 
 const KEY = "boki-quest:save";
-
-interface CloudSave {
-  savedAt: number;
-  state: unknown;
-}
+const KEY_AT = "boki-quest:save:at";
+/** Upstash の1リクエストの上限（1MB）に余裕を持たせた、セーブ本体の上限 */
+const MAX_BYTES = 900_000;
 
 let redis: Redis | null = null;
 function getRedis(): Redis {
@@ -16,7 +15,7 @@ function getRedis(): Redis {
   return redis;
 }
 
-/** 合言葉の照合。長さや一致する位置から推測されないよう、一定時間で比べる */
+/** 合言葉の照合。一致する位置から推測されないよう、一定時間で比べる */
 function authorized(req: Request): boolean {
   const expected = process.env.BOKI_PASSCODE;
   const given = req.headers.get("x-passcode");
@@ -30,19 +29,24 @@ const unauthorized = () => Response.json({ error: "合言葉が違います" }, 
 
 export async function GET(req: Request) {
   if (!authorized(req)) return unauthorized();
-  const save = await getRedis().get<CloudSave>(KEY);
-  return Response.json(save ?? { savedAt: 0, state: null });
+  const [data, savedAt] = await getRedis().mget<[string | null, number | null]>(KEY, KEY_AT);
+  return Response.json({ savedAt: savedAt ?? 0, data });
 }
 
+/**
+ * 保存する。base は、その端末が最後に読み書きしたときの版。
+ * そのあとで別の端末が保存していたら（クラウドの版のほうが新しければ）上書きせず 409 を返す。
+ */
 export async function PUT(req: Request) {
   if (!authorized(req)) return unauthorized();
-  const body = (await req.json()) as CloudSave;
-  if (typeof body.savedAt !== "number" || typeof body.state !== "object" || body.state === null) {
+  const body = (await req.json()) as { base?: unknown; data?: unknown };
+  if (typeof body.base !== "number" || typeof body.data !== "string" || body.data.length > MAX_BYTES) {
     return Response.json({ error: "セーブの形式が正しくありません" }, { status: 400 });
   }
-  // 古い端末からの書き込みで、新しいセーブを上書きしない
-  const current = await getRedis().get<CloudSave>(KEY);
-  if (current && current.savedAt > body.savedAt) return Response.json({ ok: false, savedAt: current.savedAt }, { status: 409 });
-  await getRedis().set(KEY, body);
-  return Response.json({ ok: true, savedAt: body.savedAt });
+  const current = (await getRedis().get<number>(KEY_AT)) ?? 0;
+  if (current > body.base) return Response.json({ savedAt: current }, { status: 409 });
+  // 版はサーバーの時刻で付ける（端末ごとの時計のずれに左右されない）
+  const savedAt = Math.max(Date.now(), current + 1);
+  await getRedis().mset({ [KEY]: body.data, [KEY_AT]: savedAt });
+  return Response.json({ savedAt });
 }

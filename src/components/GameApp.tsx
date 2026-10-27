@@ -23,7 +23,19 @@ import {
   unlockedAccounts,
   takeHint,
 } from "@/game/logic";
-import { type LocalSave, clearGame, fetchCloud, getPasscode, loadGame, pushCloud, saveGame, setPasscode } from "@/game/save";
+import {
+  type CloudSyncStatus,
+  type LocalSave,
+  clearGame,
+  fetchCloud,
+  getPasscode,
+  loadGame,
+  pushCloud,
+  saveGame,
+  setPasscode,
+  storageGet,
+  storageSet,
+} from "@/game/save";
 import type { CharacterId, GameState } from "@/game/types";
 import { BookModal } from "./BookModal";
 import { ExamPanel } from "./ExamPanel";
@@ -47,6 +59,7 @@ import { AnimatedNumber, Btn, Modal, Portrait, Win, fmt } from "./ui";
 const SOUND_KEY = "boki-quest-sound";
 const DEFAULT_SHOP = "星のしずく";
 const INPUT_KEY = "boki-quest-input";
+const CLOUD_CHECKPOINTS = new Set(["dayStart", "dayEnd", "monthEnd", "levelUp"]);
 const rand = Math.random;
 
 /** 場面に合わせた時間帯・感情アイコン・お金のポップアップ */
@@ -97,7 +110,7 @@ function speakerOf(state: GameState): CharacterId | undefined {
   }
 }
 
-type CloudStatus = "off" | "checking" | "ok" | "unauthorized" | "offline" | "conflict";
+type CloudStatus = CloudSyncStatus | "off" | "checking";
 
 const CLOUD_LABEL: Record<CloudStatus, string> = {
   off: "未接続（この端末だけに保存）",
@@ -131,7 +144,9 @@ function CloudPanel({ status, onConnect }: { status: CloudStatus; onConnect: (pa
             autoComplete="off"
             className="min-w-0 flex-1 rounded border-2 border-white/60 bg-black/30 px-3 py-1.5"
           />
-          <Btn variant="ghost">接続</Btn>
+          <Btn variant="ghost" type="submit">
+            接続
+          </Btn>
         </form>
       )}
     </div>
@@ -218,6 +233,8 @@ export default function GameApp() {
   const [saved, setSaved] = useState<LocalSave | null>(null);
   const [cloud, setCloud] = useState<CloudStatus>("off");
   const passcodeRef = useRef("");
+  // クラウドの版。保存するときに「この版から変更した」と伝え、別の端末の新しいセーブを上書きしないようにする
+  const cloudRevRef = useRef(0);
   const [state, setState] = useState<GameState | null>(null);
   const [book, setBook] = useState(false);
   const [ledger, setLedger] = useState(false);
@@ -234,6 +251,7 @@ export default function GameApp() {
       return;
     }
     passcodeRef.current = passcode;
+    cloudRevRef.current = res.savedAt;
     setPasscode(passcode);
     setCloud("ok");
     const remote = res.save;
@@ -244,15 +262,11 @@ export default function GameApp() {
     setSaved(loadGame());
     const passcode = getPasscode();
     if (passcode) void connectCloud(passcode);
-    try {
-      const on = localStorage.getItem(SOUND_KEY) !== "off";
-      setSound(on);
-      setSoundEnabled(on);
-      const pref = localStorage.getItem(INPUT_KEY);
-      if (pref === "card" || pref === "cbt") setInputPref(pref);
-    } catch {
-      // 既定値（音あり）のまま
-    }
+    const on = storageGet(SOUND_KEY) !== "off";
+    setSound(on);
+    setSoundEnabled(on);
+    const pref = storageGet(INPUT_KEY);
+    if (pref === "card" || pref === "cbt") setInputPref(pref);
     setLoaded(true);
   }, []);
 
@@ -268,14 +282,20 @@ export default function GameApp() {
     };
   }, [state]);
 
-  // クラウドへは、場面が切り替わる区切りごとにまとめて送る（入力のたびには送らない）
-  const checkpoint = state ? `${state.day}:${state.phase.kind}:${state.journal.length}` : "";
+  const pushToCloud = async (s: GameState) => {
+    const res = await pushCloud(passcodeRef.current, s, cloudRevRef.current);
+    if (res.savedAt) cloudRevRef.current = res.savedAt;
+    if (res.status !== "ok") setCloud(res.status);
+  };
+
+  // クラウドへは、一日の始まりと終わり・月末・昇格・審査の採点のときだけ送る。細かな進み具合は端末に保存されている
+  const checkpoint =
+    state && (CLOUD_CHECKPOINTS.has(state.phase.kind) || (state.phase.kind === "exam" && state.phase.exam.graded))
+      ? `${state.day}:${state.phase.kind}`
+      : null;
   useEffect(() => {
-    if (!state || cloud !== "ok") return;
-    const timer = setTimeout(async () => {
-      const result = await pushCloud(passcodeRef.current, { state, savedAt: Date.now() });
-      if (result !== "ok") setCloud(result);
-    }, 1500);
+    if (!state || !checkpoint || cloud !== "ok") return;
+    const timer = setTimeout(() => void pushToCloud(state), 1000);
     return () => clearTimeout(timer);
     // 区切り（checkpoint）が変わったときだけ送るので、state そのものは依存に入れない
   }, [checkpoint, cloud]);
@@ -323,24 +343,17 @@ export default function GameApp() {
   const toggleInputMode = () => {
     const next: InputMode = inputMode === "cbt" ? "card" : "cbt";
     setInputPref(next);
-    try {
-      localStorage.setItem(INPUT_KEY, next);
-    } catch {
-      // 保存できなくても切り替えは効く
-    }
+    storageSet(INPUT_KEY, next);
   };
   const toggleSound = () => {
     const on = !sound;
     setSound(on);
     setSoundEnabled(on);
-    try {
-      localStorage.setItem(SOUND_KEY, on ? "on" : "off");
-    } catch {
-      // 保存できなくても切り替えは効く
-    }
+    storageSet(SOUND_KEY, on ? "on" : "off");
   };
 
   const p = state.phase;
+  const cloudHealthy = cloud === "ok" || cloud === "checking";
 
   let panel: React.ReactNode;
   switch (p.kind) {
@@ -423,6 +436,7 @@ export default function GameApp() {
             className="text-gold"
             onClick={() => {
               setSaved({ state, savedAt: saveGame(state) });
+              if (cloud === "ok") void pushToCloud(state);
               setState(null);
             }}
             title="タイトルへ（自動保存済み）"
@@ -432,8 +446,8 @@ export default function GameApp() {
           <span className="text-sm">{dateLabel(state.day)}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {cloud !== "off" && (
-              <span className={`text-sm ${cloud === "ok" || cloud === "checking" ? "text-dim" : "text-ng"}`} title={CLOUD_LABEL[cloud]}>
-                {cloud === "ok" || cloud === "checking" ? "☁" : "☁!"}
+              <span className={`text-sm ${cloudHealthy ? "text-dim" : "text-ng"}`} title={CLOUD_LABEL[cloud]}>
+                {cloudHealthy ? "☁" : "☁!"}
                 <span className="sr-only">{CLOUD_LABEL[cloud]}</span>
               </span>
             )}

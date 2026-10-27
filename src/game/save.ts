@@ -28,7 +28,34 @@ function migrate(raw: Saved): GameState | null {
   return { ...base, ...saved, stock: { ...base.stock, ...saved.stock } };
 }
 
-// 端末内の保存。キー名は最初の版のまま（変えると既存のセーブが読めなくなる）
+// ───────── 端末内の保存 ─────────
+
+/** localStorage の読み書き。使えない環境（プライベートモード等）でも、ゲームは止めずに続ける */
+export function storageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function storageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 保存できなくても、この画面を開いている間は遊べる
+  }
+}
+
+function storageRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // 同上
+  }
+}
+
+// キー名は最初の版のまま（変えると既存のセーブが読めなくなる）
 const KEY = "boki-quest-save-v1";
 const SAVED_AT_KEY = "boki-quest-saved-at";
 const PASSCODE_KEY = "boki-quest-passcode";
@@ -38,84 +65,83 @@ export interface LocalSave {
   savedAt: number;
 }
 
-export function loadGame(): LocalSave | null {
+function parse(raw: string | null): GameState | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const state = migrate(JSON.parse(raw));
-    return state ? { state, savedAt: Number(localStorage.getItem(SAVED_AT_KEY)) || 0 } : null;
+    return raw ? migrate(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 }
 
+export function loadGame(): LocalSave | null {
+  const state = parse(storageGet(KEY));
+  return state ? { state, savedAt: Number(storageGet(SAVED_AT_KEY)) || 0 } : null;
+}
+
 /** 端末に保存し、保存した時刻を返す（クラウドと新しさを比べるのに使う） */
 export function saveGame(state: GameState): number {
   const savedAt = Date.now();
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-    localStorage.setItem(SAVED_AT_KEY, String(savedAt));
-  } catch {
-    // 保存できない環境（プライベートモード等）でもプレイは続けられる
-  }
+  storageSet(KEY, JSON.stringify(state));
+  storageSet(SAVED_AT_KEY, String(savedAt));
   return savedAt;
 }
 
 export function clearGame() {
-  try {
-    localStorage.removeItem(KEY);
-    localStorage.removeItem(SAVED_AT_KEY);
-  } catch {
-    // 同上
-  }
+  storageRemove(KEY);
+  storageRemove(SAVED_AT_KEY);
 }
 
 // ───────── クラウド保存（合言葉を知っている本人だけが使える） ─────────
 
-export function getPasscode(): string {
-  try {
-    return localStorage.getItem(PASSCODE_KEY) ?? "";
-  } catch {
-    return "";
-  }
+export const getPasscode = () => storageGet(PASSCODE_KEY) ?? "";
+export const setPasscode = (passcode: string) => storageSet(PASSCODE_KEY, passcode);
+
+/** セーブを gzip で圧縮して文字列にする（日本語の多い仕訳帳が数分の1になる） */
+async function pack(state: GameState): Promise<string> {
+  const stream = new Blob([JSON.stringify(state)]).stream().pipeThrough(new CompressionStream("gzip"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
 }
 
-export function setPasscode(passcode: string) {
-  try {
-    if (passcode) localStorage.setItem(PASSCODE_KEY, passcode);
-    else localStorage.removeItem(PASSCODE_KEY);
-  } catch {
-    // 保存できなくても、この画面を開いている間は使える
-  }
+async function unpack(data: string): Promise<GameState | null> {
+  const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return parse(await new Response(stream).text());
 }
 
-export type CloudResult = { status: "ok"; save: LocalSave | null } | { status: "unauthorized" } | { status: "offline" };
+export type CloudSyncStatus = "ok" | "conflict" | "unauthorized" | "offline";
 
-export async function fetchCloud(passcode: string): Promise<CloudResult> {
+async function cloudRequest(passcode: string, init?: RequestInit): Promise<Response | "unauthorized" | "offline"> {
   try {
-    const res = await fetch("/api/save", { headers: { "x-passcode": passcode }, cache: "no-store" });
-    if (res.status === 401) return { status: "unauthorized" };
-    if (!res.ok) return { status: "offline" };
-    const body = (await res.json()) as { savedAt: number; state: Saved | null };
-    const state = body.state ? migrate(body.state) : null;
-    return { status: "ok", save: state ? { state, savedAt: body.savedAt } : null };
-  } catch {
-    return { status: "offline" };
-  }
-}
-
-/** クラウドへ送る。別の端末のほうが新しいときは送らずに "conflict" を返す */
-export async function pushCloud(passcode: string, save: LocalSave): Promise<"ok" | "conflict" | "unauthorized" | "offline"> {
-  try {
-    const res = await fetch("/api/save", {
-      method: "PUT",
-      headers: { "content-type": "application/json", "x-passcode": passcode },
-      body: JSON.stringify(save),
-    });
-    if (res.status === 401) return "unauthorized";
-    if (res.status === 409) return "conflict";
-    return res.ok ? "ok" : "offline";
+    const res = await fetch("/api/save", { cache: "no-store", ...init, headers: { ...init?.headers, "x-passcode": passcode } });
+    return res.status === 401 ? "unauthorized" : res;
   } catch {
     return "offline";
   }
+}
+
+/** クラウドのセーブを読む。savedAt はクラウドの版で、次に保存するときの base になる */
+export async function fetchCloud(passcode: string): Promise<{ status: "ok"; save: LocalSave | null; savedAt: number } | { status: Exclude<CloudSyncStatus, "ok"> }> {
+  const res = await cloudRequest(passcode);
+  if (typeof res === "string") return { status: res };
+  if (!res.ok) return { status: "offline" };
+  const body = (await res.json()) as { savedAt: number; data: string | null };
+  const state = body.data ? await unpack(body.data) : null;
+  return { status: "ok", save: state ? { state, savedAt: body.savedAt } : null, savedAt: body.savedAt };
+}
+
+/** クラウドへ保存する。base より新しいセーブが別の端末から保存されていたら conflict */
+export async function pushCloud(passcode: string, state: GameState, base: number): Promise<{ status: CloudSyncStatus; savedAt?: number }> {
+  const res = await cloudRequest(passcode, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ base, data: await pack(state) }),
+  });
+  if (typeof res === "string") return { status: res };
+  if (res.status === 409) return { status: "conflict" };
+  if (!res.ok) return { status: "offline" };
+  const { savedAt } = (await res.json()) as { savedAt: number };
+  return { status: "ok", savedAt };
 }
