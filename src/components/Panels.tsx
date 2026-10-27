@@ -48,7 +48,9 @@ export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () 
             「{next.name}」へ成長する条件（そろうと翌朝{next.exam}）
           </div>
           <Goal label={`Lv${state.level}の講義をすべて受ける`} now={lessons.filter((l) => state.lessonsDone.includes(l.id)).length} target={lessons.length} />
-          {goal.requires?.includes("closing") && <Goal label="最初の決算を終える" now={state.lessonsDone.includes("closing") ? 1 : 0} target={1} unit="回" />}
+          {goal.requires?.map((id) => (
+            <Goal key={id} label={`「${LESSON_BY_ID[id].title}」を学ぶ`} now={state.lessonsDone.includes(id) ? 1 : 0} target={1} unit="回" />
+          ))}
           <Goal label="売上の累計" now={totalSales(state)} target={goal.sales} unit="円" />
           <Goal label="帳簿の信用" now={state.trust} target={goal.trust} />
           <Goal label="営業日数" now={state.day} target={goal.days} unit="日目" />

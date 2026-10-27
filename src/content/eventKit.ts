@@ -3,7 +3,7 @@
 import { type AccountName, categoryOf } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, Credit, CreditKind, GameEvent, GameState, ItemId, LessonId, Transaction } from "@/game/types";
-import { CHARACTERS } from "./world";
+import { CHARACTERS, LEVELS } from "./world";
 
 export { fmt as n } from "@/engine/format";
 export { entry as je } from "@/engine/journal";
@@ -22,8 +22,8 @@ export interface EventTemplate {
   lesson: LessonId;
   /** 講義を受けた後の出番。daily：毎日判定（起きるかは build が決める）／数値：その確率でときどき起きる */
   schedule?: "daily" | number;
-  /** game：一度起きたら二度と起きない／day：1日に1回まで（進行側でまとめて判定する） */
-  once?: "game" | "day";
+  /** game：一度起きたら二度と起きない／year：会計年度に1回／day：1日に1回（進行側でまとめて判定する） */
+  once?: "game" | "year" | "day";
   build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;
 }
 
@@ -31,8 +31,8 @@ export const pick = <T,>(rand: () => number, xs: readonly T[]): T => xs[Math.flo
 export const name = (id: CharacterId) => CHARACTERS[id].name;
 export const decline = (label: string, reply: string, reputation = 0): Choice => ({ label, reply, effect: { reputation } });
 
-/** 店が大きくなるほど、一度に売り買いする量がふえる（Lv1〜2は1倍、Lv3〜4は2倍、Lv5は3倍） */
-export const tradeScale = (level: number) => Math.ceil(level / 2);
+/** 店が大きくなるほど、一度に売り買いする量がふえる */
+export const tradeScale = (level: number) => LEVELS[level].scale;
 
 /** 残高が足りなければ、選べない理由を返す */
 export const need = (ctx: Ctx, account: AccountName, amount: number) =>
@@ -42,6 +42,14 @@ export const needDeposit = (ctx: Ctx, amount: number) => need(ctx, "普通預金
 
 /** 試験文での支払い方の言い回し（「現金で」「普通預金口座から」） */
 export const viaPhrase = (via: AccountName) => (via === "現金" ? "現金で" : `${via}口座から`);
+
+/** 決算整理仕訳を1本書くだけのイベント */
+export function adjustment(speaker: CharacterId, lines: string[], tx: Transaction): Omit<GameEvent, "templateId"> {
+  return { speaker, lines, choices: [{ label: "決算整理仕訳を書く", tx }] };
+}
+
+/** ふつうの支払元 */
+export const PAY_SOURCES: AccountName[] = ["普通預金", "当座預金", "現金"];
 
 /** 「○○から払う」の選択肢を支払元ごとに作る。残高が足りない支払元は選べない */
 export function payFrom(ctx: Ctx, amount: number, vias: readonly AccountName[], tx: (via: AccountName) => Transaction, verb = "支払う"): Choice[] {
@@ -127,6 +135,45 @@ export function settleDue(
         speaker: t.speaker,
         lines: t.lines(amt),
         choices: [{ label: t.label ?? "記帳する", tx, disabled: receivable ? undefined : need(ctx, via, amt) }],
+      };
+    },
+  };
+}
+
+/**
+ * 負債の残高（未払法人税等・未払消費税・未払配当金など）を、好きな支払元から全額払うイベント。
+ * when で、払う時期を絞り込める。
+ */
+export function payBalance(
+  account: AccountName,
+  t: {
+    lesson: LessonId;
+    speaker: CharacterId;
+    when?: (ctx: Ctx) => boolean;
+    lines: (amt: number) => string[];
+    story: (amt: number) => string;
+    exam: (amt: number, via: AccountName) => string;
+    idea: string;
+    verb?: string;
+  },
+): EventTemplate {
+  return {
+    lesson: t.lesson,
+    schedule: "daily",
+    build: (ctx) => {
+      if (t.when && !t.when(ctx)) return null;
+      const amt = ctx.balance(account);
+      if (amt <= 0) return null;
+      return {
+        speaker: t.speaker,
+        lines: t.lines(amt),
+        choices: payFrom(
+          ctx,
+          amt,
+          PAY_SOURCES,
+          (via) => ({ story: t.story(amt), exam: t.exam(amt, via), answer: { debit: [{ account, amount: amt }], credit: [{ account: via, amount: amt }] }, idea: t.idea }),
+          t.verb,
+        ),
       };
     },
   };

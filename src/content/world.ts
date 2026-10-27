@@ -136,13 +136,16 @@ export interface Level {
   hoho: string;
   /** 記帳を本番と同じCBT形式にする（設定で変えていなければ） */
   cbt?: boolean;
+  /** 一度に売り買いする量の倍率（店が大きくなるほどふえる） */
+  scale: number;
 }
 
 export const LEVELS: Record<number, Level> = {
-  1: { name: "露店", rent: 5000, exam: "", perks: [], hoho: "" },
+  1: { name: "露店", rent: 5000, scale: 1, exam: "", perks: [], hoho: "" },
   2: {
     name: "小さな店舗",
     rent: 10000,
+    scale: 1,
     exam: "商人ギルドの昇格審査",
     perks: ["ギルドの審査に合格し、通りに面した店舗を借りた", "新商品「魔法の巻物」を扱えるようになった", "取引先が増え、新しい講義が始まる"],
     hoho: "ホッホ、立派になったのう。ここからは「ツケ」の世界じゃ。帳簿の腕がますます試されるぞ。",
@@ -150,6 +153,7 @@ export const LEVELS: Record<number, Level> = {
   3: {
     name: "商店街の店",
     rent: 15000,
+    scale: 2,
     cbt: true,
     exam: "王都銀行の融資審査",
     perks: ["銀行の融資審査に合格し、商店街の大きな店に移った", "新商品「エーテル」を扱えるようになった", "手形やカード払いなど、支払い方が多彩になる"],
@@ -158,6 +162,7 @@ export const LEVELS: Record<number, Level> = {
   4: {
     name: "城下町の大店",
     rent: 20000,
+    scale: 2,
     cbt: true,
     exam: "王都銀行の大口融資審査",
     perks: ["大口融資の審査に合格し、城下町の大通りに店を構えた", "見習い店員ノエルを雇う", "借入・設備投資・給料など、会社らしいお金の動きが始まる"],
@@ -166,6 +171,7 @@ export const LEVELS: Record<number, Level> = {
   5: {
     name: "王都の名店",
     rent: 25000,
+    scale: 3,
     cbt: true,
     exam: "王国商工会議所の審査",
     perks: ["商工会議所の審査に合格し、王都の目抜き通りの名店になった", "伝説の霊薬「エリクサー」を扱えるようになった", "消費税・税金の前払い・株主への配当など、本格的な会社の仕事が始まる"],

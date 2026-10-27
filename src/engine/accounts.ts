@@ -131,6 +131,8 @@ export function homeSide(category: Category): Side | null {
 
 export const SIDE_LABEL: Record<Side, string> = { debit: "借方", credit: "貸方" };
 
+export const opposite = (side: Side): Side => (side === "debit" ? "credit" : "debit");
+
 /** 「借方（左）」のように、名前と位置をあわせて示す */
 export function sideWithPos(side: Side): string {
   return `${SIDE_LABEL[side]}（${side === "debit" ? "左" : "右"}）`;

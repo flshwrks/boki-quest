@@ -1,12 +1,12 @@
 import type { AccountName } from "@/engine/accounts";
-import { diagnose, sameEntry, sumAmounts, type Entry } from "@/engine/journal";
+import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { TEMPLATES } from "@/content/events";
 import { withSalesTax } from "@/content/salesTax";
-import type { Ctx } from "@/content/eventKit";
+import { type Ctx, need } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel, type Lesson } from "@/content/lessons";
-import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth, isYearEnd } from "@/content/world";
+import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth, isYearEnd, yearStartDay } from "@/content/world";
 import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
@@ -31,9 +31,10 @@ export function unlockedAccounts(state: GameState): AccountName[] {
 
 /** 開業からの売上の累計（決算の損益振替で売上の残高がゼロに戻っても数え続ける） */
 export function totalSales(state: GameState): number {
-  return state.journal
-    .filter((r) => r.templateId !== "closing-transfer")
-    .reduce((sum, r) => sum + sumAmounts(r.entry.credit.filter((l) => l.account === "売上")) - sumAmounts(r.entry.debit.filter((l) => l.account === "売上")), 0);
+  return balanceOf(
+    state.journal.filter((r) => r.templateId !== "closing-transfer").map((r) => r.entry),
+    "売上",
+  );
 }
 
 /** 今日の予定に入っている講義 */
@@ -141,8 +142,8 @@ const MONEY: AccountName[] = ["現金", "小口現金", "当座預金", "普通�
 /** 取引で払うお金が残高より多ければ、選べない理由を返す */
 function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
   for (const account of MONEY) {
-    const paid = sumAmounts(tx.answer.credit.filter((l) => l.account === account));
-    if (paid > 0 && ctx.balance(account) < paid) return `${account}が足りない`;
+    const reason = need(ctx, account, sumOf(tx.answer.credit, account));
+    if (reason) return reason;
   }
   return undefined;
 }
@@ -163,19 +164,22 @@ export function advance(state: GameState, rand: Rand): GameState {
     const guided = !!head.guided;
     const template = TEMPLATES[id];
     if (!template || !state.lessonsDone.includes(template.lesson)) continue;
-    if (template.once && state.journal.some((r) => r.templateId === id && (template.once === "game" || r.day === state.day))) continue;
+    if (template.once) {
+      const since = { game: 0, year: yearStartDay(state.day), day: state.day }[template.once];
+      if (state.journal.some((r) => r.templateId === id && r.day >= since)) continue;
+    }
     const built = template.build({ ...ctx, guided });
     if (!built) continue;
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
-    // 消費税を習ったあとは、商品の売買に税抜方式の消費税を加える。税込で払えなくなった選択肢は選べない
-    if (state.lessonsDone.includes("salestax")) {
-      choices = choices.map((c) => {
-        if (!c.tx?.taxable) return c;
-        const tx = withSalesTax(c.tx);
-        return { ...c, tx, disabled: c.disabled ?? moneyShortage(ctx, tx) };
-      });
-    }
+    // 消費税を習ったあとは、商品の売買に税抜方式の消費税を加える
+    const taxed = state.lessonsDone.includes("salestax");
+    // どの選択肢も、払うお金が残高より多ければ選べない
+    choices = choices.map((c) => {
+      if (!c.tx) return c;
+      const tx = taxed && c.tx.taxable ? withSalesTax(c.tx) : c.tx;
+      return { ...c, tx, disabled: c.disabled ?? moneyShortage(ctx, tx) };
+    });
     if (choices.every((c) => c.disabled)) {
       choices.push({
         label: "今は見送る（お金が足りない）",

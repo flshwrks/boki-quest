@@ -4,17 +4,13 @@
 import { CONTRA_TARGETS, type AccountName, categoryOf } from "@/engine/accounts";
 import { statements } from "@/engine/ledger";
 import { sumAmounts } from "@/engine/journal";
-import type { CharacterId, GameState, LessonId, QueueItem, Transaction } from "@/game/types";
-import { type EventTemplate, creditsOf, interestOf, je, n, need, payFrom, pct, pick, viaPhrase } from "./eventKit";
+import type { GameState, LessonId, QueueItem } from "@/game/types";
+import { type EventTemplate, adjustment, creditsOf, interestOf, je, n, need, payBalance, pct, pick, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, ITEM_IDS, calendarMonth, monthOfYear, yearStartDay } from "./world";
 
 /** その会計年度の仕訳 */
 const thisYear = (state: GameState) => state.journal.filter((r) => r.day >= yearStartDay(state.day));
 
-/** 1行だけの決算整理イベント */
-function adjustment(speaker: CharacterId, lines: string[], tx: Transaction) {
-  return { speaker, lines, choices: [{ label: "決算整理仕訳を書く", tx }] };
-}
 
 // ───────── 売上原価 ─────────
 
@@ -317,30 +313,17 @@ const corporateTax: EventTemplate = {
   },
 };
 
-const payCorporateTax: EventTemplate = {
+const payCorporateTax = payBalance("未払法人税等", {
   lesson: "closing",
-  schedule: "daily",
-  build: (ctx) => {
-    const amt = ctx.balance("未払法人税等");
-    if (amt <= 0 || monthOfYear(ctx.state.day) < 2) return null;
-    return {
-      speaker: "hoho",
-      lines: [`去年の決算で計上した法人税等${n(amt)}円を、王国の税務所に納める時期じゃ。`],
-      choices: payFrom(
-        ctx,
-        amt,
-        ["普通預金", "当座預金", "現金"],
-        (via) => ({
-          story: `法人税等${n(amt)}円を納めた。`,
-          exam: `未払法人税等${n(amt)}円を${viaPhrase(via)}納付した。`,
-          answer: je([["未払法人税等", amt]], [[via, amt]]),
-          idea: "去年立てておいた、納める義務（負債）を取り崩すよ。",
-        }),
-        "納付する",
-      ),
-    };
-  },
-};
+  speaker: "hoho",
+  // 5月（年度の2か月目）以降に納める
+  when: (ctx) => monthOfYear(ctx.state.day) >= 2,
+  lines: (amt) => [`去年の決算で計上した法人税等${n(amt)}円を、王国の税務所に納める時期じゃ。`],
+  story: (amt) => `法人税等${n(amt)}円を納めた。`,
+  exam: (amt, via) => `未払法人税等${n(amt)}円を${viaPhrase(via)}納付した。`,
+  idea: "去年立てておいた、納める義務（負債）を取り崩すよ。",
+  verb: "納付する",
+});
 
 // ───────── 新年度の再振替仕訳 ─────────
 

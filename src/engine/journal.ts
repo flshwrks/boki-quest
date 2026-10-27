@@ -22,6 +22,9 @@ export function sumAmounts(xs: { amount: number }[]): number {
   return xs.reduce((sum, x) => sum + x.amount, 0);
 }
 
+/** 行のうち、その科目の金額の合計 */
+export const sumOf = (lines: Line[], account: AccountName) => sumAmounts(lines.filter((l) => l.account === account));
+
 /** [科目, 金額] の組から仕訳を組み立てる */
 export function entry(debit: [AccountName, number][], credit: [AccountName, number][]): Entry {
   return {

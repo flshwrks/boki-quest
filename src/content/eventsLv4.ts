@@ -3,7 +3,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { GameState, Transaction } from "@/game/types";
-import { type EventTemplate, creditsOf, decline, dueCredits, interestOf, je, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
+import { PAY_SOURCES, type EventTemplate, creditsOf, decline, dueCredits, interestOf, je, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, LEVELS, dayInMonth } from "./world";
 
 
@@ -56,7 +56,7 @@ const loanRepay: EventTemplate = {
       speaker: "luke",
       lines: [`借入金${n(c.amount)}円の返済期日です。`, `利息${n(interest)}円（${n(c.amount)} × ${pct(c.rate!)} × ${c.months}/12）とあわせて${n(total)}円をお願いします。`],
       choices: [
-        ...payFrom(ctx, total, ["普通預金", "当座預金", "現金"], (via) => repayTx(c, interest, [[via, total]], `${viaPhrase(via)}返済した`), "返済する"),
+        ...payFrom(ctx, total, PAY_SOURCES, (via) => repayTx(c, interest, [[via, total]], `${viaPhrase(via)}返済した`), "返済する"),
         // 1つの口座では足りなくても、普通預金と現金をあわせれば払えるとき
         ...(ctx.balance("普通預金") < total && ctx.balance("現金") < total && ctx.balance("普通預金") + ctx.balance("現金") >= total
           ? [
