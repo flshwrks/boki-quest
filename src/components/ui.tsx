@@ -38,25 +38,30 @@ export function Btn({
   className = "",
   sound = "select",
   type = "button",
+  active,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "ghost" | "choice";
+  variant?: "primary" | "ghost" | "choice" | "chip";
   disabled?: boolean;
   className?: string;
   sound?: "select" | "card" | null;
   /** フォームの送信ボタンにするときは submit */
   type?: "button" | "submit";
+  /** chip のとき、選ばれているか */
+  active?: boolean;
 }) {
   const styles = {
     primary: "bg-gold text-ink px-4 py-2 rounded hover:brightness-110",
     ghost: "border-2 border-white/70 px-3 py-1.5 rounded hover:bg-white/10",
     choice: "choice w-full py-2 pr-2 rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/10 hover:pl-7 transition-all",
+    chip: `rounded-full border px-2.5 py-1 text-xs ${active ? "border-gold bg-gold/15 text-gold" : "border-white/40 hover:bg-white/10"}`,
   }[variant];
   return (
     <button
       type={type}
       disabled={disabled}
+      aria-pressed={variant === "chip" ? !!active : undefined}
       onClick={() => {
         if (sound) play(sound);
         onClick?.();

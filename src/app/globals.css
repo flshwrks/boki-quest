@@ -277,7 +277,7 @@ body {
   }
 }
 .sprite-idle {
-  animation: sprite-idle 1.1s steps(1) infinite;
+  animation: sprite-idle 1.1s steps(1) var(--sprite-delay, 0s) infinite;
 }
 
 /* まばたき：数秒に一度、目を閉じたコマに切り替える */
@@ -292,22 +292,9 @@ body {
     opacity: 1;
   }
 }
-@keyframes sprite-eyes-open {
-  0%,
-  93%,
-  100% {
-    opacity: 1;
-  }
-  94%,
-  98% {
-    opacity: 0;
-  }
-}
 .sprite-eyes-closed {
-  animation: sprite-eyes-closed 3.4s steps(1) infinite;
-}
-.sprite-eyes-open {
-  animation: sprite-eyes-open 3.4s steps(1) infinite;
+  opacity: 0;
+  animation: sprite-eyes-closed 3.4s steps(1) var(--sprite-delay, 0s) infinite;
 }
 
 /* 羽ばたき：羽だけを上下に */
@@ -317,17 +304,13 @@ body {
   }
 }
 .sprite-flap {
-  animation: sprite-flap 0.3s steps(1) infinite;
+  animation: sprite-flap 0.3s steps(1) var(--sprite-delay, 0s) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sprite-idle,
   .sprite-eyes-closed,
-  .sprite-eyes-open,
   .sprite-flap {
     animation: none !important;
-  }
-  .sprite-eyes-closed {
-    opacity: 0;
   }
 }

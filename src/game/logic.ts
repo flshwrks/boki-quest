@@ -1,7 +1,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
-import { TEMPLATES, purchaseTx } from "@/content/events";
+import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
 import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
@@ -11,7 +11,7 @@ import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
 import { type Rand, shuffle } from "./random";
-import type { Choice, DayStats, ItemId, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
+import type { CharacterId, Choice, DayStats, ItemId, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
 
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
@@ -150,27 +150,43 @@ function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
   return undefined;
 }
 
-export type OrderPay = "現金" | "普通預金" | "買掛金";
+/** 選択肢の取引を仕上げる：消費税を習ったあとは商品の売買に消費税を加え、払うお金が残高より多ければ選べない理由をつける */
+function prepareTx(state: GameState, ctx: Ctx, tx: Transaction): { tx: Transaction; disabled?: string } {
+  const taxed = tx.taxable && state.lessonsDone.includes("salestax") ? withSalesTax(tx) : tx;
+  return { tx: taxed, disabled: moneyShortage(ctx, taxed) };
+}
+
+/** 仕訳の入力を始める */
+const txSession = (tx: Transaction, speaker: CharacterId, templateId: string, guided = false): TxSession => ({
+  tx,
+  speaker,
+  templateId,
+  guided,
+  // 練習問題では最初のヒントを無料で見せる
+  hints: guided ? 1 : 0,
+  attempts: 0,
+  feedback: null,
+});
+
+/** 朝の仕入れ注文の記録に使う templateId */
+const ORDER = "order";
 
 /** 朝の仕入れ注文の仕訳と、注文できない理由（お金が足りないなど） */
-export function orderPreview(state: GameState, item: ItemId, qty: number, pay: OrderPay): { tx: Transaction; disabled?: string } {
-  const base = pay === "買掛金" ? purchaseTx(item, qty, "買掛金", 0) : purchaseTx(item, qty, "現金", 0, pay === "普通預金" ? "普通預金" : undefined);
-  const tx = state.lessonsDone.includes("salestax") ? withSalesTax(base) : base;
-  return { tx, disabled: moneyShortage(ctxOf(state, Math.random, false), tx) };
+export function orderPreview(state: GameState, item: ItemId, qty: number, pay: PurchasePay): { tx: Transaction; disabled?: string } {
+  return prepareTx(state, ctxOf(state, Math.random, false), purchaseTx(item, qty, pay));
 }
 
 /** 開店前に、ガンテツへ仕入れを注文する。記帳が終わったら朝の画面に戻る */
-export function startOrder(state: GameState, item: ItemId, qty: number, pay: OrderPay): GameState {
+export function startOrder(state: GameState, item: ItemId, qty: number, pay: PurchasePay): GameState {
   if (state.phase.kind !== "dayStart") return state;
   const { tx, disabled } = orderPreview(state, item, qty, pay);
   if (disabled) return state;
-  const session: TxSession = { tx, speaker: "gantetsu", templateId: "order", guided: false, hints: 0, attempts: 0, feedback: null, returnToMorning: true };
-  return { ...state, phase: { kind: "journal", session } };
+  return { ...state, phase: { kind: "journal", session: txSession(tx, "gantetsu", ORDER) } };
 }
 
 /** 正解の画面の次へ。朝の注文なら朝の画面に戻り、それ以外は今日の予定を進める */
 export function afterResult(state: GameState, rand: Rand): GameState {
-  if (state.phase.kind === "result" && state.phase.info.returnToMorning) return { ...state, phase: { kind: "dayStart" } };
+  if (state.phase.kind === "result" && state.journal.at(-1)?.templateId === ORDER) return { ...state, phase: { kind: "dayStart" } };
   return advance(state, rand);
 }
 
@@ -198,13 +214,10 @@ export function advance(state: GameState, rand: Rand): GameState {
     if (!built) continue;
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
-    // 消費税を習ったあとは、商品の売買に税抜方式の消費税を加える
-    const taxed = state.lessonsDone.includes("salestax");
-    // どの選択肢も、払うお金が残高より多ければ選べない
     choices = choices.map((c) => {
       if (!c.tx) return c;
-      const tx = taxed && c.tx.taxable ? withSalesTax(c.tx) : c.tx;
-      return { ...c, tx, disabled: c.disabled ?? moneyShortage(ctx, tx) };
+      const { tx, disabled } = prepareTx(state, ctx, c.tx);
+      return { ...c, tx, disabled: c.disabled ?? disabled };
     });
     if (choices.every((c) => c.disabled)) {
       choices.push({
@@ -263,17 +276,7 @@ export function choose(state: GameState, index: number, rand: Rand): GameState {
   const choice: Choice | undefined = event.choices[index];
   if (!choice || choice.disabled) return state;
   if (choice.tx) {
-    const session: TxSession = {
-      tx: choice.tx,
-      speaker: event.speaker,
-      templateId: event.templateId,
-      guided: !!event.guided,
-      // 練習問題では最初のヒントを無料で見せる
-      hints: event.guided ? 1 : 0,
-      attempts: 0,
-      feedback: null,
-    };
-    return { ...state, phase: { kind: "journal", session } };
+    return { ...state, phase: { kind: "journal", session: txSession(choice.tx, event.speaker, event.templateId, !!event.guided) } };
   }
   const next = applyEffect(state, choice.effect);
   if (choice.reply) return { ...next, phase: { kind: "reply", speaker: event.speaker, text: choice.reply } };
@@ -339,7 +342,7 @@ export function submitEntry(state: GameState, input: Entry): GameState {
     },
   };
   next = applyEffect(next, s.tx.effect);
-  const info: ResultInfo = { tx: s.tx, firstTry, trustDelta, combo, comboMessage, returnToMorning: s.returnToMorning };
+  const info: ResultInfo = { tx: s.tx, firstTry, trustDelta, combo, comboMessage };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
 }
 

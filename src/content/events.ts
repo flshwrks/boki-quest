@@ -1,6 +1,6 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
-import type { CharacterId, Choice, ItemId, Transaction } from "@/game/types";
+import type { CharacterId, Choice, GameState, ItemId, Transaction } from "@/game/types";
 import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale } from "./eventKit";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
@@ -97,15 +97,17 @@ const bank: EventTemplate = {
 
 // ───────── 仕入 ─────────
 
-export function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee: number, via?: "普通預金"): Transaction {
+/** 仕入代金の払い方。運び賃は掛けのときも現金で払う */
+export type PurchasePay = "現金" | "普通預金" | "買掛金";
+
+export function purchaseTx(item: ItemId, qty: number, pay: PurchasePay, fee = 0): Transaction {
   const it = ITEMS[item];
   const amount = it.cost * qty;
-  const cashAccount: AccountName = via ?? "現金";
   const credit: [AccountName, number][] =
-    pay === "現金" ? [[cashAccount, amount + fee]] : fee > 0 ? [["買掛金", amount], ["現金", fee]] : [["買掛金", amount]];
-  const payText = via ? "普通預金口座から支払った" : "現金で支払った";
+    pay !== "買掛金" ? [[pay, amount + fee]] : fee > 0 ? [["買掛金", amount], ["現金", fee]] : [["買掛金", amount]];
+  const payText = pay === "普通預金" ? "普通預金口座から支払った" : "現金で支払った";
   const exam =
-    pay === "現金"
+    pay !== "買掛金"
       ? fee > 0
         ? `商品${n(amount)}円を仕入れ、代金は引取運賃${n(fee)}円とともに${payText}。`
         : `商品${n(amount)}円を仕入れ、代金は${payText}。`
@@ -131,7 +133,13 @@ export function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金
   };
 }
 
-export const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10], elixir: [3, 5] };
+const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10], elixir: [3, 5] };
+
+/** 一度に仕入れる数の候補（店が大きいほど多い） */
+export const orderQtys = (item: ItemId, level: number) => QTY[item].map((q) => q * tradeScale(level));
+
+/** いちばん在庫の少ない商品 */
+export const lowestStockItem = (state: GameState) => [...itemsForLevel(state.level)].sort((a, b) => state.stock[a] - state.stock[b])[0];
 
 function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
   return {
@@ -139,10 +147,9 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
     build: (ctx) => {
       const { state, rand } = ctx;
       const items = itemsForLevel(state.level);
-      const lowest = [...items].sort((a, b) => state.stock[a] - state.stock[b])[0];
-      const item = rand() < 0.6 ? lowest : pick(rand, items);
+      const item = rand() < 0.6 ? lowestStockItem(state) : pick(rand, items);
       const it = ITEMS[item];
-      const qty = pick(rand, QTY[item]) * tradeScale(state.level);
+      const qty = pick(rand, orderQtys(item, state.level));
       const amount = it.cost * qty;
       const fee = mode === "freight" || (mode === "any" && ctx.has("charges") && rand() < 0.35) ? pick(rand, [500, 1000]) : 0;
       const canCredit = ctx.has("credit");
@@ -157,7 +164,7 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
       if (mode === "any" && !ctx.guided) {
         const half = qty / 2;
         if (!canCredit && ctx.balance("現金") < amount + fee && ctx.balance("普通預金") >= amount + fee) {
-          choices.push({ label: "普通預金から払って仕入れる", tx: purchaseTx(item, qty, "現金", fee, "普通預金") });
+          choices.push({ label: "普通預金から払って仕入れる", tx: purchaseTx(item, qty, "普通預金", fee) });
         }
         choices.push({
           label: `半分（${half}${it.unit}）だけ現金で仕入れる`,

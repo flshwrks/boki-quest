@@ -40,7 +40,7 @@ import {
   storageSet,
 } from "@/game/save";
 import type { CharacterId, GameState } from "@/game/types";
-import { ACHIEVEMENTS, type Achievement, newAchievements } from "@/content/achievements";
+import { ACHIEVEMENTS, type Achievement, withAchievements } from "@/content/achievements";
 import { BookModal, type Tab as BookTab } from "./BookModal";
 import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
 import { ExamPanel } from "./ExamPanel";
@@ -319,19 +319,24 @@ export default function GameApp() {
     [phase],
   );
 
-  // 実績：場面が変わったときと記帳したときに判定し、新しく取れたらお知らせする
-  const achievementCheck = state ? `${state.phase.kind}:${state.journal.length}:${state.level}` : "";
+  // 実績：進行のたびに判定して state に記録する（update / commit）。ここでは増えた分をお知らせするだけ
+  const earnedCount = state?.achievements.length ?? null;
+  const shownCount = useRef<number | null>(null);
   useEffect(() => {
-    if (!state) return;
-    const earned = newAchievements(state);
-    if (earned.length === 0) return;
-    setState((s) => (s ? { ...s, achievements: [...s.achievements, ...earned.map((a) => a.id)] } : s));
-    setToast(earned);
+    const prev = shownCount.current;
+    shownCount.current = earnedCount;
+    // セーブを読み込んだときは知らせない
+    if (prev === null || earnedCount === null || earnedCount <= prev || !state) return;
+    const ids = state.achievements.slice(prev);
+    setToast(ACHIEVEMENTS.filter((a) => ids.includes(a.id)));
     play("fanfare");
+    // 実績の数が増えたときだけ知らせるので、state そのものは依存に入れない
+  }, [earnedCount]);
+  useEffect(() => {
+    if (toast.length === 0) return;
     const timer = setTimeout(() => setToast([]), 3500);
     return () => clearTimeout(timer);
-    // 判定のきっかけ（achievementCheck）が変わったときだけ確かめる
-  }, [achievementCheck]);
+  }, [toast]);
 
   const prevPhase = state?.phase.kind;
   useEffect(() => {
@@ -356,12 +361,13 @@ export default function GameApp() {
   }
 
   const inputMode: InputMode = inputPref ?? (LEVELS[state.level].cbt ? "cbt" : "card");
-  const update = (f: (s: GameState) => GameState) => setState((s) => (s ? f(s) : s));
+  const update = (f: (s: GameState) => GameState) => setState((s) => (s ? withAchievements(f(s)) : s));
+  const commit = (next: GameState) => setState(withAchievements(next));
   const grade = () => {
     const graded = gradeExam(state);
     if (graded === state || graded.phase.kind !== "exam") return;
     play(examScore(graded.phase.exam) >= EXAM_PASS ? "correct" : "wrong");
-    setState(graded);
+    commit(graded);
   };
   const toggleInputMode = () => {
     const next: InputMode = inputMode === "cbt" ? "card" : "cbt";
@@ -413,7 +419,7 @@ export default function GameApp() {
           onSubmit={(entry) => {
             const next = submitEntry(state, entry);
             if (next.phase.kind === "journal") play("wrong");
-            setState(next);
+            commit(next);
           }}
         />
       );

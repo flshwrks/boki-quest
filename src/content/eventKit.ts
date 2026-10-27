@@ -36,7 +36,7 @@ export const tradeScale = (level: number) => LEVELS[level].scale;
 
 /** 残高が足りなければ、選べない理由を返す */
 export const need = (ctx: Ctx, account: AccountName, amount: number) =>
-  ctx.balance(account) < amount ? `${account}が足りない` : undefined;
+  amount > 0 && ctx.balance(account) < amount ? `${account}が足りない` : undefined;
 export const needCash = (ctx: Ctx, amount: number) => need(ctx, "現金", amount);
 export const needDeposit = (ctx: Ctx, amount: number) => need(ctx, "普通預金", amount);
 

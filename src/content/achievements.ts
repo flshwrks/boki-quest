@@ -1,11 +1,10 @@
 // 実績（やり込み要素）。ふだんのプレイの結果から判定し、遊び方は変えない。
 
-import type { AccountName } from "@/engine/accounts";
 import { examScore, totalSales, unlockedAccounts } from "@/game/logic";
 import type { GameState } from "@/game/types";
-import { ACCOUNT_INFO } from "./accountInfo";
+import { ALL_CARDS } from "./accountInfo";
 import { LESSONS } from "./lessons";
-import { itemsForLevel } from "./world";
+import { LEVELS, itemsForLevel } from "./world";
 
 export interface Achievement {
   id: string;
@@ -18,6 +17,15 @@ export interface Achievement {
 
 const did = (state: GameState, templateId: string, times = 1) => state.journal.filter((r) => r.templateId === templateId).length >= times;
 
+/** 店の成長の実績。店の名前は LEVELS から取る */
+const growth = ([level, icon, title]: readonly [number, string, string]): Achievement => ({
+  id: `lv${level}`,
+  icon,
+  title,
+  hint: `店を「${LEVELS[level].name}」に成長させる`,
+  test: (s) => s.level >= level,
+});
+
 export const ACHIEVEMENTS: Achievement[] = [
   { id: "founded", icon: "🏪", title: "開業おめでとう", hint: "株式会社を設立する", test: (s) => did(s, "founding") },
   { id: "combo10", icon: "🔥", title: "帳簿の達人", hint: "ノーヒントで10連続正解する", test: (s) => s.bestCombo >= 10 },
@@ -27,10 +35,14 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "staff", icon: "🪄", title: "特注職人", hint: "ミーナに星詠みの杖を届ける", test: (s) => did(s, "deliver-staff") },
   { id: "detective", icon: "🔍", title: "現金過不足探偵", hint: "現金が合わなかった原因を突き止める", test: (s) => did(s, "cashdiff-resolve") },
   { id: "lineup", icon: "🧺", title: "品揃え名人", hint: "扱える商品をすべて同時に在庫に並べる（Lv3以上）", test: (s) => s.level >= 3 && itemsForLevel(s.level).every((i) => s.stock[i] > 0) },
-  { id: "lv2", icon: "🏠", title: "小さな店舗の主", hint: "店を「小さな店舗」に成長させる", test: (s) => s.level >= 2 },
-  { id: "lv3", icon: "🏬", title: "商店街の顔", hint: "店を「商店街の店」に成長させる", test: (s) => s.level >= 3 },
-  { id: "lv4", icon: "🏯", title: "城下町の大店", hint: "店を「城下町の大店」に成長させる", test: (s) => s.level >= 4 },
-  { id: "lv5", icon: "👑", title: "王都の名店", hint: "店を「王都の名店」に成長させる", test: (s) => s.level >= 5 },
+  ...(
+    [
+      [2, "🏠", "小さな店舗の主"],
+      [3, "🏬", "商店街の顔"],
+      [4, "🏯", "城下町の大店"],
+      [5, "👑", "王都の名店"],
+    ] as const
+  ).map(growth),
   { id: "perfect", icon: "💯", title: "審査満点", hint: "昇格審査で100点をとる", test: (s) => s.phase.kind === "exam" && !!s.phase.exam.graded && examScore(s.phase.exam) === 100 },
   { id: "closing", icon: "📘", title: "はじめての決算", hint: "決算日を乗り切る", test: (s) => s.lessonsDone.includes("closing") },
   {
@@ -49,8 +61,8 @@ export const ACHIEVEMENTS: Achievement[] = [
     title: "勘定科目コンプリート",
     hint: "勘定科目カードをすべて集める",
     test: (s) => {
-      const owned = new Set<AccountName>(unlockedAccounts(s));
-      return (Object.keys(ACCOUNT_INFO) as AccountName[]).every((a) => owned.has(a));
+      const owned = new Set(unlockedAccounts(s));
+      return ALL_CARDS.every((a) => owned.has(a));
     },
   },
   { id: "lessons", icon: "🎓", title: "ホーホー先生の一番弟子", hint: "すべての講義を受ける", test: (s) => LESSONS.every((l) => s.lessonsDone.includes(l.id)) },
@@ -59,4 +71,10 @@ export const ACHIEVEMENTS: Achievement[] = [
 /** まだ持っていない実績のうち、いま条件を満たしているもの */
 export function newAchievements(state: GameState): Achievement[] {
   return ACHIEVEMENTS.filter((a) => !state.achievements.includes(a.id) && a.test(state));
+}
+
+/** 進行のたびに通す：新しく取れた実績を state に記録する */
+export function withAchievements(state: GameState): GameState {
+  const earned = newAchievements(state);
+  return earned.length === 0 ? state : { ...state, achievements: [...state.achievements, ...earned.map((a) => a.id)] };
 }

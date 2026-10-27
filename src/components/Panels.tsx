@@ -7,16 +7,16 @@ import { LESSONS, LESSON_BY_ID, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
 import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
+import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
 import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
-import type { OrderPay } from "@/game/logic";
 import { OrderPanel } from "./OrderPanel";
 import { TrialBalanceTable } from "./BookModal";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { LedgerViz } from "./LedgerViz";
 import { AccountChip, AnswerExplain, Btn, Dialogue, Portrait, Speaker, Win, fmt } from "./ui";
 
-export function DayStartPanel({ state, onOpen, onOrder }: { state: GameState; onOpen: () => void; onOrder: (item: ItemId, qty: number, pay: OrderPay) => void }) {
+export function DayStartPanel({ state, onOpen, onOrder }: { state: GameState; onOpen: () => void; onOrder: (item: ItemId, qty: number, pay: PurchasePay) => void }) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
   const goal = LEVEL_UP[state.level];

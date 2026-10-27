@@ -160,7 +160,6 @@ export const Sprite = memo(function Sprite({
   const blink = animate ? BLINK[name] : undefined;
   const flap = animate ? FLAP[name] : undefined;
   const body: React.ReactNode[] = [];
-  const eyesOpen: React.ReactNode[] = [];
   const eyesClosed: React.ReactNode[] = [];
   const wings: React.ReactNode[] = [];
   rows.forEach((row, y) => {
@@ -168,41 +167,28 @@ export const Sprite = memo(function Sprite({
       const fill = palette[ch];
       if (!fill) return;
       const rect = (key: string, color: string) => <rect key={key} x={x} y={y} width={1.02} height={1.02} fill={color} />;
-      if (blink?.[ch]) {
-        eyesOpen.push(rect(`o${x}-${y}`, fill));
-        eyesClosed.push(rect(`c${x}-${y}`, palette[blink[ch]]));
-      } else if (flap === ch) wings.push(rect(`w${x}-${y}`, fill));
+      if (flap === ch) wings.push(rect(`w${x}-${y}`, fill));
       else body.push(rect(`${x}-${y}`, fill));
+      // 閉じた目のコマは、開いた目の上に重ねてときどき見せる
+      if (blink?.[ch]) eyesClosed.push(rect(`c${x}-${y}`, palette[blink[ch]]));
     });
   });
-  const delay = `${-offset(label ?? name) * 0.37}s`;
+  // 動き出しのずれは CSS 変数で渡し、各アニメーションが共通で使う
+  const style = animate ? ({ "--sprite-delay": `${-offset(label ?? name) * 0.37}s` } as React.CSSProperties) : undefined;
   return (
     <svg
       viewBox={`0 0 ${w} ${h}`}
       width={size}
       height={(size * h) / w}
       className={`pixel ${animate ? "sprite-idle" : ""} ${className}`}
-      style={animate ? { animationDelay: delay } : undefined}
+      style={style}
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      {wings.length > 0 && (
-        <g className="sprite-flap" style={{ animationDelay: delay }}>
-          {wings}
-        </g>
-      )}
+      {wings.length > 0 && <g className="sprite-flap">{wings}</g>}
       {body}
-      {eyesOpen.length > 0 && (
-        <>
-          <g className="sprite-eyes-open" style={{ animationDelay: delay }}>
-            {eyesOpen}
-          </g>
-          <g className="sprite-eyes-closed" style={{ animationDelay: delay }}>
-            {eyesClosed}
-          </g>
-        </>
-      )}
+      {eyesClosed.length > 0 && <g className="sprite-eyes-closed">{eyesClosed}</g>}
     </svg>
   );
 });

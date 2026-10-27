@@ -154,8 +154,6 @@ export interface TxSession {
   attempts: number;
   hints: number;
   feedback: string[] | null;
-  /** 朝の仕入れ注文のように、記帳が終わったら朝の画面に戻る取引 */
-  returnToMorning?: boolean;
 }
 
 export interface ResultInfo {
@@ -164,7 +162,6 @@ export interface ResultInfo {
   trustDelta: number;
   combo: number;
   comboMessage?: string;
-  returnToMorning?: boolean;
 }
 
 export type Phase =

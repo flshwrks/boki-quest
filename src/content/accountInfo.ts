@@ -1,4 +1,4 @@
-import type { AccountName } from "@/engine/accounts";
+import { type AccountName, inMasterOrder } from "@/engine/accounts";
 
 /** 簿記の書に載る勘定科目の説明。試験での典型的な言い回しを必ず添える */
 export const ACCOUNT_INFO: Partial<Record<AccountName, { desc: string; exam: string }>> = {
@@ -76,3 +76,6 @@ export const ACCOUNT_INFO: Partial<Record<AccountName, { desc: string; exam: str
   利益準備金: { desc: "配当のときに積み立てる準備金（純資産）。配当額の10分の1。", exam: "「利益準備金を積み立てる」" },
   未払配当金: { desc: "株主総会で決まった、まだ払っていない配当金。", exam: "「株主総会で配当が決議された」" },
 };
+
+// 説明のある科目をカードにする（勘定科目マスタの並び）
+export const ALL_CARDS = inMasterOrder(Object.keys(ACCOUNT_INFO) as AccountName[]);
