@@ -178,8 +178,9 @@ export interface ResultInfo {
 
 export type Phase =
   | { kind: "dayStart" }
-  | { kind: "lesson"; lesson: LessonId; page: number }
-  | { kind: "lessonDone"; lesson: LessonId }
+  // returnTo：試験対策の画面から開いた講義は、終わったらそこへ戻る
+  | { kind: "lesson"; lesson: LessonId; page: number; returnTo?: "training" }
+  | { kind: "lessonDone"; lesson: LessonId; returnTo?: "training" }
   | { kind: "event"; event: GameEvent }
   | { kind: "reply"; speaker: CharacterId; text: string }
   | { kind: "journal"; session: TxSession }
@@ -227,6 +228,10 @@ export type FillAnswer = string | string[] | null;
 
 export interface FillProblem {
   title: string;
+  /** 問題番号のボタンに出す短い名前 */
+  short: string;
+  /** どの論点の練習として記録するか */
+  lesson: LessonId;
   lead: string[];
   /** 決算整理事項などの番号つきの一覧 */
   items?: string[];

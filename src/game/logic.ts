@@ -169,7 +169,12 @@ export function lessonOfTemplate(templateId: string): LessonId | undefined {
 
 /** 論点ごとの正誤を記録する（習熟度マップ・苦手ドリルのもと） */
 export function logPractice(state: GameState, lesson: LessonId | undefined, ok: boolean): GameState {
-  return lesson ? { ...state, practice: [...state.practice, { day: state.day, lesson, ok }] } : state;
+  return lesson ? logPractices(state, [{ lesson, ok }]) : state;
+}
+
+/** 審査や模試の採点で、まとめて記録する */
+export function logPractices(state: GameState, results: { lesson: LessonId; ok: boolean }[]): GameState {
+  return { ...state, practice: [...state.practice, ...results.map((r) => ({ day: state.day, ...r }))] };
 }
 
 /** 正誤の記録がない古いセーブ向けに、記帳と苦手の記録から作り直す */
@@ -267,7 +272,7 @@ export function turnLessonPage(state: GameState, delta: number): GameState {
     return {
       ...state,
       lessonsDone: state.lessonsDone.includes(lesson.id) ? state.lessonsDone : [...state.lessonsDone, lesson.id],
-      phase: { kind: "lessonDone", lesson: lesson.id },
+      phase: { kind: "lessonDone", lesson: lesson.id, returnTo: state.phase.returnTo },
     };
   }
   return { ...state, phase: { ...state.phase, page } };
@@ -451,7 +456,7 @@ export function nextDay(state: GameState, rand: Rand = Math.random): GameState {
 }
 
 /** 間違えた審査・模試の問題を、苦手として記録する形にする */
-export const examMistakes = (state: GameState, questions: ExamQuestion[], graded: boolean[]) =>
+const examMistakes = (state: GameState, questions: ExamQuestion[], graded: boolean[]) =>
   questions.filter((_, i) => !graded[i]).map((q) => ({ day: state.day, templateId: `exam:${q.lesson}`, exam: q.text }));
 
 /** 習った論点の問題から n 問。なるべく論点が重ならないようにし、newestFirst なら新しく習った論点を優先する */
@@ -507,13 +512,18 @@ export function examScore(e: ExamSession): number {
 /** 採点する。間違えた問題は苦手として記録する */
 export function gradeExam(state: GameState): GameState {
   if (state.phase.kind !== "exam" || state.phase.exam.graded) return state;
-  const e = state.phase.exam;
-  const graded = e.questions.map((q, i) => {
-    const a = e.answers[i];
+  const { graded, state: next } = gradeQuestions(state, state.phase.exam.questions, state.phase.exam.answers);
+  return updateExam(next, (x) => ({ ...x, graded }));
+}
+
+/** 仕訳問題を採点し、正誤を記録して、間違えた問題を苦手に加える（昇格審査と模試の第1問） */
+export function gradeQuestions(state: GameState, questions: ExamQuestion[], answers: (Entry | null)[]): { graded: boolean[]; state: GameState } {
+  const graded = questions.map((q, i) => {
+    const a = answers[i];
     return !!a && sameEntry(a, q.answer);
   });
-  const logged = e.questions.reduce((s, q, i) => logPractice(s, q.lesson, graded[i]), state);
-  return updateExam({ ...logged, mistakes: [...state.mistakes, ...examMistakes(state, e.questions, graded)] }, (x) => ({ ...x, graded }));
+  const logged = logPractices(state, questions.map((q, i) => ({ lesson: q.lesson, ok: graded[i] })));
+  return { graded, state: { ...logged, mistakes: [...state.mistakes, ...examMistakes(state, questions, graded)] } };
 }
 
 /** 結果を見終えたあと。合格なら昇格、不合格なら2日後に再挑戦 */

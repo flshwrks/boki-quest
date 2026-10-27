@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { CONTRA_TARGETS, type AccountName, categoryOf, statementLabel as label } from "@/engine/accounts";
+import { categoryOf, statementLabel as label } from "@/engine/accounts";
 import { type Entry, sumAmounts } from "@/engine/journal";
-import { type Row, statements, worksheet } from "@/engine/ledger";
+import { contrasUnder, retainedEarnings, statements, worksheet } from "@/engine/ledger";
 import { fiscalYear } from "@/content/world";
 import type { GameState } from "@/game/types";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
@@ -144,15 +144,8 @@ export function ReportPanel({ state, onFinish }: { state: GameState; onFinish: (
   const otherRevenues = s.revenues.filter((r) => r.account !== "売上");
   const pretax = s.netIncome + tax;
   // 引当金・累計額は、差し引く対象のうち最初に出てくる資産の下に「△」で書く
-  const contraUnder = useMemo(() => {
-    const map = new Map<AccountName, Row[]>();
-    for (const c of s.contras) {
-      const target = (CONTRA_TARGETS[c.account] ?? []).find((t) => s.assets.some((x) => x.account === t));
-      if (target) map.set(target, [...(map.get(target) ?? []), c]);
-    }
-    return map;
-  }, [s]);
-  const retained = (s.equity.find((e) => e.account === "繰越利益剰余金")?.amount ?? 0) + s.netIncome;
+  const contraUnder = useMemo(() => contrasUnder(s), [s]);
+  const retained = retainedEarnings(s);
 
   return (
     <Win title={`${fiscalYear(state.day)}年目の財務諸表`}>

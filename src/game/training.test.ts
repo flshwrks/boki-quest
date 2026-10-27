@@ -2,16 +2,13 @@ import { describe, expect, it } from "vitest";
 import { parseAmount } from "@/engine/format";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
-import {
-  SUB_BOOKS,
-  closingProblem,
-  ledgerProblem,
-  subBookProblem,
-} from "@/content/mockExam";
-import { newGame, practiceFromHistory } from "./logic";
+import { SUB_BOOKS, closingProblem, ledgerProblem, subBookProblem } from "@/content/mockExam";
+import { newGame, practiceFromHistory, turnLessonPage } from "./logic";
 import { seededRand } from "./random";
 import {
   DRILL_SIZE,
+  afterLesson,
+  startPrepLesson,
   checkDrill,
   fillCorrect,
   finishMock,
@@ -39,17 +36,10 @@ function amountsOf(p: FillProblem, table: FillTable, col: number): number[] {
 const points = (p: FillProblem) => p.blanks.reduce((a, b) => a + b.points, 0);
 
 /** 列の合計（最後の行）が、上の行の合計と一致するか */
-function checkColumn(
-  p: FillProblem,
-  table: FillTable,
-  col: number,
-  signed?: (row: FillCell[]) => number,
-) {
+function checkColumn(p: FillProblem, table: FillTable, col: number, signed?: (row: FillCell[]) => number) {
   const xs = amountsOf(p, table, col);
   const total = xs.at(-1)!;
-  const body = table.rows
-    .slice(0, -1)
-    .reduce((a, r, i) => a + xs[i] * (signed ? signed(r) : 1), 0);
+  const body = table.rows.slice(0, -1).reduce((a, r, i) => a + xs[i] * (signed ? signed(r) : 1), 0);
   expect(body, `${p.title} ${table.title} の${col}列目`).toBe(total);
 }
 
@@ -62,11 +52,7 @@ describe("模擬試験の問題", () => {
         checkColumn(p, t, 2);
         checkColumn(p, t, 5);
       }
-      for (const b of p.blanks)
-        if (b.kind === "amount")
-          expect(Number.isInteger(b.answer) && (b.answer as number) > 0).toBe(
-            true,
-          );
+      for (const b of p.blanks) if (b.kind === "amount") expect(Number.isInteger(b.answer) && (b.answer as number) > 0).toBe(true);
     }
   });
 
@@ -74,8 +60,7 @@ describe("模擬試験の問題", () => {
     for (let seed = 1; seed <= 20; seed++) {
       const p = subBookProblem(seededRand(seed));
       expect(points(p)).toBe(10);
-      for (const b of p.blanks)
-        for (const a of b.answer as string[]) expect(SUB_BOOKS).toContain(a);
+      for (const b of p.blanks) for (const a of b.answer as string[]) expect(SUB_BOOKS).toContain(a);
     }
   });
 
@@ -90,15 +75,7 @@ describe("模擬試験の問題", () => {
       checkColumn(p, pl, 1);
       checkColumn(p, pl, 3);
       // 資産の側は、控除科目（△）を引く
-      checkColumn(p, bs, 1, (r) =>
-        typeof r[1] !== "string"
-          ? r[1].prefix
-            ? -1
-            : 1
-          : r[1].startsWith("△")
-            ? -1
-            : 1,
-      );
+      checkColumn(p, bs, 1, (r) => (typeof r[1] !== "string" ? (r[1].prefix ? -1 : 1) : r[1].startsWith("△") ? -1 : 1));
       checkColumn(p, bs, 3);
       // 税金と当期純利益
       const plCells = pl.rows.slice(0, -1);
@@ -110,28 +87,15 @@ describe("模擬試験の問題", () => {
       const net = find("当期純利益");
       expect(tax).toBe(((tax + net) * 30) / 100);
       expect(net).toBeGreaterThan(0);
-      for (const b of p.blanks)
-        expect(
-          Number.isInteger(b.answer) && (b.answer as number) > 0,
-          JSON.stringify(b),
-        ).toBe(true);
+      for (const b of p.blanks) expect(Number.isInteger(b.answer) && (b.answer as number) > 0, JSON.stringify(b)).toBe(true);
       expect(p.blanks.length).toBeGreaterThanOrEqual(10);
     }
   });
 
   it("空欄の採点：金額はカンマがあってもよく、補助簿は過不足なく選んだときだけ正解", () => {
-    expect(
-      fillCorrect({ kind: "amount", answer: 12000, points: 2 }, "12,000"),
-    ).toBe(true);
-    expect(fillCorrect({ kind: "amount", answer: 12000, points: 2 }, "")).toBe(
-      false,
-    );
-    expect(
-      fillCorrect(
-        { kind: "select", answer: "損益", points: 2, options: [] },
-        "損益",
-      ),
-    ).toBe(true);
+    expect(fillCorrect({ kind: "amount", answer: 12000, points: 2 }, "12,000")).toBe(true);
+    expect(fillCorrect({ kind: "amount", answer: 12000, points: 2 }, "")).toBe(false);
+    expect(fillCorrect({ kind: "select", answer: "損益", points: 2, options: [] }, "損益")).toBe(true);
     const multi = {
       kind: "multi" as const,
       answer: ["仕入帳", "商品有高帳"],
@@ -179,9 +143,7 @@ describe("苦手ドリル", () => {
   it("論点を選ぶと、その論点の問題だけが出る", () => {
     const s = startDrill(trainingState(), "credit", seededRand(3));
     if (s.phase.kind !== "drill") throw new Error("ドリルが始まらない");
-    expect(s.phase.drill.questions.every((q) => q.lesson === "credit")).toBe(
-      true,
-    );
+    expect(s.phase.drill.questions.every((q) => q.lesson === "credit")).toBe(true);
   });
 });
 
@@ -195,12 +157,7 @@ describe("模擬試験", () => {
     m.problems.forEach((p, i) =>
       p.blanks.forEach((b, j) => {
         const a = b.answer;
-        s = setMockFill(
-          s,
-          i,
-          j,
-          typeof a === "number" ? a.toLocaleString("ja-JP") : a,
-        );
+        s = setMockFill(s, i, j, typeof a === "number" ? a.toLocaleString("ja-JP") : a);
       }),
     );
     s = gradeMock(s);
@@ -216,6 +173,15 @@ describe("模擬試験", () => {
   });
 });
 
+describe("試験対策の講義", () => {
+  it("試験対策の画面から受けた講義は、終わると試験対策の画面に戻る", () => {
+    let s = startPrepLesson({ ...trainingState(), lessonsDone: [] }, "subbooks");
+    while (s.phase.kind === "lesson") s = turnLessonPage(s, 1);
+    expect(s.lessonsDone).toContain("subbooks");
+    expect(afterLesson(s, seededRand(6)).phase.kind).toBe("training");
+  });
+});
+
 describe("習熟度", () => {
   it("直近10回の正答率で星がつく", () => {
     const s = trainingState();
@@ -225,10 +191,7 @@ describe("習熟度", () => {
       practice: [...Array(10).fill(rec(false)), ...Array(10).fill(rec(true))],
     });
     expect(m.get("credit")).toEqual({ tries: 10, correct: 10, stars: 3 });
-    expect(
-      masteryOf({ ...s, practice: [rec(true), rec(false)] }).get("credit")
-        ?.stars,
-    ).toBe(1);
+    expect(masteryOf({ ...s, practice: [rec(true), rec(false)] }).get("credit")?.stars).toBe(1);
   });
 
   it("古いセーブでは、記帳と苦手の記録から正誤を作り直す", () => {

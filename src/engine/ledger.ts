@@ -1,4 +1,4 @@
-import { ACCOUNTS, type AccountName, categoryOf, homeSide } from "./accounts";
+import { ACCOUNTS, CONTRA_TARGETS, type AccountName, categoryOf, homeSide } from "./accounts";
 import { type Entry, sumAmounts } from "./journal";
 
 /** 借方合計 − 貸方合計（借方残ならプラス、貸方残ならマイナス） */
@@ -82,6 +82,19 @@ export function statements(entries: Entry[]): Statements {
   s.netIncome = sumAmounts(s.revenues) - sumAmounts(s.expenses);
   return s;
 }
+
+/** 貸借対照表で、控除科目（引当金・累計額）を差し引く資産ごとにまとめる。対象のうち残高のある最初の資産の下に置く */
+export function contrasUnder(s: Statements): Map<AccountName, Row[]> {
+  const map = new Map<AccountName, Row[]>();
+  for (const c of s.contras) {
+    const target = (CONTRA_TARGETS[c.account] ?? []).find((t) => s.assets.some((x) => x.account === t));
+    if (target) map.set(target, [...(map.get(target) ?? []), c]);
+  }
+  return map;
+}
+
+/** 貸借対照表の繰越利益剰余金（当期純利益を含む） */
+export const retainedEarnings = (s: Statements) => (s.equity.find((e) => e.account === "繰越利益剰余金")?.amount ?? 0) + s.netIncome;
 
 /** 集計済みの netBalances から、科目の残高を増える側から見た値で返す */
 export function balanceIn(net: Map<AccountName, number>, account: AccountName): number {

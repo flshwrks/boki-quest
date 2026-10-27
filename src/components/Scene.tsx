@@ -38,20 +38,9 @@ export interface SceneFx {
 }
 
 /** 動きと感情アイコンをつけたキャラクター */
-function Actor({
-  id,
-  size,
-  fx,
-}: {
-  id: CharacterId;
-  size: number;
-  fx: SceneFx;
-}) {
+function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx }) {
   return (
-    <div
-      key={`${fx.mood}:${fx.moodKey ?? ""}`}
-      className={`relative ${fx.mood && fx.mood !== "talk" ? `mood-${fx.mood}` : ""}`}
-    >
+    <div key={`${fx.mood}:${fx.moodKey ?? ""}`} className={`relative ${fx.mood && fx.mood !== "talk" ? `mood-${fx.mood}` : ""}`}>
       {fx.emote && (
         <span
           key={fx.emote}
@@ -69,68 +58,36 @@ function Actor({
 }
 
 /** 店内の様子。棚の品数が在庫に合わせて増減し、話し手がカウンターに立つ */
-export function Scene({
-  state,
-  speaker,
-  time,
-  fx = {},
-}: {
-  state: GameState;
-  speaker?: CharacterId;
-  time: TimeOfDay;
-  fx?: SceneFx;
-}) {
+export function Scene({ state, speaker, time, fx = {} }: { state: GameState; speaker?: CharacterId; time: TimeOfDay; fx?: SceneFx }) {
   const indoor = state.level >= 2;
   const items = itemsForLevel(state.level);
   return (
     <div
       className="relative h-44 overflow-hidden rounded-[14px] border-2 border-white/85 shadow-[0_10px_24px_rgb(0_0_0/0.45)] sm:h-52"
       style={{
-        background: indoor
-          ? "repeating-linear-gradient(90deg,#6b4a2e 0 30px,#5e4027 30px 32px)"
-          : SKY[time],
+        background: indoor ? "repeating-linear-gradient(90deg,#6b4a2e 0 30px,#5e4027 30px 32px)" : SKY[time],
         transition: "background 0.8s",
       }}
     >
       {/* 店内は時間帯を色味で表す */}
-      {indoor && (
-        <div
-          className="pointer-events-none absolute inset-0 transition-colors duration-700"
-          style={{ background: TINT[time] }}
-        />
-      )}
+      {indoor && <div className="pointer-events-none absolute inset-0 transition-colors duration-700" style={{ background: TINT[time] }} />}
 
       {/* 棚 */}
       {/* 棚：商品がふえたら2列にして、店の中に収める */}
-      <div
-        className={`absolute top-2 right-2 grid gap-1 sm:top-3 sm:right-3 ${items.length > 3 ? "grid-cols-2" : "grid-cols-1"}`}
-      >
+      <div className={`absolute top-2 right-2 grid gap-1 sm:top-3 sm:right-3 ${items.length > 3 ? "grid-cols-2" : "grid-cols-1"}`}>
         {items.map((id) => {
           const it = ITEMS[id];
           const stock = state.stock[id];
           return (
-            <div
-              key={id}
-              className="w-[6.5rem] rounded-sm border-b-4 border-[#3a2412] bg-black/30 px-1 py-0.5 sm:w-32"
-              title={`${it.name} 在庫${stock}`}
-            >
+            <div key={id} className="w-[6.5rem] rounded-sm border-b-4 border-[#3a2412] bg-black/30 px-1 py-0.5 sm:w-32" title={`${it.name} 在庫${stock}`}>
               <div className="flex items-center gap-1 text-[10px] leading-tight text-white drop-shadow sm:text-xs">
                 <Sprite name={it.sprite} palette={it.palette} size={12} />
                 <span className="truncate">{it.name}</span>
-                <span
-                  className={`ml-auto ${stock === 0 ? "text-ng" : "text-gold"}`}
-                >
-                  {stock === 0 ? "品切れ" : `×${stock}`}
-                </span>
+                <span className={`ml-auto ${stock === 0 ? "text-ng" : "text-gold"}`}>{stock === 0 ? "品切れ" : `×${stock}`}</span>
               </div>
               <div className="flex h-3 gap-px">
                 {Array.from({ length: Math.min(stock, SHELF_MAX) }, (_, i) => (
-                  <Sprite
-                    key={i}
-                    name={it.sprite}
-                    palette={it.palette}
-                    size={9}
-                  />
+                  <Sprite key={i} name={it.sprite} palette={it.palette} size={9} />
                 ))}
               </div>
             </div>
@@ -141,20 +98,13 @@ export function Scene({
       {/* 師匠は棚の上から見守る。話し手がいないときは、師匠が場面に合わせて動く */}
       {speaker !== "hoho" && (
         <div className="bob absolute top-1 left-2">
-          {speaker ? (
-            <Portrait id="hoho" size={36} />
-          ) : (
-            <Actor id="hoho" size={36} fx={fx} />
-          )}
+          {speaker ? <Portrait id="hoho" size={36} /> : <Actor id="hoho" size={36} fx={fx} />}
         </div>
       )}
 
       {/* 話し手 */}
       {speaker && (
-        <div
-          key={speaker}
-          className="walk-in absolute bottom-6 left-6 sm:left-10"
-        >
+        <div key={speaker} className="walk-in absolute bottom-6 left-6 sm:left-10">
           <Actor id={speaker} size={speaker === "pipi" ? 64 : 88} fx={fx} />
         </div>
       )}
@@ -180,10 +130,7 @@ export function Scene({
 
       {/* 朝の日付バナー */}
       {fx.banner && (
-        <div
-          key={fx.banner}
-          className="day-banner pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/40 text-2xl text-white drop-shadow sm:text-3xl"
-        >
+        <div key={fx.banner} className="day-banner pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/40 text-2xl text-white drop-shadow sm:text-3xl">
           {fx.banner}
         </div>
       )}

@@ -55,12 +55,8 @@ import {
   startMock,
   startPrepLesson,
 } from "@/game/training";
-import type { CharacterId, GameState } from "@/game/types";
-import {
-  ACHIEVEMENTS,
-  type Achievement,
-  withAchievements,
-} from "@/content/achievements";
+import type { CharacterId, GameState, Phase } from "@/game/types";
+import { ACHIEVEMENTS, type Achievement, withAchievements } from "@/content/achievements";
 import { BookModal, type Tab as BookTab } from "./BookModal";
 import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
 import { ExamPanel } from "./ExamPanel";
@@ -86,13 +82,10 @@ import { AnimatedNumber, Btn, Modal, Portrait, Win, fmt } from "./ui";
 const SOUND_KEY = "boki-quest-sound";
 const DEFAULT_SHOP = "星のしずく";
 const INPUT_KEY = "boki-quest-input";
-const CLOUD_CHECKPOINTS = new Set([
-  "dayStart",
-  "dayEnd",
-  "monthEnd",
-  "levelUp",
-  "training",
-]);
+const CLOUD_CHECKPOINTS = new Set(["dayStart", "dayEnd", "monthEnd", "levelUp", "training"]);
+
+/** クラウドへ送る区切りか。決まった場面のほか、審査・模試の採点のあと */
+const isCheckpoint = (p: Phase) => CLOUD_CHECKPOINTS.has(p.kind) || (p.kind === "exam" && !!p.exam.graded) || (p.kind === "mock" && !!p.mock.graded);
 const rand = Math.random;
 
 /** 場面に合わせた時間帯・感情アイコン・お金のポップアップ・キャラクターの動き */
@@ -100,35 +93,16 @@ function sceneOf(state: GameState): { time: TimeOfDay; fx: SceneFx } {
   const p = state.phase;
   switch (p.kind) {
     case "dayStart":
-      return {
-        time: "morning",
-        fx: {
-          banner: state.closingFrom !== null ? "決算日" : dateLabel(state.day),
-          mood: "happy",
-          moodKey: state.day,
-        },
-      };
+      return { time: "morning", fx: { banner: state.closingFrom !== null ? "決算日" : dateLabel(state.day), mood: "happy", moodKey: state.day } };
     case "dayEnd":
     case "monthEnd":
       return { time: "evening", fx: { emote: "💤", mood: "sleepy" } };
     case "event":
-      return {
-        time: "day",
-        fx: {
-          emote: p.event.speaker === "hoho" ? undefined : "！",
-          mood: "talk",
-          moodKey: state.journal.length,
-        },
-      };
+      return { time: "day", fx: { emote: p.event.speaker === "hoho" ? undefined : "！", mood: "talk", moodKey: state.journal.length } };
     case "journal": {
       // 間違えたら汗をかいてあわてる。考え中は首をかしげる
       const oops = p.session.feedback !== null && p.session.attempts > 0;
-      return {
-        time: "day",
-        fx: oops
-          ? { emote: "💦", mood: "oops", moodKey: p.session.attempts }
-          : { emote: "…", mood: "think" },
-      };
+      return { time: "day", fx: oops ? { emote: "💦", mood: "oops", moodKey: p.session.attempts } : { emote: "…", mood: "think" } };
     }
     case "reply":
       return { time: "day", fx: { emote: "💭", mood: "talk" } };
@@ -140,15 +114,9 @@ function sceneOf(state: GameState): { time: TimeOfDay; fx: SceneFx } {
       return { time: "day", fx: { emote: "📚", mood: "talk" } };
     case "drill": {
       const r = p.drill.results[p.drill.index];
-      if (r === undefined)
-        return { time: "day", fx: { emote: "🎉", mood: "cheer" } };
+      if (r === undefined) return { time: "day", fx: { emote: "🎉", mood: "cheer" } };
       if (r === null) return { time: "day", fx: { emote: "…", mood: "think" } };
-      return {
-        time: "day",
-        fx: r
-          ? { emote: "♪", mood: "happy", moodKey: p.drill.index }
-          : { emote: "💦", mood: "oops", moodKey: p.drill.index },
-      };
+      return { time: "day", fx: r ? { emote: "♪", mood: "happy", moodKey: p.drill.index } : { emote: "💦", mood: "oops", moodKey: p.drill.index } };
     }
     case "exam":
     case "mock":
@@ -156,21 +124,10 @@ function sceneOf(state: GameState): { time: TimeOfDay; fx: SceneFx } {
     case "result": {
       const { debit, credit } = p.info.tx.answer;
       const isMoney = (a: AccountName) => a === "現金" || a === "普通預金";
-      const delta =
-        sumAmounts(debit.filter((l) => isMoney(l.account))) -
-        sumAmounts(credit.filter((l) => isMoney(l.account)));
+      const delta = sumAmounts(debit.filter((l) => isMoney(l.account))) - sumAmounts(credit.filter((l) => isMoney(l.account)));
       const popup =
-        delta === 0
-          ? undefined
-          : {
-              key: state.journal.length,
-              text: `${delta > 0 ? "+" : "−"}${fmt(Math.abs(delta))}円`,
-              good: delta > 0,
-            };
-      return {
-        time: "day",
-        fx: { emote: "♪", popup, mood: "happy", moodKey: state.journal.length },
-      };
+        delta === 0 ? undefined : { key: state.journal.length, text: `${delta > 0 ? "+" : "−"}${fmt(Math.abs(delta))}円`, good: delta > 0 };
+      return { time: "day", fx: { emote: "♪", popup, mood: "happy", moodKey: state.journal.length } };
     }
     default:
       return { time: "day", fx: {} };
@@ -210,33 +167,15 @@ const CLOUD_LABEL: Record<CloudStatus, string> = {
   ok: "接続中（ほかの端末と同期）",
   unauthorized: "合言葉が違います",
   offline: "つながりません（この端末には保存されています）",
-  conflict:
-    "別の端末に新しいセーブがあります。タイトルから読み込み直してください",
+  conflict: "別の端末に新しいセーブがあります。タイトルから読み込み直してください",
 };
 
-function CloudPanel({
-  status,
-  onConnect,
-}: {
-  status: CloudStatus;
-  onConnect: (passcode: string) => void;
-}) {
+function CloudPanel({ status, onConnect }: { status: CloudStatus; onConnect: (passcode: string) => void }) {
   const [passcode, setPasscodeInput] = useState("");
   return (
     <div className="mt-4 border-t border-white/20 pt-3 text-sm">
       <p className="mb-1">
-        ☁ クラウド保存：
-        <span
-          className={
-            status === "ok"
-              ? "text-ok"
-              : status === "off"
-                ? "text-dim"
-                : "text-ng"
-          }
-        >
-          {CLOUD_LABEL[status]}
-        </span>
+        ☁ クラウド保存：<span className={status === "ok" ? "text-ok" : status === "off" ? "text-dim" : "text-ng"}>{CLOUD_LABEL[status]}</span>
       </p>
       {status !== "ok" && (
         <form
@@ -289,24 +228,19 @@ function Title({
         </div>
         <h1 className="text-4xl text-gold sm:text-5xl">ボキクエ</h1>
         <p className="mt-1 text-dim">〜 道具屋の帳簿 〜</p>
-        <p className="mt-3 text-sm">
-          道具屋を経営しながら、日商簿記3級を身につけよう
-        </p>
+        <p className="mt-3 text-sm">道具屋を経営しながら、日商簿記3級を身につけよう</p>
       </div>
       <Win className="w-full">
         {saved && !confirming && (
           <div className="mb-4">
             <Btn className="w-full" onClick={onContinue}>
-              つづきから（{saved.state.shopName}・
-              {LEVELS[saved.state.level].name}・{dateLabel(saved.state.day)}）
+              つづきから（{saved.state.shopName}・{LEVELS[saved.state.level].name}・{dateLabel(saved.state.day)}）
             </Btn>
           </div>
         )}
         {confirming ? (
           <div className="text-sm">
-            <p className="mb-3">
-              いまのセーブデータは消えてしまうぞ。本当にはじめからにするかの？
-            </p>
+            <p className="mb-3">いまのセーブデータは消えてしまうぞ。本当にはじめからにするかの？</p>
             <div className="flex gap-2">
               <Btn onClick={submitName}>はじめからにする</Btn>
               <Btn variant="ghost" onClick={() => setConfirming(false)}>
@@ -332,10 +266,7 @@ function Title({
               onChange={(e) => setName(e.target.value)}
               className="mb-3 w-full rounded border-2 border-white/60 bg-black/30 px-3 py-2"
             />
-            <button
-              type="submit"
-              className="w-full rounded border-2 border-gold px-4 py-2 text-gold hover:bg-gold/10"
-            >
+            <button type="submit" className="w-full rounded border-2 border-gold px-4 py-2 text-gold hover:bg-gold/10">
               はじめから
             </button>
           </form>
@@ -374,10 +305,7 @@ export default function GameApp() {
     setPasscode(passcode);
     setCloud("ok");
     const remote = res.save;
-    if (remote)
-      setSaved((local) =>
-        !local || remote.savedAt > local.savedAt ? remote : local,
-      );
+    if (remote) setSaved((local) => (!local || remote.savedAt > local.savedAt ? remote : local));
   };
 
   useEffect(() => {
@@ -411,13 +339,7 @@ export default function GameApp() {
   };
 
   // クラウドへは、一日の始まりと終わり・月末・昇格・審査の採点のときだけ送る。細かな進み具合は端末に保存されている
-  const checkpoint =
-    state &&
-    (CLOUD_CHECKPOINTS.has(state.phase.kind) ||
-      (state.phase.kind === "exam" && state.phase.exam.graded) ||
-      (state.phase.kind === "mock" && state.phase.mock.graded))
-      ? `${state.day}:${state.phase.kind}`
-      : null;
+  const checkpoint = state && isCheckpoint(state.phase) ? `${state.day}:${state.phase.kind}` : null;
   useEffect(() => {
     if (!state || !checkpoint || cloud !== "ok") return;
     const timer = setTimeout(() => void pushToCloud(state), 1000);
@@ -431,12 +353,7 @@ export default function GameApp() {
   const net = useMemo(() => netBalances(entries), [entries]);
   const phase = state?.phase;
   const highlight = useMemo(
-    () =>
-      phase?.kind === "result"
-        ? [...phase.info.tx.answer.debit, ...phase.info.tx.answer.credit].map(
-            (l) => l.account,
-          )
-        : [],
+    () => (phase?.kind === "result" ? [...phase.info.tx.answer.debit, ...phase.info.tx.answer.credit].map((l) => l.account) : []),
     [phase],
   );
 
@@ -447,8 +364,7 @@ export default function GameApp() {
     const prev = shownCount.current;
     shownCount.current = earnedCount;
     // セーブを読み込んだときは知らせない
-    if (prev === null || earnedCount === null || earnedCount <= prev || !state)
-      return;
+    if (prev === null || earnedCount === null || earnedCount <= prev || !state) return;
     const ids = state.achievements.slice(prev);
     setToast(ACHIEVEMENTS.filter((a) => ids.includes(a.id)));
     play("fanfare");
@@ -482,10 +398,8 @@ export default function GameApp() {
     );
   }
 
-  const inputMode: InputMode =
-    inputPref ?? (LEVELS[state.level].cbt ? "cbt" : "card");
-  const update = (f: (s: GameState) => GameState) =>
-    setState((s) => (s ? withAchievements(f(s)) : s));
+  const inputMode: InputMode = inputPref ?? (LEVELS[state.level].cbt ? "cbt" : "card");
+  const update = (f: (s: GameState) => GameState) => setState((s) => (s ? withAchievements(f(s)) : s));
   const commit = (next: GameState) => setState(withAchievements(next));
   const grade = () => {
     const graded = gradeExam(state);
@@ -515,46 +429,22 @@ export default function GameApp() {
         <DayStartPanel
           state={state}
           onOpen={() => update((s) => advance(s, rand))}
-          onOrder={(item, qty, pay) =>
-            update((s) => startOrder(s, item, qty, pay))
-          }
+          onOrder={(item, qty, pay) => update((s) => startOrder(s, item, qty, pay))}
           onTraining={() => update(openTraining)}
         />
       );
       break;
     case "lesson":
-      panel = (
-        <LessonView
-          lessonId={p.lesson}
-          page={p.page}
-          onTurn={(d) => update((s) => turnLessonPage(s, d))}
-        />
-      );
+      panel = <LessonView lessonId={p.lesson} page={p.page} onTurn={(d) => update((s) => turnLessonPage(s, d))} />;
       break;
     case "lessonDone":
-      panel = (
-        <LessonDonePanel
-          lesson={p.lesson}
-          onNext={() => update((s) => afterLesson(s, rand))}
-        />
-      );
+      panel = <LessonDonePanel lesson={p.lesson} onNext={() => update((s) => afterLesson(s, rand))} />;
       break;
     case "event":
-      panel = (
-        <EventPanel
-          key={state.journal.length + p.event.templateId}
-          event={p.event}
-          onChoose={(i) => update((s) => choose(s, i, rand))}
-        />
-      );
+      panel = <EventPanel key={state.journal.length + p.event.templateId} event={p.event} onChoose={(i) => update((s) => choose(s, i, rand))} />;
       break;
     case "reply":
-      panel = (
-        <ReplyPanel
-          text={p.text}
-          onNext={() => update((s) => advance(s, rand))}
-        />
-      );
+      panel = <ReplyPanel text={p.text} onNext={() => update((s) => advance(s, rand))} />;
       break;
     case "journal":
       panel = (
@@ -574,22 +464,10 @@ export default function GameApp() {
       );
       break;
     case "result":
-      panel = (
-        <ResultPanel
-          info={p.info}
-          state={state}
-          highlight={highlight}
-          onNext={() => update((s) => afterResult(s, rand))}
-        />
-      );
+      panel = <ResultPanel info={p.info} state={state} highlight={highlight} onNext={() => update((s) => afterResult(s, rand))} />;
       break;
     case "dayEnd":
-      panel = (
-        <DayEndPanel
-          state={state}
-          onClose={() => update((s) => closeDay(s, rand))}
-        />
-      );
+      panel = <DayEndPanel state={state} onClose={() => update((s) => closeDay(s, rand))} />;
       break;
     case "monthEnd":
       panel = (
@@ -634,12 +512,7 @@ export default function GameApp() {
           accounts={unlockedAccounts(state)}
           onCheck={(entry) => {
             const next = checkDrill(state, entry);
-            if (next.phase.kind === "drill")
-              play(
-                next.phase.drill.results[next.phase.drill.index]
-                  ? "correct"
-                  : "wrong",
-              );
+            if (next.phase.kind === "drill") play(next.phase.drill.results[next.phase.drill.index] ? "correct" : "wrong");
             commit(next);
           }}
           onNext={() => update(nextDrill)}
@@ -657,9 +530,7 @@ export default function GameApp() {
           onGrade={() => {
             const graded = gradeMock(state);
             if (graded === state || graded.phase.kind !== "mock") return;
-            play(
-              mockScore(graded.phase.mock) >= EXAM_PASS ? "fanfare" : "wrong",
-            );
+            play(mockScore(graded.phase.mock) >= EXAM_PASS ? "fanfare" : "wrong");
             commit(graded);
           }}
           onFinish={() => update(finishMock)}
@@ -691,12 +562,7 @@ export default function GameApp() {
       );
       break;
     case "levelUp":
-      panel = (
-        <LevelUpPanel
-          level={p.level}
-          onNext={() => update((s) => ({ ...s, phase: { kind: "dayStart" } }))}
-        />
-      );
+      panel = <LevelUpPanel level={p.level} onNext={() => update((s) => ({ ...s, phase: { kind: "dayStart" } }))} />;
       break;
   }
 
@@ -721,42 +587,22 @@ export default function GameApp() {
           <span className="text-sm">{dateLabel(state.day)}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {cloud !== "off" && (
-              <span
-                className={`text-sm ${cloudHealthy ? "text-dim" : "text-ng"}`}
-                title={CLOUD_LABEL[cloud]}
-              >
+              <span className={`text-sm ${cloudHealthy ? "text-dim" : "text-ng"}`} title={CLOUD_LABEL[cloud]}>
                 {cloudHealthy ? "☁" : "☁!"}
                 <span className="sr-only">{CLOUD_LABEL[cloud]}</span>
               </span>
             )}
-            <Btn
-              variant="ghost"
-              className="text-sm"
-              onClick={() => setBook("achievements")}
-            >
+            <Btn variant="ghost" className="text-sm" onClick={() => setBook("achievements")}>
               🏅 {state.achievements.length}/{ACHIEVEMENTS.length}
               <span className="sr-only">実績</span>
             </Btn>
-            <Btn
-              variant="ghost"
-              className="text-sm"
-              onClick={() => setBook("cards")}
-            >
+            <Btn variant="ghost" className="text-sm" onClick={() => setBook("cards")}>
               📖 簿記の書
             </Btn>
-            <Btn
-              variant="ghost"
-              className="text-sm lg:hidden"
-              onClick={() => setLedger(true)}
-            >
+            <Btn variant="ghost" className="text-sm lg:hidden" onClick={() => setLedger(true)}>
               📊 帳簿
             </Btn>
-            <Btn
-              variant="ghost"
-              className="text-sm"
-              onClick={toggleSound}
-              sound={null}
-            >
+            <Btn variant="ghost" className="text-sm" onClick={toggleSound} sound={null}>
               {sound ? "♪" : "×♪"}
               <span className="sr-only">{sound ? "音を消す" : "音を出す"}</span>
             </Btn>
@@ -807,34 +653,18 @@ export default function GameApp() {
         </aside>
       </div>
 
-      {book && (
-        <BookModal
-          state={state}
-          initialTab={book}
-          onClose={() => setBook(null)}
-        />
-      )}
+      {book && <BookModal state={state} initialTab={book} onClose={() => setBook(null)} />}
       {toast.length > 0 && (
-        <div
-          role="status"
-          className="pointer-events-none fixed inset-x-0 top-20 z-50 flex flex-col items-center gap-2 px-4"
-        >
+        <div role="status" className="pointer-events-none fixed inset-x-0 top-20 z-50 flex flex-col items-center gap-2 px-4">
           {toast.slice(0, 4).map((a) => (
-            <div
-              key={a.id}
-              className="pop win flex items-center gap-2 px-4 py-2 text-sm"
-            >
+            <div key={a.id} className="pop win flex items-center gap-2 px-4 py-2 text-sm">
               <span className="text-2xl">{a.icon}</span>
               <span>
                 実績「<span className="text-gold">{a.title}</span>」を獲得！
               </span>
             </div>
           ))}
-          {toast.length > 4 && (
-            <div className="pop win px-4 py-1 text-xs">
-              ほか {toast.length - 4} 件の実績を獲得！（簿記の書で確認できる）
-            </div>
-          )}
+          {toast.length > 4 && <div className="pop win px-4 py-1 text-xs">ほか {toast.length - 4} 件の実績を獲得！（簿記の書で確認できる）</div>}
         </div>
       )}
       {ledger && (
