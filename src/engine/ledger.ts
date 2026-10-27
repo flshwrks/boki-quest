@@ -109,7 +109,22 @@ export function trialBalanceTotals(rows: TrialBalanceRow[]): { debit: number; cr
   return { debit: rows.reduce((a, r) => a + r.debit, 0), credit: rows.reduce((a, r) => a + r.credit, 0) };
 }
 
-type Pair = { debit: number; credit: number };
+export type Pair = { debit: number; credit: number };
+
+/** 科目ごとの借方合計と貸方合計（残高ではない）。修正記入・仕訳日計表・合計試算表に使う */
+export function totalsOf(entries: Entry[]): Map<AccountName, Pair> {
+  const sums = new Map<AccountName, Pair>();
+  for (const e of entries) {
+    for (const side of ["debit", "credit"] as const) {
+      for (const l of e[side]) {
+        const row = sums.get(l.account) ?? { debit: 0, credit: 0 };
+        row[side] += l.amount;
+        sums.set(l.account, row);
+      }
+    }
+  }
+  return sums;
+}
 
 export interface WorksheetRow {
   account: AccountName;
@@ -136,16 +151,13 @@ const split = (n: number): Pair => ({ debit: n > 0 ? n : 0, credit: n < 0 ? -n :
  */
 export function worksheet(before: Entry[], adjustments: Entry[]): Worksheet {
   const trial = netBalances(before);
-  const adj = { debit: new Map<AccountName, number>(), credit: new Map<AccountName, number>() };
-  for (const e of adjustments) {
-    for (const side of ["debit", "credit"] as const) for (const l of e[side]) adj[side].set(l.account, (adj[side].get(l.account) ?? 0) + l.amount);
-  }
+  const adj = totalsOf(adjustments);
   const rows: WorksheetRow[] = [];
   let netIncome = 0;
   for (const account of Object.keys(ACCOUNTS) as AccountName[]) {
     const t = trial.get(account) ?? 0;
-    const ad = adj.debit.get(account) ?? 0;
-    const ac = adj.credit.get(account) ?? 0;
+    const ad = adj.get(account)?.debit ?? 0;
+    const ac = adj.get(account)?.credit ?? 0;
     if (t === 0 && ad === 0 && ac === 0) continue;
     const after = t + ad - ac;
     const cat = categoryOf(account);

@@ -22,6 +22,10 @@ import type { FillCell, FillProblem, GameState } from "./types";
 const value = (p: FillProblem, c: FillCell): number =>
   typeof c === "string" ? parseAmount(c.replace("△", "")) : (p.blanks[c.blank].answer as number);
 const points = (p: FillProblem) => p.blanks.reduce((a, b) => a + b.points, 0);
+/** 空のセルは 0 として読む */
+const v = (p: FillProblem, c: FillCell) => (c === "" ? 0 : value(p, c));
+/** 表の本体（最後の合計行を除く）の、ある列の合計 */
+const colSum = (p: FillProblem, rows: FillCell[][], col: number) => rows.slice(0, -1).reduce((a, r) => a + v(p, r[col]), 0);
 
 describe("模擬試験の追加形式", () => {
   it("商品有高帳：各行の金額＝数量×単価、売上原価＝払出金額の合計、配点は10点", () => {
@@ -50,10 +54,9 @@ describe("模擬試験の追加形式", () => {
       const p = slipsProblem(seededRand(seed));
       expect(points(p)).toBe(10);
       const rows = p.sheet[0].rows;
-      const body = rows.slice(0, -1);
       const total = value(p, rows.at(-1)![0]);
-      expect(body.reduce((a, r) => a + (r[0] === "" ? 0 : value(p, r[0])), 0)).toBe(total);
-      expect(body.reduce((a, r) => a + (r[2] === "" ? 0 : value(p, r[2])), 0)).toBe(total);
+      expect(colSum(p, rows, 0)).toBe(total);
+      expect(colSum(p, rows, 2)).toBe(total);
     }
   });
 
@@ -71,10 +74,9 @@ describe("模擬試験の追加形式", () => {
       const p = trialAfterProblem(seededRand(seed));
       expect(points(p)).toBe(35);
       const rows = p.sheet[0].rows;
-      const body = rows.slice(0, -1);
       const total = value(p, rows.at(-1)![0]);
-      expect(body.reduce((a, r) => a + (r[0] === "" ? 0 : value(p, r[0])), 0)).toBe(total);
-      expect(body.reduce((a, r) => a + (r[2] === "" ? 0 : value(p, r[2])), 0)).toBe(total);
+      expect(colSum(p, rows, 0)).toBe(total);
+      expect(colSum(p, rows, 2)).toBe(total);
     }
   });
 
@@ -84,10 +86,7 @@ describe("模擬試験の追加形式", () => {
       expect(points(p)).toBe(35);
       const rows = p.sheet[0].rows;
       const total = rows.at(-1)!;
-      for (let col = 1; col <= 8; col++) {
-        const sum = rows.slice(0, -1).reduce((a, r) => a + (r[col] === "" ? 0 : value(p, r[col])), 0);
-        expect(sum, `${col}列目`).toBe(value(p, total[col]));
-      }
+      for (let col = 1; col <= 8; col++) expect(colSum(p, rows, col), `${col}列目`).toBe(value(p, total[col]));
       for (const pair of [1, 3, 5, 7]) expect(value(p, total[pair])).toBe(value(p, total[pair + 1]));
     }
   });
@@ -97,16 +96,14 @@ describe("模擬試験の追加形式", () => {
       const p = totalsTrialProblem(seededRand(seed));
       expect(points(p)).toBe(35);
       const rows = p.sheet[0].rows;
-      const v = (c: FillCell) => (c === "" ? 0 : value(p, c));
       for (const r of rows.slice(0, -1)) {
-        expect(v(r[0]) - v(r[4]), String(r[2])).toBe(v(r[1]) - v(r[3]));
-        expect(v(r[0]) * v(r[4])).toBe(0);
+        expect(v(p, r[0]) - v(p, r[4]), String(r[2])).toBe(v(p, r[1]) - v(p, r[3]));
+        expect(v(p, r[0]) * v(p, r[4])).toBe(0);
       }
-      const sum = (col: number) => rows.slice(0, -1).reduce((a, r) => a + v(r[col]), 0);
       const total = rows.at(-1)!;
-      for (const col of [0, 1, 3, 4]) expect(sum(col)).toBe(v(total[col]));
-      expect(sum(1)).toBe(sum(3));
-      expect(sum(0)).toBe(sum(4));
+      for (const col of [0, 1, 3, 4]) expect(colSum(p, rows, col)).toBe(v(p, total[col]));
+      expect(colSum(p, rows, 1)).toBe(colSum(p, rows, 3));
+      expect(colSum(p, rows, 0)).toBe(colSum(p, rows, 4));
     }
   });
 
@@ -115,17 +112,16 @@ describe("模擬試験の追加形式", () => {
       const p = receivableLedgerProblem(seededRand(seed));
       expect(points(p)).toBe(10);
       const rows = p.sheet[0].rows;
-      const v = (c: FillCell) => (c === "" ? 0 : value(p, c));
       let bal = 0;
       for (const r of rows.slice(0, 4)) {
-        bal += v(r[2]) - v(r[3]);
-        expect(v(r[5])).toBe(bal);
+        bal += v(p, r[2]) - v(p, r[3]);
+        expect(v(p, r[5])).toBe(bal);
         expect(bal).toBeGreaterThan(0);
       }
-      expect(v(rows[4][3])).toBe(bal);
+      expect(v(p, rows[4][3])).toBe(bal);
       const total = rows.at(-1)!;
-      expect(rows.slice(0, -1).reduce((a, r) => a + v(r[2]), 0)).toBe(v(total[2]));
-      expect(rows.slice(0, -1).reduce((a, r) => a + v(r[3]), 0)).toBe(v(total[3]));
+      expect(colSum(p, rows, 2)).toBe(v(p, total[2]));
+      expect(colSum(p, rows, 3)).toBe(v(p, total[3]));
     }
   });
 
