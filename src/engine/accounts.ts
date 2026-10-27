@@ -85,6 +85,13 @@ export const ACCOUNTS = {
 
 export type AccountName = keyof typeof ACCOUNTS;
 
+/** 資産から差し引く科目と、差し引かれる側の資産 */
+export const CONTRA_TARGETS: Partial<Record<AccountName, AccountName[]>> = {
+  貸倒引当金: ["売掛金", "受取手形", "電子記録債権"],
+  備品減価償却累計額: ["備品"],
+  車両運搬具減価償却累計額: ["車両運搬具"],
+};
+
 /** 科目の一覧を、勘定科目マスタの並び（資産→負債→純資産→収益→費用）にそろえる */
 export function inMasterOrder(accounts: readonly AccountName[]): AccountName[] {
   return (Object.keys(ACCOUNTS) as AccountName[]).filter((a) => accounts.includes(a));

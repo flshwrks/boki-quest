@@ -24,8 +24,6 @@ export interface EventTemplate {
   schedule?: "daily" | number;
   /** game：一度起きたら二度と起きない／day：1日に1回まで（進行側でまとめて判定する） */
   once?: "game" | "day";
-  /** その日の予定のいちばん初めに行う（年度初めの再振替仕訳など） */
-  first?: boolean;
   build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;
 }
 
@@ -38,6 +36,18 @@ export const need = (ctx: Ctx, account: AccountName, amount: number) =>
   ctx.balance(account) < amount ? `${account}が足りない` : undefined;
 export const needCash = (ctx: Ctx, amount: number) => need(ctx, "現金", amount);
 export const needDeposit = (ctx: Ctx, amount: number) => need(ctx, "普通預金", amount);
+
+/** 試験文での支払い方の言い回し（「現金で」「普通預金口座から」） */
+export const viaPhrase = (via: AccountName) => (via === "現金" ? "現金で" : `${via}口座から`);
+
+/** 「○○から払う」の選択肢を支払元ごとに作る。残高が足りない支払元は選べない */
+export function payFrom(ctx: Ctx, amount: number, vias: readonly AccountName[], tx: (via: AccountName) => Transaction, verb = "支払う"): Choice[] {
+  return vias.map((via) => ({ label: `${via}${via === "現金" ? "で" : "から"}${verb}`, disabled: need(ctx, via, amount), tx: tx(via) }));
+}
+
+/** 利息 ＝ 元本 × 年利 × 月数 ÷ 12（円未満は四捨五入） */
+export const interestOf = (c: { amount: number; rate?: number; months?: number }) => Math.round((c.amount * (c.rate ?? 0) * (c.months ?? 0)) / 12);
+export const pct = (rate: number) => `${Math.round(rate * 100)}%`;
 
 /**
  * その種類の債権・債務。ほかの債権・債務から against で指されているもの

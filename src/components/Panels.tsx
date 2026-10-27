@@ -8,9 +8,9 @@ import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
 import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
 import type { AccountName } from "@/engine/accounts";
-import { seededRand, shuffle } from "@/game/random";
 import type { GameEvent, GameState, LessonId, ResultInfo } from "@/game/types";
 import { TrialBalanceTable } from "./BookModal";
+import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { LedgerViz } from "./LedgerViz";
 import { AccountChip, AnswerExplain, Btn, Dialogue, Portrait, Speaker, Win, fmt } from "./ui";
 
@@ -239,22 +239,6 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
   );
 }
 
-interface Quiz {
-  q: string;
-  options: number[];
-  answer: number;
-  explain: string;
-}
-
-function uniqueOptions(answer: number, distractors: number[]): number[] {
-  const opts = [answer];
-  for (const d of [...distractors, answer + 5000, answer - 3000, answer + 12000]) {
-    if (opts.length >= 3) break;
-    if (!opts.includes(d) && d >= 0) opts.push(d);
-  }
-  return opts;
-}
-
 function makeQuizzes(state: GameState): Quiz[] {
   const s = statements(entriesOf(state));
   const rev = sumAmounts(s.revenues);
@@ -263,7 +247,7 @@ function makeQuizzes(state: GameState): Quiz[] {
   const q1: Quiz = {
     q: "試算表を見て答えよう。今期ここまでの当期純利益（収益 − 費用）はいくら？",
     answer: s.netIncome,
-    options: shuffle(uniqueOptions(s.netIncome, [rev, rev - purchase]), seededRand(state.day)),
+    options: quizOptions(s.netIncome, [rev, rev - purchase], state.day),
     explain:
       `収益の合計 ${fmt(rev)}円 − 費用の合計 ${fmt(exp)}円 = ${fmt(s.netIncome)}円。仕入以外の費用（家賃など）も忘れずに引くのじゃ。` +
       (s.netIncome < 0 && Object.values(state.stock).some((v) => v > 0)
@@ -278,13 +262,13 @@ function makeQuizzes(state: GameState): Quiz[] {
       ? {
           q: "まだ回収していないツケ（売掛金）の残高はいくら？",
           answer: ar,
-          options: shuffle(uniqueOptions(ar, [cash, balance(state, "買掛金")]), seededRand(state.day + 1)),
+          options: quizOptions(ar, [cash, balance(state, "買掛金")], state.day + 1),
           explain: "試算表の売掛金の行（借方残高）を見ればわかる。売掛金は資産だから、残高は借方に出るのじゃ。",
         }
       : {
           q: "普通預金の残高はいくら？",
           answer: dep,
-          options: shuffle(uniqueOptions(dep, [cash, 300000]), seededRand(state.day + 1)),
+          options: quizOptions(dep, [cash, 300000], state.day + 1),
           explain: "試算表の普通預金の行（借方残高）を見ればわかる。資産の残高は借方に出るのじゃ。",
         };
   return [q1, q2];
@@ -302,7 +286,6 @@ export function MonthEndPanel({
   onNext: () => void;
 }) {
   const quizzes = useMemo(() => makeQuizzes(state), [state.day]);
-  const [picked, setPicked] = useState<(number | null)[]>([null, null]);
   return (
     <Win title="月末の締め：残高試算表">
       <p className="mb-2 text-sm">
@@ -311,39 +294,7 @@ export function MonthEndPanel({
       <div className="mb-3 rounded border border-white/30 p-2">
         <TrialBalanceTable state={state} />
       </div>
-      {quizzes.map((qz, i) => (
-        <div key={i} className="mb-3 rounded border border-white/30 p-2 text-sm">
-          <p className="mb-1">
-            Q{i + 1}. {qz.q}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {qz.options.map((o) => {
-              const chosen = picked[i] === o;
-              const reveal = answered[i] !== null;
-              return (
-                <Btn
-                  key={o}
-                  variant="ghost"
-                  disabled={reveal}
-                  className={reveal && o === qz.answer ? "border-ok! text-ok" : chosen ? "border-ng! text-ng" : ""}
-                  onClick={() => {
-                    setPicked((p) => p.map((v, j) => (j === i ? o : v)));
-                    onAnswer(i, o === qz.answer);
-                  }}
-                >
-                  {fmt(o)}円
-                </Btn>
-              );
-            })}
-          </div>
-          {answered[i] !== null && (
-            <p className="rise mt-1">
-              {answered[i] ? <span className="text-ok">正解！ 信用 +3　</span> : <span className="text-ng">おしい！　</span>}
-              {qz.explain}
-            </p>
-          )}
-        </div>
-      ))}
+      <QuizList quizzes={quizzes} answered={answered} onAnswer={onAnswer} />
       <Btn onClick={onNext} disabled={answered.some((a) => a === null)}>
         翌月へ
       </Btn>

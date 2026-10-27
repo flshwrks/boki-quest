@@ -1,33 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { type AccountName, categoryOf } from "@/engine/accounts";
-import { sumAmounts } from "@/engine/journal";
-import { statements, worksheet } from "@/engine/ledger";
+import { useMemo } from "react";
+import { CONTRA_TARGETS, type AccountName, categoryOf } from "@/engine/accounts";
+import { type Entry, sumAmounts } from "@/engine/journal";
+import { type Row, statements, worksheet } from "@/engine/ledger";
 import { fiscalYear } from "@/content/world";
-import { entriesOf } from "@/game/logic";
-import { seededRand, shuffle } from "@/game/random";
 import type { GameState } from "@/game/types";
+import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { Btn, Portrait, Win, fmt } from "./ui";
 
 const cell = (n: number) => (n ? fmt(n) : "");
 
 /** 財務諸表での表示名（3級の表示ルール） */
-const DISPLAY: Partial<Record<AccountName, string>> = { 仕入: "売上原価", 売上: "売上高", 繰越商品: "商品", 貯蔵品: "貯蔵品", 前払保険料: "前払費用", 未払利息: "未払費用", 未収利息: "未収収益" };
+const DISPLAY: Partial<Record<AccountName, string>> = { 仕入: "売上原価", 売上: "売上高", 繰越商品: "商品", 前払保険料: "前払費用", 未払利息: "未払費用", 未収利息: "未収収益" };
 const label = (a: AccountName) => DISPLAY[a] ?? a;
 
-/** 資産から差し引く科目と、差し引かれる側の資産 */
-const CONTRA_OF: Partial<Record<AccountName, AccountName[]>> = {
-  貸倒引当金: ["売掛金", "受取手形", "電子記録債権"],
-  備品減価償却累計額: ["備品"],
-  車両運搬具減価償却累計額: ["車両運搬具"],
-};
+const COLUMNS = ["trial", "adjust", "income", "balance"] as const;
+const SIDES = ["debit", "credit"] as const;
 
-function options(answer: number, seed: number, distractors: number[]): number[] {
-  const opts = [answer];
-  for (const d of [...distractors, answer + 7000, answer - 4000]) if (opts.length < 3 && d >= 0 && !opts.includes(d)) opts.push(d);
-  return shuffle(opts, seededRand(seed));
-}
+/** 仕訳が増えたときだけ集計し直す（クイズに答えただけでは計算しない） */
+const useEntries = (state: GameState): Entry[] => useMemo(() => state.journal.map((r) => r.entry), [state.journal]);
 
 export function WorksheetPanel({
   state,
@@ -40,20 +32,27 @@ export function WorksheetPanel({
   onAnswer: (i: number, correct: boolean) => void;
   onNext: () => void;
 }) {
-  const from = state.closingFrom ?? state.journal.length;
-  const { rows, netIncome } = useMemo(() => {
-    const entries = entriesOf(state);
-    return worksheet(entries.slice(0, from), entries.slice(from));
-  }, [state, from]);
-  const total = (k: "trial" | "adjust" | "income" | "balance", s: "debit" | "credit") => sumAmounts(rows.map((r) => ({ amount: r[k][s] })));
-  const cogs = rows.find((r) => r.account === "仕入")?.income.debit ?? 0;
-  const purchases = rows.find((r) => r.account === "仕入")?.trial.debit ?? 0;
-  const quizzes = [
-    { q: "損益計算書の欄の「仕入」（＝売上原価）はいくら？", answer: cogs, options: options(cogs, state.day, [purchases]) },
-    { q: "当期純利益（損失のときはマイナス）はいくら？", answer: netIncome, options: options(netIncome, state.day + 1, [netIncome + cogs - purchases, -netIncome]) },
+  const entries = useEntries(state);
+  const from = state.closingFrom ?? entries.length;
+  const sheet = useMemo(() => worksheet(entries.slice(0, from), entries.slice(from)), [entries, from]);
+  const { rows, netIncome, netIncomeRow, totals } = sheet;
+  const purchaseRow = rows.find((r) => r.account === "仕入");
+  const cogs = purchaseRow?.income.debit ?? 0;
+  const purchases = purchaseRow?.trial.debit ?? 0;
+  const quizzes: Quiz[] = [
+    {
+      q: "損益計算書の欄の「仕入」（＝売上原価）はいくら？",
+      answer: cogs,
+      options: quizOptions(cogs, [purchases], state.day),
+      explain: "試算表の仕入に、期首商品を足して期末商品を引いた金額じゃ。これが売れた商品の仕入値になる。",
+    },
+    {
+      q: "当期純利益（損失のときはマイナス）はいくら？",
+      answer: netIncome,
+      options: quizOptions(netIncome, [netIncome + cogs - purchases, -netIncome], state.day + 1),
+      explain: "損益計算書の欄の、貸方（収益）の合計 − 借方（費用）の合計じゃ。",
+    },
   ];
-  const [picked, setPicked] = useState<(number | null)[]>([null, null]);
-  const ni = (side: "income" | "balance") => (netIncome >= 0 ? (side === "income" ? "debit" : "credit") : side === "income" ? "credit" : "debit");
 
   return (
     <Win title={`${fiscalYear(state.day)}年目の精算表`}>
@@ -74,22 +73,21 @@ export function WorksheetPanel({
               ))}
             </tr>
             <tr className="text-dim">
-              {Array.from({ length: 4 }, (_, i) => [
-                <th key={`${i}d`} className="border border-white/20 font-normal">
-                  借方
-                </th>,
-                <th key={`${i}c`} className="border border-white/20 font-normal">
-                  貸方
-                </th>,
-              ])}
+              {COLUMNS.flatMap((k) =>
+                SIDES.map((s) => (
+                  <th key={k + s} className="border border-white/20 font-normal">
+                    {s === "debit" ? "借方" : "貸方"}
+                  </th>
+                )),
+              )}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.account} className={r.adjust.debit || r.adjust.credit ? "bg-gold/10" : ""}>
                 <td className="border border-white/20 px-1 whitespace-nowrap">{r.account}</td>
-                {(["trial", "adjust", "income", "balance"] as const).flatMap((k) =>
-                  (["debit", "credit"] as const).map((s) => (
+                {COLUMNS.flatMap((k) =>
+                  SIDES.map((s) => (
                     <td key={k + s} className="border border-white/20 px-1 text-right">
                       {cell(r[k][s])}
                     </td>
@@ -101,19 +99,19 @@ export function WorksheetPanel({
               <td className="border border-white/20 px-1">{netIncome >= 0 ? "当期純利益" : "当期純損失"}</td>
               <td className="border border-white/20" colSpan={4} />
               {(["income", "balance"] as const).flatMap((k) =>
-                (["debit", "credit"] as const).map((s) => (
+                SIDES.map((s) => (
                   <td key={k + s} className="border border-white/20 px-1 text-right">
-                    {ni(k) === s ? fmt(Math.abs(netIncome)) : ""}
+                    {cell(netIncomeRow[k][s])}
                   </td>
                 )),
               )}
             </tr>
             <tr className="text-dim">
               <td className="border border-white/20 px-1">合計</td>
-              {(["trial", "adjust", "income", "balance"] as const).flatMap((k) =>
-                (["debit", "credit"] as const).map((s) => (
+              {COLUMNS.flatMap((k) =>
+                SIDES.map((s) => (
                   <td key={k + s} className="border border-white/20 px-1 text-right">
-                    {fmt(total(k, s) + ((k === "income" || k === "balance") && ni(k) === s ? Math.abs(netIncome) : 0))}
+                    {fmt(totals[k][s])}
                   </td>
                 )),
               )}
@@ -121,33 +119,8 @@ export function WorksheetPanel({
           </tbody>
         </table>
       </div>
-      <p className="mb-3 text-xs text-dim">金色の行は、決算整理仕訳で修正した科目。左右の合計がそれぞれ一致していることを確かめよう。</p>
-      {quizzes.map((qz, i) => (
-        <div key={i} className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
-          <p className="mb-1">
-            Q{i + 1}. {qz.q}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {qz.options.map((o) => (
-              <Btn
-                key={o}
-                variant="ghost"
-                disabled={answered[i] !== null}
-                className={answered[i] !== null && o === qz.answer ? "border-ok! text-ok" : picked[i] === o ? "border-ng! text-ng" : ""}
-                onClick={() => {
-                  setPicked((p) => p.map((v, j) => (j === i ? o : v)));
-                  onAnswer(i, o === qz.answer);
-                }}
-              >
-                {fmt(o)}円
-              </Btn>
-            ))}
-          </div>
-          {answered[i] !== null && (
-            <p className="rise mt-1">{answered[i] ? <span className="text-ok">正解！ 信用 +3</span> : <span className="text-ng">おしい！ 正解は {fmt(qz.answer)}円</span>}</p>
-          )}
-        </div>
-      ))}
+      <p className="mb-3 text-xs text-dim">金色の行は、決算整理仕訳で修正した科目。どの欄も左右の合計が一致していることを確かめよう。</p>
+      <QuizList quizzes={quizzes} answered={answered} onAnswer={onAnswer} />
       <Btn onClick={onNext} disabled={answered.some((a) => a === null)}>
         財務諸表を見る
       </Btn>
@@ -165,7 +138,8 @@ function Line({ name, amount, indent = false, strong = false, minus = false }: {
 }
 
 export function ReportPanel({ state, onFinish }: { state: GameState; onFinish: () => void }) {
-  const s = useMemo(() => statements(entriesOf(state)), [state]);
+  const entries = useEntries(state);
+  const s = useMemo(() => statements(entries), [entries]);
   const sales = s.revenues.find((r) => r.account === "売上")?.amount ?? 0;
   const cogs = s.expenses.find((r) => r.account === "仕入")?.amount ?? 0;
   const tax = s.expenses.find((r) => r.account === "法人税、住民税及び事業税")?.amount ?? 0;
@@ -173,10 +147,15 @@ export function ReportPanel({ state, onFinish }: { state: GameState; onFinish: (
   const otherRevenues = s.revenues.filter((r) => r.account !== "売上");
   const pretax = s.netIncome + tax;
   // 引当金・累計額は、差し引く対象のうち最初に出てくる資産の下に「△」で書く
-  const contraOf = (asset: AccountName) =>
-    s.contras.filter((c) => (CONTRA_OF[c.account] ?? []).find((t) => s.assets.some((x) => x.account === t)) === asset);
+  const contraUnder = useMemo(() => {
+    const map = new Map<AccountName, Row[]>();
+    for (const c of s.contras) {
+      const target = (CONTRA_TARGETS[c.account] ?? []).find((t) => s.assets.some((x) => x.account === t));
+      if (target) map.set(target, [...(map.get(target) ?? []), c]);
+    }
+    return map;
+  }, [s]);
   const retained = (s.equity.find((e) => e.account === "繰越利益剰余金")?.amount ?? 0) + s.netIncome;
-  const assetTotal = sumAmounts(s.assets) - sumAmounts(s.contras);
 
   return (
     <Win title={`${fiscalYear(state.day)}年目の財務諸表`}>
@@ -204,12 +183,12 @@ export function ReportPanel({ state, onFinish }: { state: GameState; onFinish: (
             .map((a) => (
               <div key={a.account}>
                 <Line name={label(a.account)} amount={a.amount} indent />
-                {contraOf(a.account).map((c) => (
-                  <Line key={c.account} name={`${c.account}`} amount={c.amount} indent minus />
+                {(contraUnder.get(a.account) ?? []).map((c) => (
+                  <Line key={c.account} name={c.account} amount={c.amount} indent minus />
                 ))}
               </div>
             ))}
-          <Line name="資産合計" amount={assetTotal} strong />
+          <Line name="資産合計" amount={sumAmounts(s.assets) - sumAmounts(s.contras)} strong />
           <p className="mt-2 text-xs text-dim">負債・純資産</p>
           {s.liabilities.map((l) => (
             <Line key={l.account} name={label(l.account)} amount={l.amount} indent />

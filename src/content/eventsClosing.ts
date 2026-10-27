@@ -1,14 +1,12 @@
 // 決算日の決算整理仕訳と、新年度の再振替仕訳・貸倒れ・保険料。
 // 金額はすべて店の実データ（在庫、設備、借入金、仕訳帳）から計算する。
 
-import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
+import { CONTRA_TARGETS, type AccountName, categoryOf } from "@/engine/accounts";
+import { statements } from "@/engine/ledger";
 import { sumAmounts } from "@/engine/journal";
-import type { CharacterId, GameState, LessonId, Transaction } from "@/game/types";
-import { type Ctx, type EventTemplate, creditsOf, je, n, need, pick } from "./eventKit";
-import { DAYS_PER_MONTH, ITEMS, ITEM_IDS, calendarMonth, monthOfYear, yearStartDay } from "./world";
-
-/** 決算日の間だけ起きる */
-const closing = (ctx: Ctx) => ctx.state.closingFrom !== null;
+import type { CharacterId, GameState, LessonId, QueueItem, Transaction } from "@/game/types";
+import { type EventTemplate, creditsOf, interestOf, je, n, need, payFrom, pct, pick, viaPhrase } from "./eventKit";
+import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, ITEM_IDS, calendarMonth, monthOfYear, yearStartDay } from "./world";
 
 /** その会計年度の仕訳 */
 const thisYear = (state: GameState) => state.journal.filter((r) => r.day >= yearStartDay(state.day));
@@ -20,12 +18,11 @@ function adjustment(speaker: CharacterId, lines: string[], tx: Transaction) {
 
 // ───────── 売上原価 ─────────
 
-export const ALLOWANCE_RATE = 0.02;
+const ALLOWANCE_RATE = 0.02;
 
 const cogsOpen: EventTemplate = {
   lesson: "kessan",
   build: (ctx) => {
-    if (!closing(ctx)) return null;
     const opening = ctx.balance("繰越商品");
     if (opening <= 0) return null;
     return adjustment("hoho", ["まずは去年の売れ残り（期首商品）じゃ。今年売ったのじゃから、今年の仕入に加える。", `繰越商品の残高は${n(opening)}円じゃな。`], {
@@ -40,7 +37,6 @@ const cogsOpen: EventTemplate = {
 const cogsEnd: EventTemplate = {
   lesson: "kessan",
   build: (ctx) => {
-    if (!closing(ctx)) return null;
     const { stock } = ctx.state;
     const counted = ITEM_IDS.filter((i) => stock[i] > 0);
     const closingStock = sumAmounts(counted.map((i) => ({ amount: stock[i] * ITEMS[i].cost })));
@@ -58,12 +54,11 @@ const cogsEnd: EventTemplate = {
 
 // ───────── 貸倒引当金・貸倒れ ─────────
 
-const RECEIVABLES: AccountName[] = ["売掛金", "受取手形", "電子記録債権"];
+const RECEIVABLES = CONTRA_TARGETS.貸倒引当金!;
 
 const allowance: EventTemplate = {
   lesson: "allowance",
   build: (ctx) => {
-    if (!closing(ctx)) return null;
     const parts = RECEIVABLES.map((a) => ({ account: a, amount: ctx.balance(a) })).filter((x) => x.amount > 0);
     const base = sumAmounts(parts);
     const target = Math.floor((base * ALLOWANCE_RATE) / 100) * 100;
@@ -71,8 +66,8 @@ const allowance: EventTemplate = {
     const diff = target - current;
     if (base === 0 || diff === 0) return null;
     const list = parts.map((x) => `${x.account}${n(x.amount)}円`).join("・");
-    const exam = `${list}の期末残高に対して2%の貸倒引当金を差額補充法により設定する（貸倒引当金の残高は${n(current)}円）。`;
-    return adjustment("hoho", [`ツケや手形の残りは${list}。この2%（100円未満切り捨て）の${n(target)}円が貸倒れの見込みじゃ。`, `引当金の残高は${n(current)}円じゃから…？`], {
+    const exam = `${list}の期末残高に対して${pct(ALLOWANCE_RATE)}の貸倒引当金を差額補充法により設定する（貸倒引当金の残高は${n(current)}円、100円未満は切り捨てる）。`;
+    return adjustment("hoho", [`ツケや手形の残りは${list}。この${pct(ALLOWANCE_RATE)}（100円未満切り捨て）の${n(target)}円が貸倒れの見込みじゃ。`, `引当金の残高は${n(current)}円じゃから…？`], {
       story: `貸倒引当金を見積額${n(target)}円に合わせた。`,
       exam,
       answer: diff > 0 ? je([["貸倒引当金繰入", diff]], [["貸倒引当金", diff]]) : je([["貸倒引当金", -diff]], [["貸倒引当金戻入", -diff]]),
@@ -135,8 +130,7 @@ function depreciation(account: "備品" | "車両運搬具"): EventTemplate {
   return {
     lesson: "depreciation",
     build: (ctx) => {
-      if (!closing(ctx)) return null;
-      const life = LIFE[account];
+        const life = LIFE[account];
       const start = yearStartDay(ctx.state.day);
       const items = assetsOf(ctx.state, account).map((a) => {
         // 今年買った物は、買った月から決算月（3月）までの月割
@@ -180,8 +174,8 @@ const insurance: EventTemplate = {
     const { state } = ctx;
     if (ctx.balance("車両運搬具") <= 0) return null;
     // 1年ごとに更新する
-    const last = [...state.journal].reverse().find((r) => r.templateId === "insurance");
-    if (last && state.day - last.day < 12 * DAYS_PER_MONTH) return null;
+    const last = state.journal.findLast((r) => r.templateId === "insurance");
+    if (last && state.day - last.day < DAYS_PER_YEAR) return null;
     return {
       speaker: "cecil",
       lines: ["荷馬車の保険の更新時期です。", `これから1年分の保険料${n(INSURANCE)}円をお支払いください。`],
@@ -205,7 +199,6 @@ const insurance: EventTemplate = {
 const prepaid: EventTemplate = {
   lesson: "accruals",
   build: (ctx) => {
-    if (!closing(ctx)) return null;
     const paid = thisYear(ctx.state).filter((r) => r.templateId === "insurance");
     const items = paid.map((r) => {
       const elapsed = 12 - monthOfYear(r.day) + 1;
@@ -232,15 +225,14 @@ function accruedInterest(kind: "借入金" | "貸付金"): EventTemplate {
   return {
     lesson: "accruals",
     build: (ctx) => {
-      if (!closing(ctx)) return null;
-      const loans = creditsOf(ctx.state, kind).map((c) => {
+        const loans = creditsOf(ctx.state, kind).map((c) => {
         const months = Math.min(elapsedMonths(c.day, ctx.state.day), c.months ?? 12);
-        return { c, months, amount: Math.round((c.amount * (c.rate ?? 0) * months) / 12) };
+        return { c, months, amount: interestOf({ ...c, months }) };
       });
       const amount = sumAmounts(loans);
       if (amount <= 0) return null;
       const { c, months } = loans[0];
-      const rate = `${Math.round((c.rate ?? 0) * 100)}%`;
+      const rate = pct(c.rate ?? 0);
       return adjustment(
         "hoho",
         [
@@ -263,7 +255,6 @@ function accruedInterest(kind: "借入金" | "貸付金"): EventTemplate {
 const supplies: EventTemplate = {
   lesson: "accruals",
   build: (ctx) => {
-    if (!closing(ctx)) return null;
     const bought = sumAmounts(thisYear(ctx.state).filter((r) => r.templateId === "letter").flatMap((r) => r.entry.debit));
     const unused = Math.floor((bought * 0.3) / 100) * 100;
     if (unused <= 0) return null;
@@ -280,7 +271,7 @@ const cashdiffClose: EventTemplate = {
   lesson: "accruals",
   build: (ctx) => {
     const d = ctx.state.cashDiff;
-    if (!closing(ctx) || !d) return null;
+    if (!d) return null;
     const amt = Math.abs(d.amount);
     const short = d.amount > 0;
     return adjustment("pipi", [short ? "結局、あのとき足りなかったお金の理由はわからなかったよ…" : "あのとき多かったお金、結局なんだったんだろうね？"], {
@@ -297,23 +288,18 @@ const cashdiffClose: EventTemplate = {
 
 // ───────── 法人税等 ─────────
 
-export const TAX_RATE = 0.3;
+const TAX_RATE = 0.3;
 
 const corporateTax: EventTemplate = {
   lesson: "closing",
   build: (ctx) => {
-    if (!closing(ctx)) return null;
-    // 前の年度の収益・費用は損益振替でゼロになっているので、残高がそのまま今年の損益
-    const total = (cat: "revenue" | "expense") =>
-      sumAmounts((Object.keys(ACCOUNTS) as AccountName[]).filter((a) => categoryOf(a) === cat).map((a) => ({ amount: ctx.balance(a) })));
-    const revenue = total("revenue");
-    const expense = total("expense");
-    const pretax = revenue - expense;
+    // 前の年度の収益・費用は損益振替でゼロになっているので、今の損益計算書がそのまま今年の損益
+    const pretax = statements(ctx.state.journal.map((r) => r.entry)).netIncome;
     const tax = Math.floor((pretax * TAX_RATE) / 100) * 100;
     if (tax <= 0) return null;
-    return adjustment("hoho", ["最後に税金じゃ。今年の利益（税引前当期純利益）の30%を法人税等として計上する。", `利益は${n(pretax)}円じゃから…`], {
+    return adjustment("hoho", [`最後に税金じゃ。今年の利益（税引前当期純利益）の${pct(TAX_RATE)}を法人税等として計上する。`, `利益は${n(pretax)}円じゃから…`], {
       story: `今年の法人税等${n(tax)}円を計上した。`,
-      exam: `当期の法人税、住民税及び事業税が${n(tax)}円と計算された（税引前当期純利益${n(pretax)}円の30%、100円未満切り捨て）。`,
+      exam: `当期の法人税、住民税及び事業税が${n(tax)}円と計算された（税引前当期純利益${n(pretax)}円の${pct(TAX_RATE)}、100円未満切り捨て）。`,
       answer: je([["法人税、住民税及び事業税", tax]], [["未払法人税等", tax]]),
       idea: "税金も費用。まだ納めていないので、納める義務（負債）を立てるよ。",
     });
@@ -325,20 +311,22 @@ const payCorporateTax: EventTemplate = {
   schedule: "daily",
   build: (ctx) => {
     const amt = ctx.balance("未払法人税等");
-    if (amt <= 0 || closing(ctx) || monthOfYear(ctx.state.day) < 2) return null;
+    if (amt <= 0 || monthOfYear(ctx.state.day) < 2) return null;
     return {
       speaker: "hoho",
       lines: [`去年の決算で計上した法人税等${n(amt)}円を、王国の税務所に納める時期じゃ。`],
-      choices: (["普通預金", "当座預金", "現金"] as const).map((via) => ({
-        label: `${via}から納付する`,
-        disabled: need(ctx, via, amt),
-        tx: {
+      choices: payFrom(
+        ctx,
+        amt,
+        ["普通預金", "当座預金", "現金"],
+        (via) => ({
           story: `法人税等${n(amt)}円を納めた。`,
-          exam: `未払法人税等${n(amt)}円を${via === "現金" ? "現金で" : `${via}口座から`}納付した。`,
+          exam: `未払法人税等${n(amt)}円を${viaPhrase(via)}納付した。`,
           answer: je([["未払法人税等", amt]], [[via, amt]]),
           idea: "去年立てておいた、納める義務（負債）を取り崩すよ。",
-        },
-      })),
+        }),
+        "納付する",
+      ),
     };
   },
 };
@@ -348,12 +336,10 @@ const payCorporateTax: EventTemplate = {
 function reversal(lesson: LessonId, account: AccountName, to: AccountName, line: string): EventTemplate {
   return {
     lesson,
-    schedule: "daily",
-    first: true,
     build: (ctx) => {
       const amt = ctx.balance(account);
-      if (amt <= 0 || closing(ctx)) return null;
-      const asset = account === "前払保険料" || account === "未収利息" || account === "貯蔵品";
+      if (amt <= 0) return null;
+      const asset = categoryOf(account) === "asset";
       return {
         speaker: "hoho",
         lines: [`新しい年度の初めじゃ。${line}`, `${account}${n(amt)}円を元の科目に戻す「再振替仕訳」をしよう。`],
@@ -394,25 +380,30 @@ export const CLOSING_TEMPLATES: Record<string, EventTemplate> = {
   "reverse-supplies": reversal("accruals", "貯蔵品", "通信費", "残っていた切手は、今年使う分じゃ。"),
 };
 
+const lesson = (id: LessonId): QueueItem => ({ kind: "lesson", id });
+const ev = (id: string): QueueItem => ({ kind: "event", id });
+
 /** 決算日の予定：講義 → 決算整理仕訳 → 精算表 → 財務諸表 */
-export const CLOSING_PLAN: ({ lesson: LessonId } | { event: string } | { step: "worksheet" | "report" })[] = [
-  { lesson: "kessan" },
-  { event: "close-cogs-open" },
-  { event: "close-cogs-end" },
-  { lesson: "allowance" },
-  { event: "close-allowance" },
-  { lesson: "depreciation" },
-  { event: "close-dep-fixture" },
-  { event: "close-dep-vehicle" },
-  { lesson: "accruals" },
-  { event: "close-prepaid" },
-  { event: "close-unpaid-interest" },
-  { event: "close-accrued-interest" },
-  { event: "close-supplies" },
-  { event: "close-cashdiff" },
-  { lesson: "closing" },
-  { event: "close-tax" },
-  { step: "worksheet" },
-  { step: "report" },
+export const CLOSING_PLAN: QueueItem[] = [
+  lesson("kessan"),
+  ev("close-cogs-open"),
+  ev("close-cogs-end"),
+  lesson("allowance"),
+  ev("close-allowance"),
+  lesson("depreciation"),
+  ev("close-dep-fixture"),
+  ev("close-dep-vehicle"),
+  lesson("accruals"),
+  ev("close-prepaid"),
+  ev("close-unpaid-interest"),
+  ev("close-accrued-interest"),
+  ev("close-supplies"),
+  ev("close-cashdiff"),
+  lesson("closing"),
+  ev("close-tax"),
+  { kind: "worksheet" },
+  { kind: "report" },
 ];
 
+/** 新しい年度の初日に、いちばん初めに行う再振替仕訳 */
+export const OPENING_PLAN: QueueItem[] = [ev("reverse-prepaid"), ev("reverse-unpaid-interest"), ev("reverse-accrued-interest"), ev("reverse-supplies")];

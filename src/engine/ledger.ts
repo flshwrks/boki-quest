@@ -96,19 +96,32 @@ export function trialBalanceTotals(rows: TrialBalanceRow[]): { debit: number; cr
   return { debit: rows.reduce((a, r) => a + r.debit, 0), credit: rows.reduce((a, r) => a + r.credit, 0) };
 }
 
+type Pair = { debit: number; credit: number };
+
 export interface WorksheetRow {
   account: AccountName;
-  trial: { debit: number; credit: number };
-  adjust: { debit: number; credit: number };
-  income: { debit: number; credit: number };
-  balance: { debit: number; credit: number };
+  trial: Pair;
+  adjust: Pair;
+  income: Pair;
+  balance: Pair;
 }
+
+export interface Worksheet {
+  rows: WorksheetRow[];
+  netIncome: number;
+  /** 当期純利益の行。利益なら損益計算書の借方・貸借対照表の貸方に入る（損失なら逆） */
+  netIncomeRow: { income: Pair; balance: Pair };
+  /** 各欄の合計（当期純利益の行を含む）。どの欄も左右が一致する */
+  totals: { trial: Pair; adjust: Pair; income: Pair; balance: Pair };
+}
+
+const split = (n: number): Pair => ({ debit: n > 0 ? n : 0, credit: n < 0 ? -n : 0 });
 
 /**
  * 精算表。試算表（決算整理前）に修正記入（決算整理仕訳）を加え、
  * 収益・費用は損益計算書の欄へ、それ以外は貸借対照表の欄へ移す。
  */
-export function worksheet(before: Entry[], adjustments: Entry[]): { rows: WorksheetRow[]; netIncome: number } {
+export function worksheet(before: Entry[], adjustments: Entry[]): Worksheet {
   const trial = netBalances(before);
   const adj = { debit: new Map<AccountName, number>(), credit: new Map<AccountName, number>() };
   for (const e of adjustments) {
@@ -124,15 +137,20 @@ export function worksheet(before: Entry[], adjustments: Entry[]): { rows: Worksh
     const after = t + ad - ac;
     const cat = categoryOf(account);
     const toIncome = cat === "revenue" || cat === "expense";
-    const split = (n: number) => ({ debit: n > 0 ? n : 0, credit: n < 0 ? -n : 0 });
     if (toIncome) netIncome -= after;
-    rows.push({
-      account,
-      trial: split(t),
-      adjust: { debit: ad, credit: ac },
-      income: toIncome ? split(after) : { debit: 0, credit: 0 },
-      balance: toIncome ? { debit: 0, credit: 0 } : split(after),
-    });
+    const none = { debit: 0, credit: 0 };
+    rows.push({ account, trial: split(t), adjust: { debit: ad, credit: ac }, income: toIncome ? split(after) : none, balance: toIncome ? none : split(after) });
   }
-  return { rows, netIncome };
+  // 利益は損益計算書の借方と貸借対照表の貸方に書いて、左右をそろえる
+  const netIncomeRow = { income: split(netIncome), balance: split(-netIncome) };
+  const total = (k: keyof Omit<WorksheetRow, "account">, extra: Pair = { debit: 0, credit: 0 }): Pair => ({
+    debit: rows.reduce((a, r) => a + r[k].debit, extra.debit),
+    credit: rows.reduce((a, r) => a + r[k].credit, extra.credit),
+  });
+  return {
+    rows,
+    netIncome,
+    netIncomeRow,
+    totals: { trial: total("trial"), adjust: total("adjust"), income: total("income", netIncomeRow.income), balance: total("balance", netIncomeRow.balance) },
+  };
 }

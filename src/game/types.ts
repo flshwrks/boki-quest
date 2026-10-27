@@ -227,8 +227,6 @@ export interface GameState {
   examRetryDay: number;
   /** 決算日の間だけ、決算整理を始めた時点の仕訳の件数（精算表の「修正記入」をここから数える） */
   closingFrom: number | null;
-  /** 決算を終えた年度（1年目、2年目…）。0 ならまだ一度も決算していない */
-  closedYears: number;
   today: DayStats;
   phase: Phase;
 }

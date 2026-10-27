@@ -7,7 +7,6 @@ import { sumAmounts } from "@/engine/journal";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
   advance,
-  answerWorksheetQuiz,
   finishReport,
   beginExam,
   examScore,
@@ -15,7 +14,7 @@ import {
   gradeExam,
   setExamAnswer,
   EXAM_PASS,
-  answerMonthQuiz,
+  answerQuiz,
   choose,
   closeDay,
   newGame,
@@ -408,7 +407,7 @@ export default function GameApp() {
           answered={p.answered}
           onAnswer={(i, ok) => {
             play(ok ? "correct" : "wrong");
-            update((s) => answerMonthQuiz(s, i, ok));
+            update((s) => answerQuiz(s, i, ok));
           }}
           onNext={() => update((s) => nextDay(s, rand))}
         />
@@ -433,7 +432,7 @@ export default function GameApp() {
           answered={p.answered}
           onAnswer={(i, ok) => {
             play(ok ? "correct" : "wrong");
-            update((s) => answerWorksheetQuiz(s, i, ok));
+            update((s) => answerQuiz(s, i, ok));
           }}
           onNext={() => update((s) => advance(s, rand))}
         />

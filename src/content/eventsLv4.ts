@@ -2,13 +2,10 @@
 
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
-import type { Credit, GameState } from "@/game/types";
-import { type EventTemplate, creditsOf, decline, dueCredits, je, n, need, needCash, needDeposit, pick, settleAll, settleDue } from "./eventKit";
+import type { GameState, Transaction } from "@/game/types";
+import { type EventTemplate, creditsOf, decline, dueCredits, interestOf, je, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, LEVELS, dayInMonth } from "./world";
 
-/** 利息 ＝ 元本 × 年利 × 月数 ÷ 12 */
-const interestOf = (c: Pick<Credit, "amount" | "rate" | "months">) => Math.round((c.amount * (c.rate ?? 0) * (c.months ?? 0)) / 12);
-const pct = (rate: number) => `${Math.round(rate * 100)}%`;
 
 /** 返済期日（借りた日から months か月後）が来た借入金・貸付金と、その利息 */
 function dueLoan(state: GameState, kind: "借入金" | "貸付金") {
@@ -59,18 +56,14 @@ const loanRepay: EventTemplate = {
       speaker: "luke",
       lines: [`借入金${n(c.amount)}円の返済期日です。`, `利息${n(interest)}円（${n(c.amount)} × ${pct(c.rate!)} × ${c.months}/12）とあわせて${n(total)}円をお願いします。`],
       choices: [
-        ...(["普通預金", "当座預金", "現金"] as const).map((via) => ({
-          label: `${via}から返済する`,
-          disabled: need(ctx, via, total),
-          tx: repayTx(c.amount, interest, [[via, total]], `${via === "現金" ? "現金で" : `${via}口座から`}返済した`),
-        })),
+        ...payFrom(ctx, total, ["普通預金", "当座預金", "現金"], (via) => repayTx(c, interest, [[via, total]], `${viaPhrase(via)}返済した`), "返済する"),
         // 1つの口座では足りなくても、普通預金と現金をあわせれば払えるとき
         ...(ctx.balance("普通預金") < total && ctx.balance("現金") < total && ctx.balance("普通預金") + ctx.balance("現金") >= total
           ? [
               {
                 label: "普通預金と現金をあわせて返済する",
                 tx: repayTx(
-                  c.amount,
+                  c,
                   interest,
                   [
                     ["普通預金", ctx.balance("普通預金")],
@@ -81,12 +74,13 @@ const loanRepay: EventTemplate = {
               },
             ]
           : []),
-      ].map((choice) => ({ ...choice, tx: { ...choice.tx, effect: { settleCredits: [{ id: c.id, amount: c.amount }] } } })),
+      ],
     };
   },
 };
 
-function repayTx(principal: number, interest: number, paid: [AccountName, number][], how: string) {
+function repayTx(loan: { id: string; amount: number }, interest: number, paid: [AccountName, number][], how: string): Transaction {
+  const principal = loan.amount;
   return {
     story: `借入金${n(principal)}円を、利息${n(interest)}円とともに返した。`,
     exam: `借入金${n(principal)}円の返済期日となり、利息${n(interest)}円とともに${how}。`,
@@ -98,6 +92,7 @@ function repayTx(principal: number, interest: number, paid: [AccountName, number
       paid,
     ),
     idea: "元本の返済で借入金が減る。利息は借りたことへの費用だね。支払ったお金は、出どころごとに分けて書くよ。",
+    effect: { settleCredits: [{ id: loan.id, amount: principal }] },
   };
 }
 
@@ -242,17 +237,19 @@ const buyRegister: EventTemplate = {
       speaker: "cecil",
       lines: ["ギルド公認の魔導レジスターはいかが？ 会計がぐっと早くなりますよ。（評判 +8）", `本体${n(price)}円と据付費${n(fee)}円です。`],
       choices: [
-        ...(["普通預金", "現金"] as const).map((via) => ({
-          label: `${via}${via === "現金" ? "で" : "から"}払って買う`,
-          disabled: need(ctx, via, price + fee),
-          tx: {
+        ...payFrom(
+          ctx,
+          price + fee,
+          ["普通預金", "現金"],
+          (via) => ({
             story: `魔導レジスターを${n(price)}円で買い、据付費${n(fee)}円とともに払った。`,
-            exam: `店舗用のレジスター${n(price)}円を購入し、据付費${n(fee)}円とともに${via === "現金" ? "現金で" : "普通預金口座から"}支払った。`,
+            exam: `店舗用のレジスター${n(price)}円を購入し、据付費${n(fee)}円とともに${viaPhrase(via)}支払った。`,
             answer: je([["備品", price + fee]], [[via, price + fee]]),
             idea: "長く使う設備を買った。据付費も設備の金額に含めるよ。",
             effect: { reputation: 8 },
-          },
-        })),
+          }),
+          "払って買う",
+        ),
         {
           label: "月末払いで買う",
           tx: {
