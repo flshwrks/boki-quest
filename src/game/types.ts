@@ -99,6 +99,8 @@ export interface Credit {
   amount: number;
   item?: ItemId;
   qty?: number;
+  /** 掛けで仕入れた商品の仕入単価（特価で仕入れた分を返品するときに使う） */
+  unit?: number;
   /** 借入金・貸付金の年利と期間（月）。返済のときに利息を計算する */
   rate?: number;
   months?: number;
@@ -117,6 +119,8 @@ export interface Quest {
 
 export interface Effect {
   stock?: Partial<Record<ItemId, number>>;
+  /** 在庫の増減にともなう原価（仕入なら運び賃を含む仕入値、仕入の返品なら返品額）。省くと平均単価で計算する */
+  stockCost?: Partial<Record<ItemId, number>>;
   reputation?: number;
   addCredits?: Omit<Credit, "id" | "day">[];
   settleCredits?: { id: string; amount: number }[];
@@ -335,6 +339,8 @@ export interface GameState {
   reputation: number;
   combo: number;
   stock: Record<ItemId, number>;
+  /** 在庫の原価の合計（移動平均で管理する。決算の棚卸高に使う） */
+  stockValue: Record<ItemId, number>;
   journal: JournalRecord[];
   lessonsDone: LessonId[];
   queue: QueueItem[];

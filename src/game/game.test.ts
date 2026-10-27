@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isBalanced } from "@/engine/journal";
 import { trialBalance } from "@/engine/ledger";
 import { LESSONS, PREP_LEVEL } from "@/content/lessons";
-import { ITEM_IDS } from "@/content/world";
+import { ITEMS, ITEM_IDS } from "@/content/world";
 import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { EXAM_BANK } from "@/content/examBank";
 import { newAchievements } from "@/content/achievements";
@@ -30,7 +30,16 @@ import { seededRand } from "./random";
 import { CREDIT_KINDS, type GameState } from "./types";
 
 function checkInvariants(s: GameState) {
-  for (const id of ITEM_IDS) expect(s.stock[id]).toBeGreaterThanOrEqual(0);
+  for (const id of ITEM_IDS) {
+    expect(s.stock[id]).toBeGreaterThanOrEqual(0);
+    // 在庫の原価：在庫がなければ0。平均の仕入値は、特価（2割引）といつもの値段＋運び賃の間におさまる
+    if (s.stock[id] === 0) expect(s.stockValue[id]).toBe(0);
+    else {
+      const average = s.stockValue[id] / s.stock[id];
+      expect(average, id).toBeGreaterThanOrEqual(ITEMS[id].cost * 0.75);
+      expect(average, id).toBeLessThanOrEqual(ITEMS[id].cost * 1.3);
+    }
+  }
   expect(balance(s, "現金")).toBeGreaterThanOrEqual(0);
   expect(balance(s, "普通預金")).toBeGreaterThanOrEqual(0);
   for (const kind of CREDIT_KINDS) {

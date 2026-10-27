@@ -35,10 +35,11 @@ const cogsEnd: EventTemplate = {
   build: (ctx) => {
     const { stock } = ctx.state;
     const counted = ITEM_IDS.filter((i) => stock[i] > 0);
-    const closingStock = sumAmounts(counted.map((i) => ({ amount: stock[i] * ITEMS[i].cost })));
+    const { stockValue } = ctx.state;
+    const closingStock = sumAmounts(counted.map((i) => ({ amount: stockValue[i] })));
     if (closingStock <= 0) return null;
-    const detail = counted.map((i) => `${ITEMS[i].name}${stock[i]}${ITEMS[i].unit}×${n(ITEMS[i].cost)}円`).join("、");
-    return adjustment("hoho", ["次は棚卸しじゃ。棚に残っている商品を数えて、仕入値で金額にする。", `${detail}。合計${n(closingStock)}円じゃ。`], {
+    const detail = counted.map((i) => `${ITEMS[i].name}${stock[i]}${ITEMS[i].unit}（${n(stockValue[i])}円）`).join("、");
+    return adjustment("hoho", ["次は棚卸しじゃ。棚に残っている商品を数えて、仕入値で金額にする。特価で安く仕入れた分もあるから、平均の仕入値で数えておいたぞ。", `${detail}。合計${n(closingStock)}円じゃ。`], {
       story: `棚卸しをして、期末商品${n(closingStock)}円を繰越商品にした。`,
       exam: `期末商品棚卸高は${n(closingStock)}円である（売上原価は仕入の行で計算する）。`,
       answer: je([["繰越商品", closingStock]], [["仕入", closingStock]]),

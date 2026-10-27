@@ -2,7 +2,8 @@
 
 import { ITEMS, LEVELS, itemsForLevel } from "@/content/world";
 import type { CharacterId, GameState } from "@/game/types";
-import { Sprite } from "./Sprite";
+import { useEffect, useRef, useState } from "react";
+import { type Pose, Sprite } from "./Sprite";
 import { Portrait } from "./ui";
 
 const SHELF_MAX = 8;
@@ -37,8 +38,58 @@ export interface SceneFx {
   moodKey?: string | number;
 }
 
+/** コマの列。frames を ms ごとに切り替え、loop でなければ最後のコマ（undefined なら元の絵）で止まる */
+type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
+
+const CLIPS: Record<Mood, Clip> = {
+  happy: { frames: ["crouch", "armsUp", "armsUp", "crouch", undefined], ms: 140 },
+  cheer: { frames: ["armsUp", undefined, "crouch"], ms: 220, loop: true },
+  oops: { frames: ["sweat"], ms: 0 },
+  think: { frames: ["think"], ms: 0 },
+  sleepy: { frames: ["sleep"], ms: 0 },
+  talk: { frames: ["gesture", undefined, "gesture", undefined], ms: 320 },
+};
+/** 登場：足を開く・閉じるを交互にして歩いてくる */
+const ENTER: Clip = { frames: ["walk", undefined, "walk", undefined], ms: 110 };
+
+/** 動きを減らす設定なら、コマ送りせず最後のコマだけ見せる */
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける */
+function usePose(mood: Mood | undefined, key: string): Pose | undefined {
+  const entered = useRef(false);
+  const [pose, setPose] = useState<Pose | undefined>();
+  useEffect(() => {
+    const clip = mood ? CLIPS[mood] : undefined;
+    const frames = [...(entered.current ? [] : ENTER.frames), ...(clip?.frames ?? [undefined])];
+    const durations = [...(entered.current ? [] : ENTER.frames.map(() => ENTER.ms)), ...(clip?.frames ?? [undefined]).map(() => clip?.ms ?? 0)];
+    entered.current = true;
+    if (reducedMotion()) {
+      setPose(frames.at(-1));
+      return;
+    }
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const step = () => {
+      setPose(frames[i]);
+      const ms = durations[i];
+      i++;
+      if (i >= frames.length) {
+        if (!clip?.loop) return;
+        i = frames.length - clip.frames.length;
+      }
+      if (ms > 0) timer = setTimeout(step, ms);
+    };
+    step();
+    return () => clearTimeout(timer);
+    // key が変わるたびに最初から再生する
+  }, [mood, key]);
+  return pose;
+}
+
 /** 動きと感情アイコンをつけたキャラクター */
 function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx }) {
+  const pose = usePose(fx.mood, `${fx.mood}:${fx.moodKey ?? ""}`);
   return (
     <div key={`${fx.mood}:${fx.moodKey ?? ""}`} className={`relative ${fx.mood && fx.mood !== "talk" ? `mood-${fx.mood}` : ""}`}>
       {fx.emote && (
@@ -52,7 +103,7 @@ function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx })
           {fx.emote}
         </span>
       )}
-      <Portrait id={id} size={size} talking={fx.mood === "talk"} />
+      <Portrait id={id} size={size} talking={fx.mood === "talk"} pose={pose} />
     </div>
   );
 }

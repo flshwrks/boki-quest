@@ -6,7 +6,7 @@ import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel, lessonsUpTo, type Lesson } from "@/content/lessons";
-import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth, isYearEnd, yearStartDay } from "@/content/world";
+import { DAYS_PER_MONTH, ITEMS, ITEM_IDS, dayInMonth, isYearEnd, yearStartDay } from "@/content/world";
 import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
@@ -57,6 +57,7 @@ export function initialState(shopName: string): GameState {
     reputation: 20,
     combo: 0,
     stock: { potion: 0, herb: 0, antidote: 0, scroll: 0, ether: 0, elixir: 0 },
+    stockValue: { potion: 0, herb: 0, antidote: 0, scroll: 0, ether: 0, elixir: 0 },
     journal: [],
     lessonsDone: [],
     queue: [],
@@ -296,8 +297,18 @@ function applyEffect(state: GameState, effect: Effect | undefined): GameState {
   let next = { ...state };
   if (effect.stock) {
     const stock = { ...next.stock };
-    for (const id of ITEM_IDS) stock[id] = Math.max(0, stock[id] + (effect.stock[id] ?? 0));
+    const stockValue = { ...next.stockValue };
+    for (const id of ITEM_IDS) {
+      const d = effect.stock[id] ?? 0;
+      if (d === 0) continue;
+      // 原価がわからない増減（売上・売上の返品）は、今の平均単価で計算する（移動平均法）
+      const average = stock[id] > 0 ? stockValue[id] / stock[id] : ITEMS[id].cost;
+      const cost = effect.stockCost?.[id] ?? Math.round(average * Math.abs(d));
+      stock[id] = Math.max(0, stock[id] + d);
+      stockValue[id] = stock[id] === 0 ? 0 : Math.max(0, stockValue[id] + (d > 0 ? cost : -cost));
+    }
     next.stock = stock;
+    next.stockValue = stockValue;
   }
   if (effect.reputation) next.reputation = clamp(next.reputation + effect.reputation);
   if (effect.settleCredits || effect.addCredits) {

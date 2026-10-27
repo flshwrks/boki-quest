@@ -6,7 +6,7 @@ import { fmt } from "@/engine/format";
 import { type Entry, explainLine } from "@/engine/journal";
 import { CHARACTERS } from "@/content/world";
 import type { CharacterId } from "@/game/types";
-import { Sprite } from "./Sprite";
+import { type Pose, Sprite } from "./Sprite";
 import { play } from "./sfx";
 
 export const CATEGORY_BG: Record<Category, string> = {
@@ -80,6 +80,7 @@ export function Portrait({
   className = "",
   still = false,
   talking = false,
+  pose,
 }: {
   id: CharacterId;
   size?: number;
@@ -87,9 +88,11 @@ export function Portrait({
   still?: boolean;
   /** 口をぱくぱくさせる */
   talking?: boolean;
+  /** 今のコマのポーズ */
+  pose?: Pose;
 }) {
   const c = CHARACTERS[id];
-  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} talking={talking} />;
+  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} talking={talking} pose={pose} />;
 }
 
 export function Speaker({ id }: { id: CharacterId }) {

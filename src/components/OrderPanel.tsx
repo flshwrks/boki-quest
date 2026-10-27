@@ -28,6 +28,7 @@ export function OrderPanel({ state, onOrder }: { state: GameState; onOrder: (ite
   return (
     <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
       <div className="mb-1 text-gold">開店前の仕入れ（ドワーフ商会に注文）</div>
+      <p className="mb-1 text-xs text-dim">いつもの仕入値で注文できる。ガンテツが店に来たときは、特価で仕入れられることもあるぞ。</p>
       <div className="mb-2 flex flex-wrap gap-1.5">
         {items.map((id) => (
           <Btn key={id} variant="chip" active={item === id} className="flex items-center gap-1" onClick={() => setItem(id)}>
