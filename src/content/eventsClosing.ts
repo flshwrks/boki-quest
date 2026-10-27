@@ -295,14 +295,25 @@ const corporateTax: EventTemplate = {
   build: (ctx) => {
     // 前の年度の収益・費用は損益振替でゼロになっているので、今の損益計算書がそのまま今年の損益
     const pretax = statements(ctx.state.journal.map((r) => r.entry)).netIncome;
-    const tax = Math.floor((pretax * TAX_RATE) / 100) * 100;
-    if (tax <= 0) return null;
-    return adjustment("hoho", [`最後に税金じゃ。今年の利益（税引前当期純利益）の${pct(TAX_RATE)}を法人税等として計上する。`, `利益は${n(pretax)}円じゃから…`], {
-      story: `今年の法人税等${n(tax)}円を計上した。`,
-      exam: `当期の法人税、住民税及び事業税が${n(tax)}円と計算された（税引前当期純利益${n(pretax)}円の${pct(TAX_RATE)}、100円未満切り捨て）。`,
-      answer: je([["法人税、住民税及び事業税", tax]], [["未払法人税等", tax]]),
-      idea: "税金も費用。まだ納めていないので、納める義務（負債）を立てるよ。",
-    });
+    const tax = Math.max(0, Math.floor((pretax * TAX_RATE) / 100) * 100);
+    // 中間納付した分（仮払法人税等）を差し引き、残りを未払に、払いすぎなら還付にする
+    const prepaid = ctx.balance("仮払法人税等");
+    if (tax <= 0 && prepaid <= 0) return null;
+    const debit: [AccountName, number][] = tax > 0 ? [["法人税、住民税及び事業税", tax]] : [];
+    const credit: [AccountName, number][] = prepaid > 0 ? [["仮払法人税等", prepaid]] : [];
+    if (tax > prepaid) credit.push(["未払法人税等", tax - prepaid]);
+    if (tax < prepaid) debit.push(["未収還付法人税等", prepaid - tax]);
+    const prepaidText = prepaid > 0 ? `なお、中間納付額${n(prepaid)}円を仮払法人税等で処理している。` : "";
+    return adjustment(
+      "hoho",
+      [`最後に税金じゃ。今年の利益（税引前当期純利益）の${pct(TAX_RATE)}を法人税等として計上する。`, `利益は${n(pretax)}円じゃから…${prepaid > 0 ? `中間納付した${n(prepaid)}円を差し引くのを忘れずにな。` : ""}`],
+      {
+        story: `今年の法人税等${n(tax)}円を計上した。`,
+        exam: `当期の法人税、住民税及び事業税が${n(tax)}円と計算された（税引前当期純利益${n(pretax)}円の${pct(TAX_RATE)}、100円未満切り捨て）。${prepaidText}`,
+        answer: je(debit, credit),
+        idea: prepaid > 0 ? "税金も費用。前払いした分（仮払法人税等）を取り崩し、残りをまだ納めていない分にするよ。" : "税金も費用。まだ納めていないので、納める義務（負債）を立てるよ。",
+      },
+    );
   },
 };
 
@@ -399,6 +410,7 @@ export const CLOSING_PLAN: QueueItem[] = [
   ev("close-accrued-interest"),
   ev("close-supplies"),
   ev("close-cashdiff"),
+  ev("close-salestax"),
   lesson("closing"),
   ev("close-tax"),
   { kind: "worksheet" },

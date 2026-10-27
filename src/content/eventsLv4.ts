@@ -268,7 +268,7 @@ const buyRegister: EventTemplate = {
 
 // ───────── 給料と預り金・立替金 ─────────
 
-const SALARY = { gross: 60000, tax: 3000, insurance: 6000 };
+const SALARY = { gross: 30000, tax: 1500, insurance: 3000 };
 
 const noelAdvance: EventTemplate = {
   lesson: "payroll",

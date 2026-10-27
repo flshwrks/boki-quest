@@ -31,6 +31,9 @@ export const pick = <T,>(rand: () => number, xs: readonly T[]): T => xs[Math.flo
 export const name = (id: CharacterId) => CHARACTERS[id].name;
 export const decline = (label: string, reply: string, reputation = 0): Choice => ({ label, reply, effect: { reputation } });
 
+/** 店が大きくなるほど、一度に売り買いする量がふえる（Lv1〜2は1倍、Lv3〜4は2倍、Lv5は3倍） */
+export const tradeScale = (level: number) => Math.ceil(level / 2);
+
 /** 残高が足りなければ、選べない理由を返す */
 export const need = (ctx: Ctx, account: AccountName, amount: number) =>
   ctx.balance(account) < amount ? `${account}が足りない` : undefined;
@@ -132,7 +135,7 @@ export function settleDue(
 /** お客さんごとの好みの商品・口ぐせ・ツケを頼む確率 */
 export const CUSTOMER_PREFS: Record<string, { items: ItemId[]; greet: string; creditRate: number; qty: Partial<Record<ItemId, number[]>> }> = {
   allen: { items: ["potion", "antidote", "ether"], greet: "よう店主！ 明日からダンジョンに潜るんだ。", creditRate: 0.7, qty: { potion: [5, 10], antidote: [5], ether: [3, 5] } },
-  mina: { items: ["scroll", "antidote"], greet: "こんにちは。魔法の研究に使うの。", creditRate: 0.2, qty: { scroll: [2, 3], antidote: [5, 10] } },
-  gord: { items: ["potion", "ether"], greet: "おう、仲間の分もまとめて買いに来た。", creditRate: 0.2, qty: { potion: [10, 15, 20], ether: [5, 10] } },
+  mina: { items: ["scroll", "antidote", "elixir"], greet: "こんにちは。魔法の研究に使うの。", creditRate: 0.2, qty: { scroll: [2, 3], antidote: [5, 10], elixir: [2] } },
+  gord: { items: ["potion", "ether", "elixir"], greet: "おう、仲間の分もまとめて買いに来た。", creditRate: 0.2, qty: { potion: [10, 15, 20], ether: [5, 10], elixir: [2, 3] } },
   lily: { items: ["herb", "antidote"], greet: "神殿の治療室で使いたいのです。", creditRate: 0.2, qty: { herb: [10, 20], antidote: [5, 10] } },
 };

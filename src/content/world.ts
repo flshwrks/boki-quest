@@ -112,6 +112,15 @@ export const ITEMS: Record<ItemId, Item> = {
     sprite: "bottle",
     palette: { o: "#1d1d2b", k: "#8a5a2b", w: "#d8f0f8", r: "#3a8ae8" },
   },
+  elixir: {
+    name: "エリクサー",
+    unit: "本",
+    cost: 6000,
+    price: 10000,
+    level: 5,
+    sprite: "bottle",
+    palette: { o: "#1d1d2b", k: "#d4af37", w: "#fff8d8", r: "#f0c850" },
+  },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -130,17 +139,17 @@ export interface Level {
 }
 
 export const LEVELS: Record<number, Level> = {
-  1: { name: "露店", rent: 20000, exam: "", perks: [], hoho: "" },
+  1: { name: "露店", rent: 5000, exam: "", perks: [], hoho: "" },
   2: {
     name: "小さな店舗",
-    rent: 40000,
+    rent: 10000,
     exam: "商人ギルドの昇格審査",
     perks: ["ギルドの審査に合格し、通りに面した店舗を借りた", "新商品「魔法の巻物」を扱えるようになった", "取引先が増え、新しい講義が始まる"],
     hoho: "ホッホ、立派になったのう。ここからは「ツケ」の世界じゃ。帳簿の腕がますます試されるぞ。",
   },
   3: {
     name: "商店街の店",
-    rent: 60000,
+    rent: 15000,
     cbt: true,
     exam: "王都銀行の融資審査",
     perks: ["銀行の融資審査に合格し、商店街の大きな店に移った", "新商品「エーテル」を扱えるようになった", "手形やカード払いなど、支払い方が多彩になる"],
@@ -148,11 +157,19 @@ export const LEVELS: Record<number, Level> = {
   },
   4: {
     name: "城下町の大店",
-    rent: 80000,
+    rent: 20000,
     cbt: true,
     exam: "王都銀行の大口融資審査",
     perks: ["大口融資の審査に合格し、城下町の大通りに店を構えた", "見習い店員ノエルを雇う", "借入・設備投資・給料など、会社らしいお金の動きが始まる"],
     hoho: "ここまで来たか！ 人を雇い、お金を借り、設備を買う。立派な会社の帳簿じゃ。3級の範囲もいよいよ終盤じゃぞ。",
+  },
+  5: {
+    name: "王都の名店",
+    rent: 25000,
+    cbt: true,
+    exam: "王国商工会議所の審査",
+    perks: ["商工会議所の審査に合格し、王都の目抜き通りの名店になった", "伝説の霊薬「エリクサー」を扱えるようになった", "消費税・税金の前払い・株主への配当など、本格的な会社の仕事が始まる"],
+    hoho: "ついにここまで来たのう。これが3級の最後の範囲じゃ。ここまでの全部がつながったら、試験はもう怖くないぞ。",
   },
 };
 

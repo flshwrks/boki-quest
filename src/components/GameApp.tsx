@@ -398,7 +398,7 @@ export default function GameApp() {
       panel = <ResultPanel info={p.info} state={state} highlight={highlight} onNext={() => update((s) => advance(s, rand))} />;
       break;
     case "dayEnd":
-      panel = <DayEndPanel state={state} onClose={() => update(closeDay)} />;
+      panel = <DayEndPanel state={state} onClose={() => update((s) => closeDay(s, rand))} />;
       break;
     case "monthEnd":
       panel = (

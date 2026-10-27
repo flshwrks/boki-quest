@@ -2,6 +2,7 @@ import type { AccountName } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { TEMPLATES } from "@/content/events";
+import { withSalesTax } from "@/content/salesTax";
 import type { Ctx } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel, type Lesson } from "@/content/lessons";
@@ -10,7 +11,7 @@ import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
 import { type Rand, shuffle } from "./random";
-import type { Choice, DayStats, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, TxSession } from "./types";
+import type { Choice, DayStats, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
 
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
@@ -28,8 +29,11 @@ export function unlockedAccounts(state: GameState): AccountName[] {
   return state.lessonsDone.flatMap((id) => LESSON_BY_ID[id].accounts);
 }
 
+/** 開業からの売上の累計（決算の損益振替で売上の残高がゼロに戻っても数え続ける） */
 export function totalSales(state: GameState): number {
-  return balance(state, "売上");
+  return state.journal
+    .filter((r) => r.templateId !== "closing-transfer")
+    .reduce((sum, r) => sum + sumAmounts(r.entry.credit.filter((l) => l.account === "売上")) - sumAmounts(r.entry.debit.filter((l) => l.account === "売上")), 0);
 }
 
 /** 今日の予定に入っている講義 */
@@ -51,7 +55,7 @@ export function initialState(shopName: string): GameState {
     trust: 50,
     reputation: 20,
     combo: 0,
-    stock: { potion: 0, herb: 0, antidote: 0, scroll: 0, ether: 0 },
+    stock: { potion: 0, herb: 0, antidote: 0, scroll: 0, ether: 0, elixir: 0 },
     journal: [],
     lessonsDone: [],
     queue: [],
@@ -107,7 +111,8 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   if (has("returns") && rand() < 0.3) q.push(ev("purchase-return"));
 
   const extras = EXTRAS.filter(([, t]) => willHave(t.lesson) && rand() < (t.schedule as number)).map(([id]) => ev(id));
-  const customers = 2 + Math.floor(state.reputation / 25);
+  // 評判が上がるほど、店が大きくなるほど、お客さんが増える
+  const customers = 1 + state.level + Math.floor(state.reputation / 25);
   const rest = shuffle([...Array.from({ length: customers }, () => ev("customer")), ...extras], rand);
   const half = Math.ceil(rest.length / 2);
   q.push(...rest.slice(0, half), ev("bank"), ...rest.slice(half));
@@ -131,6 +136,17 @@ function ctxOf(state: GameState, rand: Rand, guided: boolean): Ctx {
   };
 }
 
+const MONEY: AccountName[] = ["現金", "小口現金", "当座預金", "普通預金"];
+
+/** 取引で払うお金が残高より多ければ、選べない理由を返す */
+function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
+  for (const account of MONEY) {
+    const paid = sumAmounts(tx.answer.credit.filter((l) => l.account === account));
+    if (paid > 0 && ctx.balance(account) < paid) return `${account}が足りない`;
+  }
+  return undefined;
+}
+
 /** キューから次の講義・イベントを取り出す。空になったら一日の終わり */
 export function advance(state: GameState, rand: Rand): GameState {
   const queue = [...state.queue];
@@ -151,7 +167,15 @@ export function advance(state: GameState, rand: Rand): GameState {
     const built = template.build({ ...ctx, guided });
     if (!built) continue;
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
-    const choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
+    let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
+    // 消費税を習ったあとは、商品の売買に税抜方式の消費税を加える。税込で払えなくなった選択肢は選べない
+    if (state.lessonsDone.includes("salestax")) {
+      choices = choices.map((c) => {
+        if (!c.tx?.taxable) return c;
+        const tx = withSalesTax(c.tx);
+        return { ...c, tx, disabled: c.disabled ?? moneyShortage(ctx, tx) };
+      });
+    }
     if (choices.every((c) => c.disabled)) {
       choices.push({
         label: "今は見送る（お金が足りない）",
@@ -293,10 +317,12 @@ export function isMonthEnd(state: GameState): boolean {
 }
 
 /** 次のLvへの昇格条件と、昇格審査の形式（朝の画面の目標表示と共通） */
-export const LEVEL_UP: Record<number, { days: number; sales: number; trust: number; questions: number; minutes: number }> = {
+export const LEVEL_UP: Record<number, { days: number; sales: number; trust: number; questions: number; minutes: number; requires?: LessonId[] }> = {
   1: { days: 4, sales: 50000, trust: 55, questions: 4, minutes: 12 },
   2: { days: 12, sales: 250000, trust: 60, questions: 5, minutes: 15 },
   3: { days: 22, sales: 600000, trust: 65, questions: 5, minutes: 15 },
+  // Lv5 は、最初の決算を終えてから
+  4: { days: 64, sales: 1500000, trust: 70, questions: 6, minutes: 18, requires: ["closing"] },
 };
 
 export const EXAM_PASS = 70;
@@ -305,18 +331,18 @@ export const EXAM_PASS = 70;
 export function canLevelUp(state: GameState): boolean {
   const goal = LEVEL_UP[state.level];
   if (!goal) return false;
-  const lessonsDone = lessonsForLevel(state.level).every((l) => state.lessonsDone.includes(l.id));
+  const lessonsDone = [...lessonsForLevel(state.level).map((l) => l.id), ...(goal.requires ?? [])].every((id) => state.lessonsDone.includes(id));
   return lessonsDone && state.day >= goal.days && totalSales(state) >= goal.sales && state.trust >= goal.trust;
 }
 
-export function closeDay(state: GameState): GameState {
+export function closeDay(state: GameState, rand: Rand = Math.random): GameState {
   // 決算日を終えたら新しい年度へ。初日はまず再振替仕訳から
   if (state.closingFrom !== null) {
-    const next = startDay({ ...state, closingFrom: null, day: state.day + 1, today: emptyDay() }, Math.random);
+    const next = startDay({ ...state, closingFrom: null, day: state.day + 1, today: emptyDay() }, rand);
     return { ...next, queue: [...OPENING_PLAN, ...next.queue] };
   }
   if (isMonthEnd(state)) return { ...state, phase: { kind: "monthEnd", answered: [null, null] } };
-  return nextDay(state);
+  return nextDay(state, rand);
 }
 
 /** 3月の最終営業日を終えたら、同じ日を決算日にする */

@@ -17,6 +17,7 @@ import {
   pick,
   settleAll,
   settleDue,
+  tradeScale,
 } from "./eventKit";
 import { ITEMS, dayInMonth, itemsForLevel } from "./world";
 
@@ -28,7 +29,7 @@ function pickSale(ctx: Ctx, who: CharacterId, minAmount = 1000): { item: ItemId;
   const pool = liked.length > 0 ? liked : candidates;
   if (pool.length === 0) return null;
   const item = pick(ctx.rand, pool);
-  const qty = Math.min(pick(ctx.rand, pref.qty[item] ?? [5, 10]), ctx.state.stock[item]);
+  const qty = Math.min(pick(ctx.rand, pref.qty[item] ?? [5, 10]) * tradeScale(ctx.state.level), ctx.state.stock[item]);
   const amount = ITEMS[item].price * qty;
   return amount >= minAmount ? { item, qty, amount } : null;
 }
@@ -142,6 +143,7 @@ const customerNote: EventTemplate = {
             exam: `商品${n(amount)}円を売り上げ、代金は得意先振出しの約束手形で受け取った。`,
             answer: je([["受取手形", amount]], [["売上", amount]]),
             idea: "商品を売った。代金の代わりに受け取った手形は、期日にお金を受け取れる権利だね。",
+            taxable: true,
             effect: { stock: { [item]: -qty }, reputation: 2, addCredits: [{ kind: "受取手形", who: "gord", amount }] },
           },
         },
@@ -264,6 +266,7 @@ const cardSale: EventTemplate = {
               [["売上", amount]],
             ),
             idea: "売上は手数料を引く前の金額。カード会社から受け取れるのは、手数料を引いた分だよ。",
+            taxable: true,
             note: `手数料は ${n(amount)} × 2% = ${n(fee)}円。クレジット売掛金は ${n(amount)} − ${n(fee)} = ${n(net)}円じゃ。`,
             effect: { stock: { [item]: -qty }, reputation: 2, addCredits: [{ kind: "クレジット売掛金", who: "cecil", amount: net }] },
           },
@@ -314,6 +317,7 @@ const giftcertSale: EventTemplate = {
                 : `商品${n(amount)}円を売り上げ、代金は自治体発行の商品券で受け取った。`,
             answer: je(debit, [["売上", amount]]),
             idea: "商品券は、あとで換金できる権利。現金で受け取った分とは分けて書こう。",
+            taxable: true,
             effect: { stock: { [item]: -qty }, reputation: 2, addCredits: [{ kind: "受取商品券", who: "lily", amount: cert }] },
           },
         },

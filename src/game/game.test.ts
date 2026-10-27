@@ -85,7 +85,7 @@ function play(seed: number, days: number, mistakeRate = 0) {
         break;
       }
       case "dayEnd":
-        s = closeDay(s);
+        s = closeDay(s, rand);
         break;
       case "monthEnd":
         s = nextDay(s, rand);
@@ -162,8 +162,8 @@ describe("通しプレイ", () => {
       r.seenTemplates.forEach((t) => seen.add(t));
       last = r.s;
     }
-    expect(last!.level).toBe(4);
-    expect(last!.lessonsDone).toEqual(LESSONS.map((l) => l.id));
+    expect(last!.level).toBe(5);
+    expect([...last!.lessonsDone].sort()).toEqual(LESSONS.map((l) => l.id).sort());
     for (const t of [
       "founding",
       "withdraw",
@@ -236,6 +236,11 @@ describe("通しプレイ", () => {
       "reverse-unpaid-interest",
       "reverse-accrued-interest",
       "reverse-supplies",
+      "close-salestax",
+      "pay-sales-tax",
+      "interim-tax",
+      "dividend-decide",
+      "dividend-pay",
     ]) {
       expect(seen.has(t), `${t} が一度も登場しない`).toBe(true);
     }

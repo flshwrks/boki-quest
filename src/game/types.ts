@@ -1,6 +1,6 @@
 import type { Entry } from "@/engine/journal";
 
-export type ItemId = "potion" | "herb" | "antidote" | "scroll" | "ether";
+export type ItemId = "potion" | "herb" | "antidote" | "scroll" | "ether" | "elixir";
 
 export type CharacterId =
   | "hoho"
@@ -40,7 +40,10 @@ export type LessonId =
   | "allowance"
   | "depreciation"
   | "accruals"
-  | "closing";
+  | "closing"
+  | "salestax"
+  | "interimtax"
+  | "dividends";
 
 /** 相手ごとに追跡する債権・債務の科目。合計は帳簿の残高と一致させる（通しプレイのテストで検証） */
 export const CREDIT_KINDS = [
@@ -76,6 +79,8 @@ export interface Credit {
   months?: number;
   /** 仮受金が、どの売掛金の入金と思われるか（その売掛金はほかの取引で使わない） */
   against?: string;
+  /** 消費税込みの金額で発生した債権・債務（返品のときに消費税も取り消す） */
+  taxed?: boolean;
   day: number;
 }
 
@@ -105,6 +110,8 @@ export interface Transaction {
   idea: string;
   /** 正解後に師匠が添える補足 */
   note?: string;
+  /** 商品の売買（返品を含む）。消費税を習ったあとは、税抜方式の消費税を自動で加える */
+  taxable?: boolean;
   effect?: Effect;
 }
 

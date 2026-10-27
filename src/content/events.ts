@@ -1,10 +1,11 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, ItemId, Transaction } from "@/game/types";
-import { CUSTOMER_PREFS, type EventTemplate, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll } from "./eventKit";
+import { CUSTOMER_PREFS, type EventTemplate, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale } from "./eventKit";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
+import { LV5_TEMPLATES } from "./eventsLv5";
 import { DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
 
 // ───────── 設立・銀行 ─────────
@@ -122,6 +123,7 @@ function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee:
           ? "商品を買ったけど、代金はまだ払っていない。あとで払う義務はどの科目？"
           : "商品を買ったら何の科目？ 支払ったお金は増えた？減った？",
     note: fee > 0 ? `引取運賃は仕入に含める。だから仕入は ${n(amount)} + ${n(fee)} = ${n(amount + fee)}円じゃ。` : undefined,
+    taxable: true,
     effect: {
       stock: { [item]: qty },
       addCredits: pay === "買掛金" ? [{ kind: "買掛金", who: "gantetsu", amount, item, qty }] : undefined,
@@ -129,7 +131,7 @@ function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee:
   };
 }
 
-const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10] };
+const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10], elixir: [3, 5] };
 
 function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
   return {
@@ -140,7 +142,7 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
       const lowest = [...items].sort((a, b) => state.stock[a] - state.stock[b])[0];
       const item = rand() < 0.6 ? lowest : pick(rand, items);
       const it = ITEMS[item];
-      const qty = pick(rand, QTY[item]);
+      const qty = pick(rand, QTY[item]) * tradeScale(state.level);
       const amount = it.cost * qty;
       const fee = mode === "freight" || (mode === "any" && ctx.has("charges") && rand() < 0.35) ? pick(rand, [500, 1000]) : 0;
       const canCredit = ctx.has("credit");
@@ -204,6 +206,7 @@ function saleTx(who: CharacterId, item: ItemId, qty: number, amount: number, mod
         : mode === "売掛金"
           ? "商品を売ったけど、代金はまだもらっていない。あとで受け取る権利はどの科目？"
           : "商品を売った。受け取ったお金と、売った記録はそれぞれどの科目？",
+    taxable: true,
     effect: {
       stock: { [item]: -qty },
       reputation: fee > 0 ? 3 : mode === "売掛金" ? 2 : 1,
@@ -228,7 +231,7 @@ function customer(mode: "any" | "credit"): EventTemplate {
         if (state.stock[item] === 0) item = stocked[0];
       }
       const it = ITEMS[item];
-      let qty = pick(rand, pref.qty[item] ?? [5, 10]);
+      let qty = pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level);
       if (ctx.guided) qty = Math.min(qty, state.stock[item]);
       const amount = it.price * qty;
       const wantsCredit = mode === "credit" || (ctx.has("credit") && rand() < pref.creditRate);
@@ -499,6 +502,7 @@ const purchaseReturn: EventTemplate = {
             exam: `先に掛けで仕入れた商品のうち${n(amt)}円分を、品質不良のため返品した。`,
             answer: je([["買掛金", amt]], [["仕入", amt]]),
             idea: "仕入れを取り消す。元の仕訳（仕入／買掛金）の左右を逆にすると？",
+            taxable: !!c.taxed,
             effect: { stock: { [c.item]: -k }, settleCredits: [{ id: c.id, amount: amt }] },
           },
         },
@@ -530,6 +534,7 @@ const salesReturn: EventTemplate = {
             exam: `先に掛けで売り上げた商品のうち${n(amt)}円分が、品質不良のため返品された。`,
             answer: je([["売上", amt]], [["売掛金", amt]]),
             idea: "売上を取り消す。元の仕訳（売掛金／売上）の左右を逆にすると？",
+            taxable: !!c.taxed,
             effect: { stock: { [c.item]: k }, settleCredits: [{ id: c.id, amount: amt }], reputation: 1 },
           },
         },
@@ -616,6 +621,7 @@ const receiveStaff: EventTemplate = {
               ],
             ),
             idea: "商品を受け取ったので仕入。先に払った手付金（前払金）を取り崩し、残りはまだ払っていない。",
+            taxable: true,
             effect: { quest: { stage: "received", day: state.day }, addCredits: [{ kind: "買掛金", who: "gantetsu", amount: rest }] },
           },
         },
@@ -647,6 +653,7 @@ const deliverStaff: EventTemplate = {
               [["売上", STAFF.price]],
             ),
             idea: "商品を渡したので、ここで売上になる。先にもらった手付金（前受金）を取り崩そう。",
+            taxable: true,
             note: "クエスト達成！ 前受金は商品を渡した時点で売上に変わる。",
             effect: { quest: null, reputation: 8, addCredits: [{ kind: "売掛金", who: "mina", amount: rest }] },
           },
@@ -770,4 +777,5 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   ...LV3_TEMPLATES,
   ...LV4_TEMPLATES,
   ...CLOSING_TEMPLATES,
+  ...LV5_TEMPLATES,
 };
