@@ -32,6 +32,12 @@ function blanks() {
   };
 }
 
+/** focus の科目なら金額を空欄に、そうでなければ金額を書いたセル */
+const focusCell =
+  (b: ReturnType<typeof blanks>, focus: Set<AccountName>) =>
+  (account: AccountName, amount: number): FillCell =>
+    focus.has(account) ? b.amount(amount) : fmt(amount);
+
 const FISCAL = "当社（会計期間は4月1日から3月31日までの1年間）";
 
 /** 勘定（T字）の表。最後に左右の合計の行をつける */
@@ -440,7 +446,7 @@ export function trialAfterProblem(rand: Rand): FillProblem {
   // 繰越利益剰余金は決算整理では変わらないので、空欄にしない
   focus.delete("繰越利益剰余金");
   const b = blanks();
-  const sheet = trialTable("決算整理後残高試算表", [trial, ...adjustments], (a, x) => (focus.has(a) ? b.amount(x) : fmt(x)));
+  const sheet = trialTable("決算整理後残高試算表", [trial, ...adjustments], focusCell(b, focus));
   const net = statements([trial, ...adjustments]).netIncome;
   return {
     title: "第3問 決算整理後残高試算表",
@@ -474,16 +480,22 @@ export function inventoryProblem(rand: Rand): FillProblem {
     const s1 = q0 + 10 * ri(rand, 1, q1 / 10 - 1);
     const q2 = 10 * ri(rand, 2, 4);
     const c2 = c1 + 10 * ri(rand, -2, 3);
-    const left = q0 + q1 - s1 + q2;
-    const s2 = 10 * ri(rand, 1, left / 10 - 1);
+    const s2 = 10 * ri(rand, 1, (q0 + q1 - s1 + q2) / 10 - 1);
     const price = Math.max(c0, c1, c2) + 10 * ri(rand, 5, 10);
+    const d = { q0, c0, q1, c1, s1, q2, c2, s2, price };
+    if (fifo) return inventorySheet(true, d);
+    // 移動平均法は、仕入のたびの平均単価が割り切れる数字だけを使う
     const avg1 = (q0 * c0 + q1 * c1) / (q0 + q1);
     const r1 = q0 + q1 - s1;
-    const avg2 = (r1 * avg1 + q2 * c2) / (r1 + q2);
-    if (!fifo && (!Number.isInteger(avg1) || !Number.isInteger(avg2))) continue;
-    return inventorySheet(fifo, { q0, c0, q1, c1, s1, q2, c2, s2, price });
+    if (Number.isInteger(avg1) && Number.isInteger((r1 * avg1 + q2 * c2) / (r1 + q2))) return inventorySheet(false, d);
   }
 }
+
+/** 移動平均法：単価のちがう商品をまとめて、平均単価の1つの塊にする */
+const merge = (lots: Lot[]): Lot[] => {
+  const qty = lots.reduce((a, l) => a + l.qty, 0);
+  return [{ qty, price: lots.reduce((a, l) => a + l.qty * l.price, 0) / qty }];
+};
 
 function inventorySheet(
   fifo: boolean,
@@ -491,41 +503,35 @@ function inventorySheet(
 ): FillProblem {
   const b = blanks();
   const rows: FillCell[][] = [];
+  // 残高。先入先出法なら単価ごとの塊、移動平均法なら1つの塊
   let lots: Lot[] = [{ qty: d.q0, price: d.c0 }];
   let cogs = 0;
-  /** 残高の行（先入先出法なら単価ごと、移動平均法なら1行） */
-  const balance = () =>
-    fifo
-      ? lots
-      : [{ qty: lots.reduce((a, l) => a + l.qty, 0), price: lots.reduce((a, l) => a + l.qty * l.price, 0) / lots.reduce((a, l) => a + l.qty, 0) }];
-  /** 1つの取引を、受入・払出・残高の行にする。blankBalance のとき残高の金額（移動平均なら単価）を空欄に */
-  const push = (date: string, memo: string, inLot: Lot | undefined, outLots: Lot[], blankOut: boolean, blankBalance: boolean) => {
-    const bal = balance();
-    const n = Math.max(1, outLots.length, bal.length);
-    for (let i = 0; i < n; i++) {
-      const out = outLots[i];
-      const balLot = bal[i];
-      // 移動平均法では、売上の行の単価も空欄にする（単価を書いておくと平均単価の答えがわかってしまう）
-      const hidePrice = blankOut && !fifo;
-      const amountCell = (x: number, blank: boolean): FillCell => (blank ? b.amount(x) : fmt(x));
-      const outCells: FillCell[] = out ? [`${out.qty}`, amountCell(out.price, hidePrice), amountCell(out.qty * out.price, blankOut)] : ["", "", ""];
-      let balCells: FillCell[] = lotCells(balLot);
-      if (balLot && (blankBalance || hidePrice))
-        balCells = fifo
-          ? [`${balLot.qty}`, fmt(balLot.price), b.amount(balLot.qty * balLot.price)]
-          : [`${balLot.qty}`, b.amount(balLot.price), fmt(balLot.qty * balLot.price)];
-      rows.push([i === 0 ? date : "", i === 0 ? memo : "", ...lotCells(i === 0 ? inLot : undefined), ...outCells, ...balCells]);
+  const cell = (x: number, blank: boolean): FillCell => (blank ? b.amount(x) : fmt(x));
+  /**
+   * 1つの取引を、受入・払出・残高の行にする（塊が複数なら行を分ける）。
+   * 売上の行は払出の金額を空欄にし、hideBalance のときは残高も空欄にする。
+   * 移動平均法では単価を見せると平均単価がわかってしまうので、売上の行と仕入後の残高は単価を空欄にする
+   */
+  const push = (date: string, memo: string, t: { in?: Lot; out?: Lot[]; hideBalance?: boolean }) => {
+    const out = t.out ?? [];
+    const sale = out.length > 0;
+    const hide = !!t.hideBalance || (sale && !fifo);
+    for (let i = 0; i < Math.max(out.length, lots.length); i++) {
+      const o = out[i];
+      const l = lots[i];
+      const outCells: FillCell[] = o ? [`${o.qty}`, cell(o.price, sale && !fifo), cell(o.qty * o.price, true)] : ["", "", ""];
+      const balCells: FillCell[] = l ? [`${l.qty}`, cell(l.price, hide && !fifo), cell(l.qty * l.price, hide && fifo)] : ["", "", ""];
+      rows.push([i === 0 ? date : "", i === 0 ? memo : "", ...lotCells(i === 0 ? t.in : undefined), ...outCells, ...balCells]);
     }
   };
   const receive = (lot: Lot) => {
-    lots = fifo ? [...lots, lot] : balance().concat(lot);
-    if (!fifo) lots = balance();
+    lots = fifo ? [...lots, lot] : merge([...lots, lot]);
   };
   const sell = (qty: number): Lot[] => {
     const out: Lot[] = [];
-    let rest = qty;
     const next: Lot[] = [];
-    for (const l of fifo ? lots : balance()) {
+    let rest = qty;
+    for (const l of lots) {
       const take = Math.min(rest, l.qty);
       if (take > 0) out.push({ qty: take, price: l.price });
       if (l.qty > take) next.push({ qty: l.qty - take, price: l.price });
@@ -536,13 +542,13 @@ function inventorySheet(
     return out;
   };
 
-  push("6/1", "前月繰越", { qty: d.q0, price: d.c0 }, [], false, false);
+  push("6/1", "前月繰越", { in: { qty: d.q0, price: d.c0 } });
   receive({ qty: d.q1, price: d.c1 });
-  push("6/8", "仕入", { qty: d.q1, price: d.c1 }, [], false, !fifo);
-  push("6/15", "売上", undefined, sell(d.s1), true, false);
+  push("6/8", "仕入", { in: { qty: d.q1, price: d.c1 }, hideBalance: !fifo });
+  push("6/15", "売上", { out: sell(d.s1) });
   receive({ qty: d.q2, price: d.c2 });
-  push("6/22", "仕入", { qty: d.q2, price: d.c2 }, [], false, !fifo);
-  push("6/27", "売上", undefined, sell(d.s2), true, fifo);
+  push("6/22", "仕入", { in: { qty: d.q2, price: d.c2 }, hideBalance: !fifo });
+  push("6/27", "売上", { out: sell(d.s2), hideBalance: true });
 
   const sales = (d.s1 + d.s2) * d.price;
   const method = fifo ? "先入先出法" : "移動平均法";
@@ -608,14 +614,18 @@ export function slipsProblem(rand: Rand): FillProblem {
   // 仕訳日計表：科目ごとに、借方と貸方それぞれの合計（残高ではない）
   const sums = new Map<AccountName, { debit: number; credit: number }>();
   for (const s of slips) {
-    const add = (a: AccountName, side: "debit" | "credit") =>
-      sums.set(a, { ...(sums.get(a) ?? { debit: 0, credit: 0 }), [side]: (sums.get(a)?.[side] ?? 0) + s.amount });
-    add(s.debit, "debit");
-    add(s.credit, "credit");
+    for (const [a, side] of [
+      [s.debit, "debit"],
+      [s.credit, "credit"],
+    ] as const) {
+      const row = sums.get(a) ?? { debit: 0, credit: 0 };
+      row[side] += s.amount;
+      sums.set(a, row);
+    }
   }
-  const focus = new Set<AccountName>(["現金", "売掛金", "買掛金", "仕入", "売上"]);
   const b = blanks();
-  const cell = (a: AccountName, x: number): FillCell => (x ? (focus.has(a) ? b.amount(x) : fmt(x)) : "");
+  const focused = focusCell(b, new Set<AccountName>(["現金", "売掛金", "買掛金", "仕入", "売上"]));
+  const cell = (a: AccountName, x: number): FillCell => (x ? focused(a, x) : "");
   const accounts = inMasterOrder([...sums.keys()]);
   const total = slips.reduce((a, s) => a + s.amount, 0);
   return {

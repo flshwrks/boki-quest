@@ -79,10 +79,13 @@ export function weakLessons(state: GameState, mastery = masteryOf(state)): Lesso
 
 // ───────── 苦手ドリル ─────────
 
+/** 問題集の問題を、問題文から引く */
+const BANK_BY_TEXT = new Map(EXAM_BANK.map((q) => [q.text, q]));
+
 /** まだ克服していないミスを、問題の形にする（審査の問題は問題集から、店の取引は記帳した仕訳から） */
 function mistakeQuestion(state: GameState, m: Mistake): ExamQuestion | undefined {
   // 審査やギルドの帳簿相談で出た問題は、問題集にそのまま載っている
-  const banked = EXAM_BANK.find((q) => q.text === m.exam);
+  const banked = BANK_BY_TEXT.get(m.exam);
   if (banked) return banked;
   const lesson = lessonOfTemplate(m.templateId);
   const record = state.journal.find((r) => r.templateId === m.templateId && r.exam === m.exam);

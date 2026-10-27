@@ -7,7 +7,8 @@ import { EXAM_PASS } from "@/game/logic";
 import { MOCK_QUESTIONS, mockFullParts, mockParts, mockScore, problemScore } from "@/game/training";
 import type { FillAnswer, FillBlank, FillCell, FillProblem, FillTable, MockSession } from "@/game/types";
 import { CbtEntryForm } from "./CbtEntryForm";
-import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav, QuestionText } from "./ExamPanel";
+import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamPanel";
+import { QuestionText } from "./Question";
 import { Btn, Portrait, Win, fmt } from "./ui";
 
 const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");

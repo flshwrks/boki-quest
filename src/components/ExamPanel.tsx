@@ -8,9 +8,9 @@ import { LEVELS } from "@/content/world";
 import { EXAM_PASS, examScore } from "@/game/logic";
 import type { ExamQuestion, ExamSession } from "@/game/types";
 import { CbtEntryForm } from "./CbtEntryForm";
-import { VoucherView } from "./VoucherView";
+import { MissDetail, QuestionText } from "./Question";
 import { play } from "./sfx";
-import { AnswerExplain, Btn, EntryTable, Portrait, Win } from "./ui";
+import { Btn, Portrait, Win } from "./ui";
 
 
 const mmss = (ms: number) => {
@@ -59,32 +59,6 @@ function Intro({ exam, onBegin }: { exam: ExamSession; onBegin: () => void }) {
         <Btn onClick={onBegin}>審査を始める</Btn>
       </div>
     </Win>
-  );
-}
-
-/** 問題文。証ひょうつきの問題なら、書類もいっしょに出す */
-export function QuestionText({ q, className = "" }: { q: ExamQuestion; className?: string }) {
-  return (
-    <div className={className}>
-      <p>{q.text}</p>
-      {q.doc && <VoucherView doc={q.doc} />}
-    </div>
-  );
-}
-
-/** 間違えた問題の正解と、自分の解答（開くと見える） */
-export function MissDetail({ answer, mine }: { answer: Entry; mine: Entry | null }) {
-  return (
-    <>
-      <p className="text-xs text-dim">正解</p>
-      <AnswerExplain entry={answer} highlight />
-      {mine && !isEmptyEntry(mine) && (
-        <details className="mt-1 text-xs text-dim">
-          <summary className="cursor-pointer">自分の解答</summary>
-          <EntryTable entry={mine} />
-        </details>
-      )}
-    </>
   );
 }
 

@@ -6,7 +6,7 @@
 import type { AccountName } from "@/engine/accounts";
 import type { Choice, LessonId, Transaction, Voucher } from "@/game/types";
 import { EXAM_BANK } from "./examBank";
-import { type EventTemplate, adjustment, decline, je, n, needCash, payFrom, pick, viaPhrase } from "./eventKit";
+import { type EventTemplate, adjustment, decline, interestOf, je, lastRecord, n, needCash, payFrom, pct, pick, viaPhrase } from "./eventKit";
 import { reversal } from "./eventsClosing";
 import { lowestStockItem, orderQtys, purchaseTx } from "./events";
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, calendarMonth, monthOfYear, yearStartDay } from "./world";
@@ -40,19 +40,19 @@ const revenueStamp: EventTemplate = {
     return {
       speaker: "hoho",
       lines: ["まとめ買いのお客さんに渡す領収書には、収入印紙を貼らねばならん。", `${n(amt)}円分買っておこう。`],
-      choices: [
-        {
-          label: "現金で買う",
-          disabled: needCash(ctx, amt),
-          tx: {
-            story: `領収書に貼る収入印紙${n(amt)}円分を買った。`,
-            exam: `収入印紙${n(amt)}円分を購入し、代金は現金で支払った。`,
-            answer: je([["租税公課", amt]], [["現金", amt]]),
-            idea: "印紙は税金の一種（印紙税）じゃ。利益にかかる法人税等とは別の科目じゃぞ。",
-            note: "買った印紙はすぐ領収書に貼って使った。もし決算日に残っていたら、貯蔵品にするのじゃ。",
-          },
-        },
-      ],
+      choices: payFrom(
+        ctx,
+        amt,
+        ["現金"],
+        () => ({
+          story: `領収書に貼る収入印紙${n(amt)}円分を買った。`,
+          exam: `収入印紙${n(amt)}円分を購入し、代金は現金で支払った。`,
+          answer: je([["租税公課", amt]], [["現金", amt]]),
+          idea: "印紙は税金の一種（印紙税）じゃ。利益にかかる法人税等とは別の科目じゃぞ。",
+          note: "買った印紙はすぐ領収書に貼って使った。もし決算日に残っていたら、貯蔵品にするのじゃ。",
+        }),
+        "買う",
+      ),
     };
   },
 };
@@ -66,16 +66,18 @@ const misc: EventTemplate = {
       speaker: "pipi",
       lines: ["お店の前の落ち葉、妖精仲間に掃除してもらったよ！", `お礼に${n(amt)}円ちょうだい♪`],
       choices: [
-        {
-          label: "現金で払う",
-          disabled: needCash(ctx, amt),
-          tx: {
+        ...payFrom(
+          ctx,
+          amt,
+          ["現金"],
+          () => ({
             story: `店先の掃除のお礼${n(amt)}円を払った。`,
             exam: `店舗前の清掃代${n(amt)}円を現金で支払い、雑費として処理した。`,
             answer: je([["雑費", amt]], [["現金", amt]]),
             idea: "どの費用にも当てはまらない、少しの出費じゃ。",
-          },
-        },
+          }),
+          "払う",
+        ),
         decline("自分で掃除する", "ピピ「えー、ケチ〜」"),
       ],
     };
@@ -177,7 +179,8 @@ const receiptSupplies: EventTemplate = {
 // ───────── 定期預金 ─────────
 
 /** 定期預金の期間（3か月）と年利 */
-const TERM_DAYS = 3 * DAYS_PER_MONTH;
+const TERM_MONTHS = 3;
+const TERM_DAYS = TERM_MONTHS * DAYS_PER_MONTH;
 const DEPOSIT_RATE = 0.02;
 
 const timeDeposit: EventTemplate = {
@@ -193,7 +196,10 @@ const timeDeposit: EventTemplate = {
     if (savings < amt + 50000) return null;
     return {
       speaker: "luke",
-      lines: ["普通預金に余裕がありますね。定期預金にしませんか？", `3か月で年${DEPOSIT_RATE * 100}%の利息がつきます。${n(amt)}円でいかがでしょう。`],
+      lines: [
+        "普通預金に余裕がありますね。定期預金にしませんか？",
+        `${TERM_MONTHS}か月で年${pct(DEPOSIT_RATE)}の利息がつきます。${n(amt)}円でいかがでしょう。`,
+      ],
       choices: [
         {
           label: `${n(amt)}円を定期預金にする`,
@@ -216,9 +222,9 @@ const timeDepositMature: EventTemplate = {
   build: (ctx) => {
     const { state } = ctx;
     const principal = ctx.balance("定期預金");
-    const last = state.journal.findLast((r) => r.templateId === "time-deposit");
+    const last = lastRecord(state, "time-deposit");
     if (principal <= 0 || !last || state.day - last.day < TERM_DAYS) return null;
-    const interest = Math.round((principal * DEPOSIT_RATE * 3) / 12);
+    const interest = interestOf({ amount: principal, rate: DEPOSIT_RATE, months: TERM_MONTHS });
     return {
       speaker: "luke",
       lines: ["定期預金が満期になりました。", `元金${n(principal)}円と利息${n(interest)}円を、普通預金にお入れします。`],
@@ -236,7 +242,7 @@ const timeDepositMature: EventTemplate = {
               ],
             ),
             idea: "定期預金が普通預金に戻り、利息の分だけ多く入ってきた。利息は収益じゃ。",
-            note: `${n(principal)} × ${DEPOSIT_RATE * 100}% × 3/12 = ${n(interest)}円じゃ。`,
+            note: `${n(principal)} × ${pct(DEPOSIT_RATE)} × ${TERM_MONTHS}/12 = ${n(interest)}円じゃ。`,
           },
         },
       ],
@@ -255,7 +261,7 @@ const atticRent: EventTemplate = {
   schedule: "daily",
   build: (ctx) => {
     const { state } = ctx;
-    const last = state.journal.findLast((r) => r.templateId === "attic-rent");
+    const last = lastRecord(state, "attic-rent");
     if (last && state.day - last.day < ATTIC_MONTHS * DAYS_PER_MONTH) return null;
     const amt = ATTIC_RENT * ATTIC_MONTHS;
     return {
@@ -285,7 +291,7 @@ const unearnedRent: EventTemplate = {
   lesson: "rentals",
   build: (ctx) => {
     const { state } = ctx;
-    const last = state.journal.findLast((r) => r.templateId === "attic-rent");
+    const last = lastRecord(state, "attic-rent");
     if (!last || last.day < yearStartDay(state.day)) return null;
     // 受け取った月から3月までが今期の分。残りが翌期の分
     const used = 12 - monthOfYear(last.day) + 1;
@@ -338,6 +344,7 @@ const recovery: EventTemplate = {
 
 // ───────── 商人ギルドの帳簿相談（店の帳簿には記入しない練習） ─────────
 
+/** ギルドの帳簿相談を出す論点と、そのときの最初のヒント */
 const GUILD_IDEA: Partial<Record<LessonId, string>> = {
   taxes: "税金のうち、利益にかからないものは租税公課じゃ。",
   voucher: "書類は誰が誰に出したものか、代金はどうしたかを読むのじゃ。",
@@ -359,7 +366,7 @@ function guild(lesson: LessonId): EventTemplate {
         story: "商人ギルドに届いた、よその商会からの帳簿の相談。店の帳簿には記入しない。",
         exam: q.text,
         answer: q.answer,
-        idea: GUILD_IDEA[lesson] ?? "増えたもの・減ったものを書き出してみよう。",
+        idea: GUILD_IDEA[lesson]!,
         doc: q.doc,
         offBooks: true,
       };
@@ -389,7 +396,5 @@ export const COVERAGE_TEMPLATES: Record<string, EventTemplate> = {
   "close-unearned-rent": unearnedRent,
   "reverse-unearned-rent": reversal("rentals", "前受家賃", "受取家賃", "去年の決算で来年分にした家賃は、今年の収益じゃ。"),
   recovery,
-  ...Object.fromEntries(
-    (["taxes", "voucher", "deposits", "notesloan", "fixedsale", "rentals", "advanced"] as LessonId[]).map((l) => [`guild-${l}`, guild(l)]),
-  ),
+  ...Object.fromEntries((Object.keys(GUILD_IDEA) as LessonId[]).map((l) => [`guild-${l}`, guild(l)])),
 };

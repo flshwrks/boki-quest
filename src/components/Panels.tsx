@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { sumAmounts } from "@/engine/journal";
 import { statements } from "@/engine/ledger";
-import { LESSONS, LESSON_BY_ID, lessonsForLevel } from "@/content/lessons";
+import { LESSONS, LESSON_BY_ID, isMakeUp, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
 import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
@@ -50,7 +50,7 @@ export function DayStartPanel({
         {lesson && (
           <li>
             📖 今日の講義：<span className="text-gold">{LESSON_BY_ID[lesson].title}</span>
-            {LESSON_BY_ID[lesson].level < state.level && <span className="ml-1 text-xs text-dim">（補講：あとから追加された内容）</span>}
+            {isMakeUp(LESSON_BY_ID[lesson], state.level) && <span className="ml-1 text-xs text-dim">（補講：あとから追加された内容）</span>}
           </li>
         )}
         <li>🧑‍🤝‍🧑 来店予定の冒険者：およそ {expectedCustomers(state)} 人（評判が上がると増える）</li>

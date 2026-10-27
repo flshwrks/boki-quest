@@ -1583,3 +1583,14 @@ export const LESSON_BY_ID = Object.fromEntries(LESSONS.map((l) => [l.id, l])) as
 export function lessonsForLevel(level: number): Lesson[] {
   return LESSONS.filter((l) => l.level === level);
 }
+
+/**
+ * 店の営業で受ける、今の Lv までの講義（決算日の講義と試験対策の講義は除く）。
+ * 前の Lv の講義が残っていたら「補講」として受ける。昇格の条件には含めない（今の Lv の講義だけ）
+ */
+export function lessonsUpTo(level: number): Lesson[] {
+  return LESSONS.filter((l) => l.level >= 1 && l.level <= level);
+}
+
+/** 補講（今の Lv より前の講義を、あとから受けている） */
+export const isMakeUp = (lesson: Lesson, level: number) => lesson.level >= 1 && lesson.level < level;

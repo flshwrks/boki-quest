@@ -69,6 +69,9 @@ export function creditsOf(state: GameState, kind: CreditKind, who?: CharacterId)
   return state.credits.filter((c) => c.kind === kind && !reserved.has(c.id) && (!who || c.who === who));
 }
 
+/** その種類の取引のうち、最後に記帳したもの */
+export const lastRecord = (state: GameState, templateId: string) => state.journal.findLast((r) => r.templateId === templateId);
+
 /** その種類の債権・債務のうち、発生から days 日以上たったもの */
 export function dueCredits(state: GameState, kind: CreditKind, days: number): Credit[] {
   return creditsOf(state, kind).filter((c) => c.day <= state.day - days);

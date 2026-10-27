@@ -5,7 +5,7 @@ import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
 import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
-import { LESSONS, LESSON_BY_ID, lessonsForLevel, type Lesson } from "@/content/lessons";
+import { LESSONS, LESSON_BY_ID, lessonsForLevel, lessonsUpTo, type Lesson } from "@/content/lessons";
 import { DAYS_PER_MONTH, ITEM_IDS, dayInMonth, isYearEnd, yearStartDay } from "@/content/world";
 import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
@@ -83,7 +83,7 @@ export function newGame(shopName: string, rand: Rand): GameState {
 
 /** 次に受ける講義（1日1つ）。今の Lv までの講義で、まだ受けていないもの（後から足された講義は「補講」になる） */
 export function nextLesson(state: GameState): Lesson | undefined {
-  return LESSONS.find((l) => l.level >= 1 && l.level <= state.level && !state.lessonsDone.includes(l.id));
+  return lessonsUpTo(state.level).find((l) => !state.lessonsDone.includes(l.id));
 }
 
 const ev = (id: string, guided = false): QueueItem => ({ kind: "event", id, guided });
@@ -268,10 +268,15 @@ export function advance(state: GameState, rand: Rand): GameState {
 /** 講義の早送り：確認問題に正解したら、講義を受けたことにする */
 export function skipLesson(state: GameState): GameState {
   if (state.phase.kind !== "lesson") return state;
+  return completeLesson(logPractice(state, state.phase.lesson, true));
+}
+
+/** 講義を修了する（最後のページまで読んだとき・早送りしたとき） */
+function completeLesson(state: GameState): GameState {
+  if (state.phase.kind !== "lesson") return state;
   const { lesson, returnTo } = state.phase;
-  const logged = logPractice(state, lesson, true);
   return {
-    ...logged,
+    ...state,
     lessonsDone: state.lessonsDone.includes(lesson) ? state.lessonsDone : [...state.lessonsDone, lesson],
     phase: { kind: "lessonDone", lesson, returnTo },
   };
@@ -282,13 +287,7 @@ export function turnLessonPage(state: GameState, delta: number): GameState {
   const lesson = LESSON_BY_ID[state.phase.lesson];
   const page = state.phase.page + delta;
   if (page < 0) return state;
-  if (page >= lesson.pages.length) {
-    return {
-      ...state,
-      lessonsDone: state.lessonsDone.includes(lesson.id) ? state.lessonsDone : [...state.lessonsDone, lesson.id],
-      phase: { kind: "lessonDone", lesson: lesson.id, returnTo: state.phase.returnTo },
-    };
-  }
+  if (page >= lesson.pages.length) return completeLesson(state);
   return { ...state, phase: { ...state.phase, page } };
 }
 
@@ -370,31 +369,37 @@ export function submitEntry(state: GameState, input: Entry): GameState {
   const comboMessage = COMBO_MESSAGES[combo];
   const comboRep = combo === 5 ? 3 : combo === 10 ? 5 : 0;
 
-  const sales = sumAmounts(s.tx.answer.credit.filter((l) => l.account === "売上"));
-  const purchases = sumAmounts(s.tx.answer.debit.filter((l) => l.account === "仕入"));
-
-  // ギルドの帳簿相談などの練習は、店の帳簿（仕訳帳）には記入しない
-  const offBooks = !!s.tx.offBooks;
   let next: GameState = {
     ...state,
-    journal: offBooks ? state.journal : [...state.journal, { day: state.day, templateId: s.templateId, exam: s.tx.exam, entry: s.tx.answer }],
     trust: clamp(state.trust + trustDelta),
     combo,
     bestCombo: Math.max(state.bestCombo, combo),
     reputation: clamp(state.reputation + comboRep),
     today: {
-      sales: state.today.sales + (offBooks ? 0 : sales),
-      purchases: state.today.purchases + (offBooks ? 0 : purchases),
+      ...state.today,
       correct: state.today.correct + 1,
       firstTry: state.today.firstTry + (firstTry ? 1 : 0),
       bestCombo: Math.max(state.today.bestCombo, combo),
     },
   };
-  next = applyEffect(next, s.tx.effect);
+  // ギルドの帳簿相談などの練習は、店の帳簿には記入しない
+  if (!s.tx.offBooks) next = postToBooks(next, s.templateId, s.tx);
   // 最初の答えで合っていたかを記録する（ヒントを使ったら「合っていた」には数えない）
   if (s.attempts === 0) next = logPractice(next, lessonOfTemplate(s.templateId), firstTry);
   const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, combo, comboMessage };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
+}
+
+/** 店の帳簿に記入する：仕訳帳に載せ、今日の売上・仕入に足し、在庫やツケなどの効果を反映する */
+function postToBooks(state: GameState, templateId: string, tx: Transaction): GameState {
+  const sales = sumAmounts(tx.answer.credit.filter((l) => l.account === "売上"));
+  const purchases = sumAmounts(tx.answer.debit.filter((l) => l.account === "仕入"));
+  const posted: GameState = {
+    ...state,
+    journal: [...state.journal, { day: state.day, templateId, exam: tx.exam, entry: tx.answer }],
+    today: { ...state.today, sales: state.today.sales + sales, purchases: state.today.purchases + purchases },
+  };
+  return applyEffect(posted, tx.effect);
 }
 
 export function isMonthEnd(state: GameState): boolean {

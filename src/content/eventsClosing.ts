@@ -5,7 +5,7 @@ import { CONTRA_TARGETS, type AccountName, categoryOf } from "@/engine/accounts"
 import { statements } from "@/engine/ledger";
 import { sumAmounts } from "@/engine/journal";
 import type { GameState, LessonId, QueueItem } from "@/game/types";
-import { type EventTemplate, adjustment, creditsOf, interestOf, je, n, need, payBalance, pct, pick, viaPhrase } from "./eventKit";
+import { type EventTemplate, adjustment, creditsOf, interestOf, je, lastRecord, n, need, payBalance, pct, pick, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, ITEM_IDS, calendarMonth, monthOfYear, yearStartDay } from "./world";
 
 /** その会計年度の仕訳 */
@@ -170,7 +170,7 @@ const insurance: EventTemplate = {
     const { state } = ctx;
     if (ctx.balance("車両運搬具") <= 0) return null;
     // 1年ごとに更新する
-    const last = state.journal.findLast((r) => r.templateId === "insurance");
+    const last = lastRecord(state, "insurance");
     if (last && state.day - last.day < DAYS_PER_YEAR) return null;
     return {
       speaker: "cecil",

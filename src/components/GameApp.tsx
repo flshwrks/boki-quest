@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { balanceIn, netBalances } from "@/engine/ledger";
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
+import { EXAM_BANK } from "@/content/examBank";
 import { LESSON_BY_ID } from "@/content/lessons";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
@@ -57,7 +58,7 @@ import {
   startMock,
   startPrepLesson,
 } from "@/game/training";
-import type { CharacterId, GameState, Phase } from "@/game/types";
+import type { CharacterId, GameState, LessonId, Phase } from "@/game/types";
 import { ACHIEVEMENTS, type Achievement, withAchievements } from "@/content/achievements";
 import { BookModal, type Tab as BookTab } from "./BookModal";
 import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
@@ -400,6 +401,11 @@ export default function GameApp() {
     );
   }
 
+  /** 講義の早送り：確認問題がある講義だけ。答えには、その講義で習う科目も使える */
+  const skipOf = (lesson: LessonId) => {
+    const question = EXAM_BANK.find((q) => q.lesson === lesson);
+    return question && { question, accounts: [...unlockedAccounts(state), ...LESSON_BY_ID[lesson].accounts], onSkip: () => update(skipLesson) };
+  };
   const inputMode: InputMode = inputPref ?? (LEVELS[state.level].cbt ? "cbt" : "card");
   const update = (f: (s: GameState) => GameState) => setState((s) => (s ? withAchievements(f(s)) : s));
   const commit = (next: GameState) => setState(withAchievements(next));
@@ -443,7 +449,7 @@ export default function GameApp() {
           lessonId={p.lesson}
           page={p.page}
           onTurn={(d) => update((s) => turnLessonPage(s, d))}
-          skip={{ accounts: [...unlockedAccounts(state), ...LESSON_BY_ID[p.lesson].accounts], onSkip: () => update(skipLesson) }}
+          skip={skipOf(p.lesson)}
         />
       );
       break;

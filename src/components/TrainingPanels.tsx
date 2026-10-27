@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import type { AccountName } from "@/engine/accounts";
-import { type Entry, isEmptyEntry } from "@/engine/journal";
+import type { Entry } from "@/engine/journal";
 import { LESSONS, LESSON_BY_ID, PREP_LEVEL, type Lesson } from "@/content/lessons";
 import { LEVELS } from "@/content/world";
 import { EXAM_PASS } from "@/game/logic";
 import { DRILL_SIZE, LESSONS_WITH_QUESTIONS, type Mastery, lessonsLeft, masteryOf, weakLessons } from "@/game/training";
 import type { DrillSession, GameState, LessonId } from "@/game/types";
-import { CbtEntryForm } from "./CbtEntryForm";
-import { MissDetail, QuestionText } from "./ExamPanel";
+import { QuizCard } from "./Question";
 import { Btn, Portrait, Win } from "./ui";
 
 /** 習熟度マップの段（店の成長の順、決算、試験対策） */
@@ -173,7 +171,6 @@ export function DrillPanel({
   onCheck: (entry: Entry) => void;
   onNext: () => void;
 }) {
-  const [draft, setDraft] = useState<Entry | null>(null);
   const total = drill.questions.length;
   const title = drill.lesson ? `ドリル：${LESSON_BY_ID[drill.lesson].title}` : "苦手ドリル";
 
@@ -208,27 +205,9 @@ export function DrillPanel({
         ))}
       </div>
       <p className="mb-1 text-xs text-dim">{LESSON_BY_ID[q.lesson].title}</p>
-      <QuestionText q={q} className="mb-3 rounded-lg border border-white/30 p-2" />
-      {result === null ? (
-        <>
-          <div className="rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b]">
-            <CbtEntryForm key={drill.index} accounts={accounts} initial={null} onChange={setDraft} />
-          </div>
-          <div className="mt-3">
-            <Btn onClick={() => draft && onCheck(draft)} disabled={!draft || isEmptyEntry(draft)}>
-              答え合わせ
-            </Btn>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className={`stamp mb-2 text-2xl ${result ? "text-ok" : "text-ng"}`}>{result ? "◯ 正解！" : "✕ ざんねん"}</p>
-          {!result && <MissDetail answer={q.answer} mine={drill.answer} />}
-          <div className="mt-3">
-            <Btn onClick={onNext}>{drill.index + 1 < total ? "次の問題" : "結果を見る"}</Btn>
-          </div>
-        </>
-      )}
+      <QuizCard key={drill.index} q={q} accounts={accounts} result={result} mine={drill.answer} onCheck={onCheck}>
+        <Btn onClick={onNext}>{drill.index + 1 < total ? "次の問題" : "結果を見る"}</Btn>
+      </QuizCard>
     </Win>
   );
 }
