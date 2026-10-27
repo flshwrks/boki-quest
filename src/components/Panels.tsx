@@ -8,13 +8,15 @@ import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
 import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
 import type { AccountName } from "@/engine/accounts";
-import type { GameEvent, GameState, LessonId, ResultInfo } from "@/game/types";
+import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
+import type { OrderPay } from "@/game/logic";
+import { OrderPanel } from "./OrderPanel";
 import { TrialBalanceTable } from "./BookModal";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { LedgerViz } from "./LedgerViz";
 import { AccountChip, AnswerExplain, Btn, Dialogue, Portrait, Speaker, Win, fmt } from "./ui";
 
-export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () => void }) {
+export function DayStartPanel({ state, onOpen, onOrder }: { state: GameState; onOpen: () => void; onOrder: (item: ItemId, qty: number, pay: OrderPay) => void }) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
   const goal = LEVEL_UP[state.level];
@@ -59,9 +61,12 @@ export function DayStartPanel({ state, onOpen }: { state: GameState; onOpen: () 
       )}
       {!goal && lessons.every((l) => state.lessonsDone.includes(l.id)) && (
         <p className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
-          Lv{state.level}の講義はすべて修了！ 次の成長は、次のアップデートで解禁予定じゃ。それまで店を回して腕を磨こう。
+          {state.level >= 5
+            ? "3級の講義はすべて修了じゃ！ あとは店を回して、仕訳を体に覚えさせるのじゃ。実績集めもよいぞ。"
+            : `Lv${state.level}の講義はすべて修了！ 次の成長は、次のアップデートで解禁予定じゃ。それまで店を回して腕を磨こう。`}
         </p>
       )}
+      {state.lessonsDone.includes("trade") && <OrderPanel state={state} onOrder={onOrder} />}
       <Btn onClick={onOpen}>開店する！</Btn>
     </Win>
   );

@@ -5,7 +5,7 @@ import type { CharacterId, GameState } from "@/game/types";
 import { Sprite } from "./Sprite";
 import { Portrait } from "./ui";
 
-const SHELF_MAX = 10;
+const SHELF_MAX = 8;
 
 export type TimeOfDay = "morning" | "day" | "evening";
 
@@ -33,6 +33,7 @@ export interface SceneFx {
 /** 店内の様子。棚の品数が在庫に合わせて増減し、話し手がカウンターに立つ */
 export function Scene({ state, speaker, time, fx = {} }: { state: GameState; speaker?: CharacterId; time: TimeOfDay; fx?: SceneFx }) {
   const indoor = state.level >= 2;
+  const items = itemsForLevel(state.level);
   return (
     <div
       className="relative h-44 overflow-hidden rounded-[14px] border-2 border-white/85 shadow-[0_10px_24px_rgb(0_0_0/0.45)] sm:h-52"
@@ -45,25 +46,23 @@ export function Scene({ state, speaker, time, fx = {} }: { state: GameState; spe
       {indoor && <div className="pointer-events-none absolute inset-0 transition-colors duration-700" style={{ background: TINT[time] }} />}
 
       {/* 棚 */}
-      <div className="absolute top-2 right-2 flex flex-col gap-1 sm:top-3 sm:right-3">
-        {itemsForLevel(state.level).map((id) => {
+      {/* 棚：商品がふえたら2列にして、店の中に収める */}
+      <div className={`absolute top-2 right-2 grid gap-1 sm:top-3 sm:right-3 ${items.length > 3 ? "grid-cols-2" : "grid-cols-1"}`}>
+        {items.map((id) => {
           const it = ITEMS[id];
-          const shown = Math.min(state.stock[id], SHELF_MAX);
+          const stock = state.stock[id];
           return (
-            <div
-              key={id}
-              className="flex h-8 items-end gap-0.5 rounded-sm border-b-4 border-[#3a2412] bg-black/25 px-1 sm:h-9"
-              title={`${it.name} 在庫${state.stock[id]}`}
-            >
-              <span className="mr-1 w-14 self-center text-[10px] leading-tight text-white drop-shadow sm:w-16 sm:text-xs">
-                {it.name}
-                <br />
-                <span className="text-gold">×{state.stock[id]}</span>
-              </span>
-              {Array.from({ length: shown }, (_, i) => (
-                <Sprite key={i} name={it.sprite} palette={it.palette} size={14} />
-              ))}
-              {state.stock[id] === 0 && <span className="self-center text-[10px] text-ng">品切れ</span>}
+            <div key={id} className="w-[6.5rem] rounded-sm border-b-4 border-[#3a2412] bg-black/30 px-1 py-0.5 sm:w-32" title={`${it.name} 在庫${stock}`}>
+              <div className="flex items-center gap-1 text-[10px] leading-tight text-white drop-shadow sm:text-xs">
+                <Sprite name={it.sprite} palette={it.palette} size={12} />
+                <span className="truncate">{it.name}</span>
+                <span className={`ml-auto ${stock === 0 ? "text-ng" : "text-gold"}`}>{stock === 0 ? "品切れ" : `×${stock}`}</span>
+              </div>
+              <div className="flex h-3 gap-px">
+                {Array.from({ length: Math.min(stock, SHELF_MAX) }, (_, i) => (
+                  <Sprite key={i} name={it.sprite} palette={it.palette} size={9} />
+                ))}
+              </div>
             </div>
           );
         })}

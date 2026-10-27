@@ -97,7 +97,7 @@ const bank: EventTemplate = {
 
 // ───────── 仕入 ─────────
 
-function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee: number, via?: "普通預金"): Transaction {
+export function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee: number, via?: "普通預金"): Transaction {
   const it = ITEMS[item];
   const amount = it.cost * qty;
   const cashAccount: AccountName = via ?? "現金";
@@ -131,7 +131,7 @@ function purchaseTx(item: ItemId, qty: number, pay: "現金" | "買掛金", fee:
   };
 }
 
-const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10], elixir: [3, 5] };
+export const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10], elixir: [3, 5] };
 
 function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
   return {

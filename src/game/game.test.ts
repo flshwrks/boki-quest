@@ -5,6 +5,7 @@ import { LESSONS } from "@/content/lessons";
 import { ITEM_IDS } from "@/content/world";
 import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { EXAM_BANK } from "@/content/examBank";
+import { newAchievements } from "@/content/achievements";
 import { LESSON_BY_ID } from "@/content/lessons";
 import {
   advance,
@@ -15,6 +16,8 @@ import {
   entriesOf,
   finishExam,
   finishReport,
+  afterResult,
+  startOrder,
   gradeExam,
   newGame,
   nextDay,
@@ -261,4 +264,36 @@ describe("審査の問題", () => {
       for (const l of [...q.answer.debit, ...q.answer.credit]) expect(learned.has(l.account), `${q.text} → ${l.account}`).toBe(true);
     }
   });
+});
+
+describe("朝の仕入れ注文", () => {
+  it("注文して記帳すると在庫がふえ、朝の画面に戻る", () => {
+    const rand = seededRand(1);
+    let s = newGame("テスト商店", rand);
+    // 2日目の朝まで進める
+    while (!(s.day === 2 && s.phase.kind === "dayStart")) {
+      const p = s.phase;
+      if (p.kind === "lesson") s = turnLessonPage(s, 1);
+      else if (p.kind === "event") s = choose(s, p.event.choices.findIndex((c) => !c.disabled), rand);
+      else if (p.kind === "journal") s = submitEntry(s, p.session.tx.answer);
+      else if (p.kind === "dayEnd") s = closeDay(s, rand);
+      else s = advance(s, rand);
+    }
+    const before = s.stock.potion;
+    s = startOrder(s, "potion", 10, "普通預金");
+    if (s.phase.kind !== "journal") throw new Error("注文の記帳に進まない");
+    s = submitEntry(s, s.phase.session.tx.answer);
+    s = afterResult(s, rand);
+    expect(s.phase.kind).toBe("dayStart");
+    expect(s.stock.potion).toBe(before + 10);
+    expect(s.journal.at(-1)?.entry).toEqual({ debit: [{ account: "仕入", amount: 6000 }], credit: [{ account: "普通預金", amount: 6000 }] });
+  });
+});
+
+describe("実績", () => {
+  it("通しプレイで、店の成長や決算の実績が取れる", () => {
+    const { s } = play(1, 130);
+    const ids = newAchievements(s).map((a) => a.id);
+    for (const id of ["founded", "lv2", "lv5", "closing", "sales1m"]) expect(ids, id).toContain(id);
+  }, 60000);
 });

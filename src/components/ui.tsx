@@ -68,9 +68,10 @@ export function Btn({
   );
 }
 
-export function Portrait({ id, size = 64, className = "" }: { id: CharacterId; size?: number; className?: string }) {
+/** キャラクターの顔。ふだんは、まばたきと待機の動きつき */
+export function Portrait({ id, size = 64, className = "", still = false }: { id: CharacterId; size?: number; className?: string; still?: boolean }) {
   const c = CHARACTERS[id];
-  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} />;
+  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} />;
 }
 
 export function Speaker({ id }: { id: CharacterId }) {

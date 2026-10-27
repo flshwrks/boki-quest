@@ -4,6 +4,7 @@ import { useState } from "react";
 import { type AccountName, CATEGORY_LABEL, categoryOf, homeSide, inMasterOrder, sideWithPos } from "@/engine/accounts";
 import { trialBalance, trialBalanceTotals } from "@/engine/ledger";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
+import { ACHIEVEMENTS } from "@/content/achievements";
 import { LESSONS, LESSON_BY_ID } from "@/content/lessons";
 import { dateLabel } from "@/content/world";
 import { entriesOf, unlockedAccounts } from "@/game/logic";
@@ -11,8 +12,9 @@ import type { GameState, LessonId } from "@/game/types";
 import { LessonView } from "./LessonView";
 import { AccountChip, Btn, CATEGORY_BG, EntryTable, Modal, fmt } from "./ui";
 
-type Tab = "cards" | "notes" | "journal" | "tb";
+export type Tab = "cards" | "notes" | "journal" | "tb" | "achievements";
 const TABS: [Tab, string][] = [
+  ["achievements", "実績"],
   ["cards", "勘定科目"],
   ["notes", "講義ノート"],
   ["journal", "仕訳帳"],
@@ -182,8 +184,32 @@ export function TrialBalanceTable({ state }: { state: GameState }) {
   );
 }
 
-export function BookModal({ state, onClose }: { state: GameState; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("cards");
+function Achievements({ state }: { state: GameState }) {
+  return (
+    <div>
+      <p className="mb-2 text-sm text-dim">
+        集めた実績 {state.achievements.length} / {ACHIEVEMENTS.length}（ノーヒント連続正解の最高記録：{state.bestCombo}）
+      </p>
+      <ul className="grid gap-1.5 sm:grid-cols-2">
+        {ACHIEVEMENTS.map((a) => {
+          const got = state.achievements.includes(a.id);
+          return (
+            <li key={a.id} className={`flex items-center gap-2 rounded-lg border p-2 text-sm ${got ? "border-gold/70 bg-gold/10" : "border-dashed border-white/20 text-dim"}`}>
+              <span className={`text-xl ${got ? "" : "opacity-30 grayscale"}`}>{a.icon}</span>
+              <div>
+                <div className={got ? "text-gold" : ""}>{got ? a.title : "？？？"}</div>
+                <div className="text-xs text-dim">{a.hint}</div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+export function BookModal({ state, onClose, initialTab = "cards" }: { state: GameState; onClose: () => void; initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   return (
     <Modal title="簿記の書" onClose={onClose}>
       <div role="tablist" className="mb-3 flex flex-wrap gap-1.5">
@@ -204,6 +230,7 @@ export function BookModal({ state, onClose }: { state: GameState; onClose: () =>
       {tab === "notes" && <Notes state={state} />}
       {tab === "journal" && <Journal state={state} />}
       {tab === "tb" && <TrialBalanceTable state={state} />}
+      {tab === "achievements" && <Achievements state={state} />}
     </Modal>
   );
 }

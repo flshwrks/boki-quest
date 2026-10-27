@@ -267,3 +267,67 @@ body {
     display: none;
   }
 }
+
+/* ───────── ドット絵のキャラクターの動き ───────── */
+
+/* 待機：2コマでぴょこぴょこ */
+@keyframes sprite-idle {
+  50% {
+    transform: translateY(-4%);
+  }
+}
+.sprite-idle {
+  animation: sprite-idle 1.1s steps(1) infinite;
+}
+
+/* まばたき：数秒に一度、目を閉じたコマに切り替える */
+@keyframes sprite-eyes-closed {
+  0%,
+  93%,
+  100% {
+    opacity: 0;
+  }
+  94%,
+  98% {
+    opacity: 1;
+  }
+}
+@keyframes sprite-eyes-open {
+  0%,
+  93%,
+  100% {
+    opacity: 1;
+  }
+  94%,
+  98% {
+    opacity: 0;
+  }
+}
+.sprite-eyes-closed {
+  animation: sprite-eyes-closed 3.4s steps(1) infinite;
+}
+.sprite-eyes-open {
+  animation: sprite-eyes-open 3.4s steps(1) infinite;
+}
+
+/* 羽ばたき：羽だけを上下に */
+@keyframes sprite-flap {
+  50% {
+    transform: translateY(1px);
+  }
+}
+.sprite-flap {
+  animation: sprite-flap 0.3s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite-idle,
+  .sprite-eyes-closed,
+  .sprite-eyes-open,
+  .sprite-flap {
+    animation: none !important;
+  }
+  .sprite-eyes-closed {
+    opacity: 0;
+  }
+}

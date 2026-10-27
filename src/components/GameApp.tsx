@@ -7,6 +7,8 @@ import { sumAmounts } from "@/engine/journal";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
   advance,
+  afterResult,
+  startOrder,
   finishReport,
   beginExam,
   examScore,
@@ -38,7 +40,8 @@ import {
   storageSet,
 } from "@/game/save";
 import type { CharacterId, GameState } from "@/game/types";
-import { BookModal } from "./BookModal";
+import { ACHIEVEMENTS, type Achievement, newAchievements } from "@/content/achievements";
+import { BookModal, type Tab as BookTab } from "./BookModal";
 import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
 import { ExamPanel } from "./ExamPanel";
 import { type InputMode, JournalInput } from "./JournalInput";
@@ -241,7 +244,8 @@ export default function GameApp() {
   // クラウドの版。保存するときに「この版から変更した」と伝え、別の端末の新しいセーブを上書きしないようにする
   const cloudRevRef = useRef(0);
   const [state, setState] = useState<GameState | null>(null);
-  const [book, setBook] = useState(false);
+  const [book, setBook] = useState<BookTab | null>(null);
+  const [toast, setToast] = useState<Achievement[]>([]);
   const [ledger, setLedger] = useState(false);
   const [sound, setSound] = useState(true);
   // 仕訳の入力方式。null なら Lv に合わせて自動（Lv3から本番と同じCBT形式）
@@ -315,6 +319,20 @@ export default function GameApp() {
     [phase],
   );
 
+  // 実績：場面が変わったときと記帳したときに判定し、新しく取れたらお知らせする
+  const achievementCheck = state ? `${state.phase.kind}:${state.journal.length}:${state.level}` : "";
+  useEffect(() => {
+    if (!state) return;
+    const earned = newAchievements(state);
+    if (earned.length === 0) return;
+    setState((s) => (s ? { ...s, achievements: [...s.achievements, ...earned.map((a) => a.id)] } : s));
+    setToast(earned);
+    play("fanfare");
+    const timer = setTimeout(() => setToast([]), 3500);
+    return () => clearTimeout(timer);
+    // 判定のきっかけ（achievementCheck）が変わったときだけ確かめる
+  }, [achievementCheck]);
+
   const prevPhase = state?.phase.kind;
   useEffect(() => {
     if (prevPhase === "result") play("correct");
@@ -363,7 +381,13 @@ export default function GameApp() {
   let panel: React.ReactNode;
   switch (p.kind) {
     case "dayStart":
-      panel = <DayStartPanel state={state} onOpen={() => update((s) => advance(s, rand))} />;
+      panel = (
+        <DayStartPanel
+          state={state}
+          onOpen={() => update((s) => advance(s, rand))}
+          onOrder={(item, qty, pay) => update((s) => startOrder(s, item, qty, pay))}
+        />
+      );
       break;
     case "lesson":
       panel = <LessonView lessonId={p.lesson} page={p.page} onTurn={(d) => update((s) => turnLessonPage(s, d))} />;
@@ -395,7 +419,7 @@ export default function GameApp() {
       );
       break;
     case "result":
-      panel = <ResultPanel info={p.info} state={state} highlight={highlight} onNext={() => update((s) => advance(s, rand))} />;
+      panel = <ResultPanel info={p.info} state={state} highlight={highlight} onNext={() => update((s) => afterResult(s, rand))} />;
       break;
     case "dayEnd":
       panel = <DayEndPanel state={state} onClose={() => update((s) => closeDay(s, rand))} />;
@@ -480,7 +504,11 @@ export default function GameApp() {
                 <span className="sr-only">{CLOUD_LABEL[cloud]}</span>
               </span>
             )}
-            <Btn variant="ghost" className="text-sm" onClick={() => setBook(true)}>
+            <Btn variant="ghost" className="text-sm" onClick={() => setBook("achievements")}>
+              🏅 {state.achievements.length}/{ACHIEVEMENTS.length}
+              <span className="sr-only">実績</span>
+            </Btn>
+            <Btn variant="ghost" className="text-sm" onClick={() => setBook("cards")}>
               📖 簿記の書
             </Btn>
             <Btn variant="ghost" className="text-sm lg:hidden" onClick={() => setLedger(true)}>
@@ -537,7 +565,20 @@ export default function GameApp() {
         </aside>
       </div>
 
-      {book && <BookModal state={state} onClose={() => setBook(false)} />}
+      {book && <BookModal state={state} initialTab={book} onClose={() => setBook(null)} />}
+      {toast.length > 0 && (
+        <div role="status" className="pointer-events-none fixed inset-x-0 top-20 z-50 flex flex-col items-center gap-2 px-4">
+          {toast.slice(0, 4).map((a) => (
+            <div key={a.id} className="pop win flex items-center gap-2 px-4 py-2 text-sm">
+              <span className="text-2xl">{a.icon}</span>
+              <span>
+                実績「<span className="text-gold">{a.title}</span>」を獲得！
+              </span>
+            </div>
+          ))}
+          {toast.length > 4 && <div className="pop win px-4 py-1 text-xs">ほか {toast.length - 4} 件の実績を獲得！（簿記の書で確認できる）</div>}
+        </div>
+      )}
       {ledger && (
         <Modal title="帳簿のすがた" onClose={() => setLedger(false)}>
           <LedgerViz entries={entries} highlight={highlight} />

@@ -1,0 +1,62 @@
+// 実績（やり込み要素）。ふだんのプレイの結果から判定し、遊び方は変えない。
+
+import type { AccountName } from "@/engine/accounts";
+import { examScore, totalSales, unlockedAccounts } from "@/game/logic";
+import type { GameState } from "@/game/types";
+import { ACCOUNT_INFO } from "./accountInfo";
+import { LESSONS } from "./lessons";
+import { itemsForLevel } from "./world";
+
+export interface Achievement {
+  id: string;
+  icon: string;
+  title: string;
+  /** まだ取れていないときに見せるヒント */
+  hint: string;
+  test: (state: GameState) => boolean;
+}
+
+const did = (state: GameState, templateId: string, times = 1) => state.journal.filter((r) => r.templateId === templateId).length >= times;
+
+export const ACHIEVEMENTS: Achievement[] = [
+  { id: "founded", icon: "🏪", title: "開業おめでとう", hint: "株式会社を設立する", test: (s) => did(s, "founding") },
+  { id: "combo10", icon: "🔥", title: "帳簿の達人", hint: "ノーヒントで10連続正解する", test: (s) => s.bestCombo >= 10 },
+  { id: "combo30", icon: "💎", title: "帳簿の神様", hint: "ノーヒントで30連続正解する", test: (s) => s.bestCombo >= 30 },
+  { id: "collector", icon: "💰", title: "ツケ回収人", hint: "ツケ（売掛金）を10回回収する", test: (s) => did(s, "collect", 10) },
+  { id: "note", icon: "📜", title: "手形デビュー", hint: "約束手形で代金を受け取る", test: (s) => did(s, "customer-note") },
+  { id: "staff", icon: "🪄", title: "特注職人", hint: "ミーナに星詠みの杖を届ける", test: (s) => did(s, "deliver-staff") },
+  { id: "detective", icon: "🔍", title: "現金過不足探偵", hint: "現金が合わなかった原因を突き止める", test: (s) => did(s, "cashdiff-resolve") },
+  { id: "lineup", icon: "🧺", title: "品揃え名人", hint: "扱える商品をすべて同時に在庫に並べる（Lv3以上）", test: (s) => s.level >= 3 && itemsForLevel(s.level).every((i) => s.stock[i] > 0) },
+  { id: "lv2", icon: "🏠", title: "小さな店舗の主", hint: "店を「小さな店舗」に成長させる", test: (s) => s.level >= 2 },
+  { id: "lv3", icon: "🏬", title: "商店街の顔", hint: "店を「商店街の店」に成長させる", test: (s) => s.level >= 3 },
+  { id: "lv4", icon: "🏯", title: "城下町の大店", hint: "店を「城下町の大店」に成長させる", test: (s) => s.level >= 4 },
+  { id: "lv5", icon: "👑", title: "王都の名店", hint: "店を「王都の名店」に成長させる", test: (s) => s.level >= 5 },
+  { id: "perfect", icon: "💯", title: "審査満点", hint: "昇格審査で100点をとる", test: (s) => s.phase.kind === "exam" && !!s.phase.exam.graded && examScore(s.phase.exam) === 100 },
+  { id: "closing", icon: "📘", title: "はじめての決算", hint: "決算日を乗り切る", test: (s) => s.lessonsDone.includes("closing") },
+  {
+    id: "profit",
+    icon: "📈",
+    title: "黒字決算",
+    hint: "当期純利益を出して決算を終える",
+    test: (s) => s.journal.some((r) => r.templateId === "closing-transfer" && r.entry.credit.some((l) => l.account === "繰越利益剰余金")),
+  },
+  { id: "dividend", icon: "🎁", title: "株主に感謝を", hint: "株主総会で配当を決める", test: (s) => did(s, "dividend-decide") },
+  { id: "sales1m", icon: "🪙", title: "売上100万円", hint: "売上の累計を100万円にする", test: (s) => totalSales(s) >= 1_000_000 },
+  { id: "sales10m", icon: "🏆", title: "売上1,000万円", hint: "売上の累計を1,000万円にする", test: (s) => totalSales(s) >= 10_000_000 },
+  {
+    id: "cards",
+    icon: "🃏",
+    title: "勘定科目コンプリート",
+    hint: "勘定科目カードをすべて集める",
+    test: (s) => {
+      const owned = new Set<AccountName>(unlockedAccounts(s));
+      return (Object.keys(ACCOUNT_INFO) as AccountName[]).every((a) => owned.has(a));
+    },
+  },
+  { id: "lessons", icon: "🎓", title: "ホーホー先生の一番弟子", hint: "すべての講義を受ける", test: (s) => LESSONS.every((l) => s.lessonsDone.includes(l.id)) },
+];
+
+/** まだ持っていない実績のうち、いま条件を満たしているもの */
+export function newAchievements(state: GameState): Achievement[] {
+  return ACHIEVEMENTS.filter((a) => !state.achievements.includes(a.id) && a.test(state));
+}

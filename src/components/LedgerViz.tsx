@@ -17,7 +17,7 @@ const HEIGHT = 200;
 
 function Column({ blocks, scale, highlight }: { blocks: Block[]; scale: number; highlight: Set<string> }) {
   return (
-    <div className="flex flex-1 flex-col justify-end">
+    <div className="flex min-w-0 flex-1 flex-col justify-end">
       {blocks.map((b) => {
         const h = Math.max(18, b.amount * scale);
         const lit = highlight.has(b.key);
@@ -25,7 +25,7 @@ function Column({ blocks, scale, highlight }: { blocks: Block[]; scale: number; 
           <div
             key={b.key}
             style={{ height: h }}
-            className={`${b.bg} flex items-center justify-between overflow-hidden border border-black/40 px-1.5 text-[11px] leading-none transition-all duration-500 ${
+            className={`${b.bg} flex min-w-0 items-center justify-between overflow-hidden border border-black/40 px-1.5 text-[11px] leading-none transition-all duration-500 ${
               lit ? "relative z-10 outline-2 outline-gold" : ""
             }`}
           >
@@ -54,7 +54,7 @@ export const LedgerViz = memo(function LedgerViz({ entries, highlight = [] }: { 
 
   const bsLeftBlocks = [...toBlocks(s.assets), ...lossBlock("bs-loss")];
   // 貸倒引当金・減価償却累計額は資産から差し引く科目。T字では貸方（右）に置くと左右がそろう
-  const contraBlocks = s.contras.map((x) => ({ key: x.account, label: `${x.account}（資産から控除）`, amount: x.amount, bg: CATEGORY_BG.contra }));
+  const contraBlocks = s.contras.map((x) => ({ key: x.account, label: `${x.account}（控除）`, amount: x.amount, bg: CATEGORY_BG.contra }));
   const bsRightBlocks = [...contraBlocks, ...toBlocks(s.liabilities), ...toBlocks(s.equity), ...profitBlock("bs-profit")];
   const plLeft = [...toBlocks(s.expenses), ...profitBlock("pl-profit")];
   const plRight = [...toBlocks(s.revenues), ...lossBlock("pl-loss")];

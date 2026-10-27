@@ -154,6 +154,8 @@ export interface TxSession {
   attempts: number;
   hints: number;
   feedback: string[] | null;
+  /** 朝の仕入れ注文のように、記帳が終わったら朝の画面に戻る取引 */
+  returnToMorning?: boolean;
 }
 
 export interface ResultInfo {
@@ -162,6 +164,7 @@ export interface ResultInfo {
   trustDelta: number;
   combo: number;
   comboMessage?: string;
+  returnToMorning?: boolean;
 }
 
 export type Phase =
@@ -232,6 +235,10 @@ export interface GameState {
   mistakes: Mistake[];
   /** 昇格審査に落ちたとき、次に受けられる日 */
   examRetryDay: number;
+  /** 獲得した実績のID */
+  achievements: string[];
+  /** ノーヒント連続正解の最高記録 */
+  bestCombo: number;
   /** 決算日の間だけ、決算整理を始めた時点の仕訳の件数（精算表の「修正記入」をここから数える） */
   closingFrom: number | null;
   today: DayStats;

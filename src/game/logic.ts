@@ -1,7 +1,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
-import { TEMPLATES } from "@/content/events";
+import { TEMPLATES, purchaseTx } from "@/content/events";
 import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
 import { EXAM_BANK } from "@/content/examBank";
@@ -11,7 +11,7 @@ import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
 import { type Rand, shuffle } from "./random";
-import type { Choice, DayStats, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
+import type { Choice, DayStats, ItemId, Effect, ExamQuestion, ExamSession, GameState, JournalRecord, LessonId, QueueItem, ResultInfo, Transaction, TxSession } from "./types";
 
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
@@ -67,6 +67,8 @@ export function initialState(shopName: string): GameState {
     mistakes: [],
     examRetryDay: 0,
     closingFrom: null,
+    achievements: [],
+    bestCombo: 0,
     today: emptyDay(),
     phase: { kind: "dayStart" },
   };
@@ -146,6 +148,30 @@ function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
     if (reason) return reason;
   }
   return undefined;
+}
+
+export type OrderPay = "現金" | "普通預金" | "買掛金";
+
+/** 朝の仕入れ注文の仕訳と、注文できない理由（お金が足りないなど） */
+export function orderPreview(state: GameState, item: ItemId, qty: number, pay: OrderPay): { tx: Transaction; disabled?: string } {
+  const base = pay === "買掛金" ? purchaseTx(item, qty, "買掛金", 0) : purchaseTx(item, qty, "現金", 0, pay === "普通預金" ? "普通預金" : undefined);
+  const tx = state.lessonsDone.includes("salestax") ? withSalesTax(base) : base;
+  return { tx, disabled: moneyShortage(ctxOf(state, Math.random, false), tx) };
+}
+
+/** 開店前に、ガンテツへ仕入れを注文する。記帳が終わったら朝の画面に戻る */
+export function startOrder(state: GameState, item: ItemId, qty: number, pay: OrderPay): GameState {
+  if (state.phase.kind !== "dayStart") return state;
+  const { tx, disabled } = orderPreview(state, item, qty, pay);
+  if (disabled) return state;
+  const session: TxSession = { tx, speaker: "gantetsu", templateId: "order", guided: false, hints: 0, attempts: 0, feedback: null, returnToMorning: true };
+  return { ...state, phase: { kind: "journal", session } };
+}
+
+/** 正解の画面の次へ。朝の注文なら朝の画面に戻り、それ以外は今日の予定を進める */
+export function afterResult(state: GameState, rand: Rand): GameState {
+  if (state.phase.kind === "result" && state.phase.info.returnToMorning) return { ...state, phase: { kind: "dayStart" } };
+  return advance(state, rand);
 }
 
 /** キューから次の講義・イベントを取り出す。空になったら一日の終わり */
@@ -302,6 +328,7 @@ export function submitEntry(state: GameState, input: Entry): GameState {
     journal: [...state.journal, { day: state.day, templateId: s.templateId, exam: s.tx.exam, entry: s.tx.answer }],
     trust: clamp(state.trust + trustDelta),
     combo,
+    bestCombo: Math.max(state.bestCombo, combo),
     reputation: clamp(state.reputation + comboRep),
     today: {
       sales: state.today.sales + sales,
@@ -312,7 +339,7 @@ export function submitEntry(state: GameState, input: Entry): GameState {
     },
   };
   next = applyEffect(next, s.tx.effect);
-  const info: ResultInfo = { tx: s.tx, firstTry, trustDelta, combo, comboMessage };
+  const info: ResultInfo = { tx: s.tx, firstTry, trustDelta, combo, comboMessage, returnToMorning: s.returnToMorning };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
 }
 
