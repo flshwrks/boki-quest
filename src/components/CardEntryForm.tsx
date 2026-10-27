@@ -82,14 +82,9 @@ export function CardEntryForm({ accounts, examText, onChange }: { accounts: Acco
       setNextId(nextId + 1);
     }
     setRows(next);
+    // 置いた行をそのまま金額の入力先にする（金額を入れてから、自分で反対側の枠に移る）
     setFocusId(placedId);
     setActiveSide(side);
-    // 借方を置き終えたら、空いている貸方へ自動で移る
-    const emptyCredit = next.find((r) => r.side === "credit" && r.account === null);
-    if (side === "debit" && !next.some((r) => r.side === "debit" && r.account === null) && emptyCredit) {
-      setActiveSide("credit");
-      setFocusId(emptyCredit.id);
-    }
   };
 
   const update = (id: number, patch: Partial<Row>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
