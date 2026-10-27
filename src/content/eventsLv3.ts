@@ -18,6 +18,7 @@ import {
   settleAll,
   settleDue,
   tradeScale,
+  voiceOf,
 } from "./eventKit";
 import { ITEMS, dayInMonth, itemsForLevel } from "./world";
 
@@ -110,7 +111,7 @@ const customerNote: EventTemplate = {
       const c = pick(rand, ar);
       return {
         speaker: c.who,
-        lines: ["この前のツケ、ギルドの約束手形で払わせてくれ。", `額面${n(c.amount)}円、期日は来月だ。`],
+        lines: [voiceOf(c.who).noteDebt(n(c.amount))],
         choices: [
           {
             label: "手形で受け取る",
@@ -132,7 +133,7 @@ const customerNote: EventTemplate = {
       speaker: "gord",
       lines: [
         "おう、遠征隊の分をまとめて頼む。",
-        `「${ITEMS[item].name}を${qty}${ITEMS[item].unit}」（${n(amount)}円）`,
+        `「${voiceOf("gord").want(`${ITEMS[item].name}${qty}${ITEMS[item].unit}`)}」（${n(amount)}円）`,
         "代金はギルドの約束手形で払う。期日は来月だ。",
       ],
       choices: [
@@ -251,7 +252,7 @@ const cardSale: EventTemplate = {
     const net = amount - fee;
     return {
       speaker: who,
-      lines: [CUSTOMER_PREFS[who].greet, `「${ITEMS[item].name}を${qty}${ITEMS[item].unit}」（${n(amount)}円）`, "ギルドカードで払ってもいい？"],
+      lines: [CUSTOMER_PREFS[who].greet, `「${voiceOf(who).want(`${ITEMS[item].name}${qty}${ITEMS[item].unit}`)}」（${n(amount)}円）`, voiceOf(who).cardAsk],
       choices: [
         {
           label: "カード払いで売る（手数料2%）",
@@ -271,7 +272,7 @@ const cardSale: EventTemplate = {
             effect: { stock: { [item]: -qty }, reputation: 2, addCredits: [{ kind: "クレジット売掛金", who: "cecil", amount: net }] },
           },
         },
-        decline("現金払いをお願いする", `${name(who)}「カードしか持ってないんだ…」`, -2),
+        decline("現金払いをお願いする", `${name(who)}「${voiceOf(who).cardOnly}」`, -2),
       ],
     };
   },
@@ -303,7 +304,7 @@ const giftcertSale: EventTemplate = {
       speaker: "lily",
       lines: [
         CUSTOMER_PREFS.lily.greet,
-        `「${ITEMS[item].name}を${qty}${ITEMS[item].unit}」（${n(amount)}円）`,
+        `「${voiceOf("lily").want(`${ITEMS[item].name}${qty}${ITEMS[item].unit}`)}」（${n(amount)}円）`,
         cash > 0 ? `王国の商品券${n(cert)}円分と、残りは現金でお支払いします。` : `王国の商品券${n(cert)}円分でお支払いします。`,
       ],
       choices: [

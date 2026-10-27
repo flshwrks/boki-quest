@@ -1,7 +1,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, ItemId, Transaction } from "@/game/types";
-import { CUSTOMER_PREFS, type EventTemplate, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale } from "./eventKit";
+import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale } from "./eventKit";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
@@ -240,10 +240,11 @@ function customer(mode: "any" | "credit"): EventTemplate {
       const agreesCash = rand() < (who === "allen" ? 0.4 : 0.7);
       const stock = state.stock[item];
 
-      const lines = [pref.greet, `「${it.name}を${qty}${it.unit}ください」（売値 ${n(amount)}円／在庫 ${stock}${it.unit}）`];
-      if (wantsCredit) lines.push("代金はツケにしてくれないか？ 月末にはきっちり払うからさ。");
-      if (fee > 0) lines.push(`それと、遠征先の砦まで届けてほしい。送料${n(fee)}円はそっち持ちで頼むよ。`);
-      if (discount) lines.push("まとめ買いだ、1割まけてくれんか？");
+      const v = voiceOf(who);
+      const lines = [pref.greet, `「${v.want(`${it.name}${qty}${it.unit}`)}」（売値 ${n(amount)}円／在庫 ${stock}${it.unit}）`];
+      if (wantsCredit) lines.push(v.askCredit);
+      if (fee > 0) lines.push(v.askShipping(n(fee)));
+      if (discount) lines.push(v.askDiscount);
 
       const choices: Choice[] = [];
       if (stock >= qty) {
@@ -253,7 +254,7 @@ function customer(mode: "any" | "credit"): EventTemplate {
             choices.push(
               agreesCash
                 ? { label: "現金払いをお願いする", tx: { ...saleTx(who, item, qty, amount, "現金", 0), story: `${name(who)}はしぶしぶ現金で払ってくれた。` } }
-                : { label: "現金払いをお願いする", reply: `${name(who)}「今は手持ちがないんだ…また来るよ」`, effect: { reputation: -2 } },
+                : { label: "現金払いをお願いする", reply: `${name(who)}「${v.noCash}」`, effect: { reputation: -2 } },
             );
           }
         } else {
@@ -280,8 +281,8 @@ function customer(mode: "any" | "credit"): EventTemplate {
       if (!ctx.guided) {
         choices.push(
           stock === 0
-            ? decline("在庫切れでお断りする", `${name(who)}「品切れか…残念」（品切れは評判が下がる）`, -3)
-            : decline("お断りする", `${name(who)}「そうか…」`, -2),
+            ? decline("在庫切れでお断りする", `${name(who)}「${v.soldOut}」（品切れは評判が下がる）`, -3)
+            : decline("お断りする", `${name(who)}「${v.declined}」`, -2),
         );
       }
       return { speaker: who, lines, choices };
@@ -433,8 +434,8 @@ const collect: EventTemplate = {
     return {
       speaker: c.who,
       lines: [
-        c.who === "allen" ? "この前のツケ、払いに来たぜ！ ダンジョンで稼いできたんだ。" : "先日のお代をお支払いしますね。",
-        partial ? `ごめん、今日は半分の${n(amt)}円だけ…残りはまた今度！` : `${n(amt)}円、${viaBank ? "ギルド経由で普通預金に振り込んでおいた" : "現金で持ってきた"}よ。`,
+        voiceOf(c.who).payDebt,
+        partial ? voiceOf(c.who).partial(n(amt)) : voiceOf(c.who).paid(n(amt), viaBank),
       ],
       choices: [
         {
@@ -525,7 +526,7 @@ const salesReturn: EventTemplate = {
     if (amt > c.amount) return null;
     return {
       speaker: c.who,
-      lines: [`この前ツケで買った${it.name}のうち${k}${it.unit}、栓がゆるんで漏れてたんだ…`, "返品させてくれないか？"],
+      lines: [voiceOf(c.who).returnGoods(`${it.name}のうち${k}${it.unit}`)],
       choices: [
         {
           label: "返品を受ける",

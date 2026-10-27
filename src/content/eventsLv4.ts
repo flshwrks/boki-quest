@@ -3,7 +3,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { GameState, Transaction } from "@/game/types";
-import { PAY_SOURCES, type EventTemplate, creditsOf, decline, dueCredits, interestOf, je, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
+import { PAY_SOURCES, type EventTemplate, voiceOf, creditsOf, decline, dueCredits, interestOf, je, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, LEVELS, dayInMonth } from "./world";
 
 
@@ -485,7 +485,7 @@ const unknownResolve: EventTemplate = {
     if (!held) return null;
     return {
       speaker: q.who,
-      lines: ["そういえば、この前のツケ、銀行から振り込んでおいたぜ！", `${n(q.amount)}円、届いてたかい？`],
+      lines: [voiceOf(q.who).transferred(n(q.amount))],
       choices: [
         {
           label: "正しい科目に振り替える",

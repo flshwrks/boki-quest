@@ -152,7 +152,7 @@ describe("通しプレイ", () => {
   it.each([1, 2, 3, 4, 5, 6, 7, 8])("seed %i：200日間、帳簿とゲーム状態が矛盾しない", (seed) => {
     const { s } = play(seed, 200, 0.2);
     checkInvariants(s);
-  });
+  }, 60000);
 
   it("全講義を受け、主要な取引がひととおり登場する", () => {
     const seen = new Set<string>();

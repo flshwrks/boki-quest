@@ -186,3 +186,100 @@ export const CUSTOMER_PREFS: Record<string, { items: ItemId[]; greet: string; cr
   gord: { items: ["potion", "ether", "elixir"], greet: "おう、仲間の分もまとめて買いに来た。", creditRate: 0.2, qty: { potion: [10, 15, 20], ether: [5, 10], elixir: [2, 3] } },
   lily: { items: ["herb", "antidote"], greet: "神殿の治療室で使いたいのです。", creditRate: 0.2, qty: { herb: [10, 20], antidote: [5, 10] } },
 };
+
+/** お客さんの話し方。同じ場面でも、それぞれの口調で話す */
+interface Voice {
+  want: (item: string) => string;
+  askCredit: string;
+  askShipping: (fee: string) => string;
+  askDiscount: string;
+  noCash: string;
+  soldOut: string;
+  declined: string;
+  payDebt: string;
+  partial: (amt: string) => string;
+  paid: (amt: string, bank: boolean) => string;
+  returnGoods: (goods: string) => string;
+  cardAsk: string;
+  cardOnly: string;
+  noteDebt: (amt: string) => string;
+  transferred: (amt: string) => string;
+}
+
+const VOICES: Record<"allen" | "mina" | "gord" | "lily", Voice> = {
+  // 戦士：くだけた男口調
+  allen: {
+    want: (item) => `${item}をくれ！`,
+    askCredit: "代金はツケにしてくれないか？ 月末にはきっちり払うからさ。",
+    askShipping: (fee) => `それと、遠征先の砦まで届けてほしいんだ。送料${fee}円はそっち持ちで頼むよ。`,
+    askDiscount: "まとめ買いするからさ、1割まけてくれよ！",
+    noCash: "今は手持ちがないんだ…また来るよ",
+    soldOut: "品切れか…残念だな",
+    declined: "そっか…",
+    payDebt: "この前のツケ、払いに来たぜ！ ダンジョンで稼いできたんだ。",
+    partial: (amt) => `悪い、今日は半分の${amt}円だけで勘弁してくれ…残りはまた今度！`,
+    paid: (amt, bank) => (bank ? `${amt}円、ギルド経由で普通預金に振り込んでおいたぜ。` : `${amt}円、現金で持ってきたぜ。`),
+    returnGoods: (goods) => `この前ツケで買った${goods}、栓がゆるんで漏れてたんだ…返品させてくれないか？`,
+    cardAsk: "ギルドカードで払ってもいいか？",
+    cardOnly: "悪い、カードしか持ってないんだ…",
+    noteDebt: (amt) => `この前のツケ、ギルドの約束手形で払わせてくれ。額面${amt}円、期日は来月だ。`,
+    transferred: (amt) => `そういえば、この前のツケ、銀行から振り込んでおいたぜ！ ${amt}円、届いてたか？`,
+  },
+  // 魔法使い：落ち着いた口調
+  mina: {
+    want: (item) => `${item}をいただけるかしら。`,
+    askCredit: "お代はツケにしてもらえる？ 月末には必ず払うわ。",
+    askShipping: (fee) => `それと、塔まで届けてもらえるかしら。送料${fee}円はそちら持ちでお願いね。`,
+    askDiscount: "まとめて買うのだから、1割引いてもらえないかしら。",
+    noCash: "あいにく持ち合わせがないの…また来るわね",
+    soldOut: "品切れなのね…残念",
+    declined: "そう…",
+    payDebt: "先日のツケを払いに来たわ。",
+    partial: (amt) => `ごめんなさい、今日は半分の${amt}円だけ。残りはまた今度ね。`,
+    paid: (amt, bank) => (bank ? `${amt}円、普通預金に振り込んでおいたわ。` : `${amt}円、現金で持ってきたわ。`),
+    returnGoods: (goods) => `この前ツケで買った${goods}、封が切れていたの。返品させてもらえる？`,
+    cardAsk: "ギルドカードで払ってもいいかしら？",
+    cardOnly: "あいにく、カードしか持っていないの…",
+    noteDebt: (amt) => `先日のツケ、ギルドの約束手形でお支払いするわ。額面${amt}円、期日は来月よ。`,
+    transferred: (amt) => `そういえば、先日のツケは銀行から振り込んでおいたわ。${amt}円、届いているかしら？`,
+  },
+  // 盾使い：豪快な口調
+  gord: {
+    want: (item) => `${item}を頼む。`,
+    askCredit: "代金はツケにしといてくれんか。月末にまとめて払う。",
+    askShipping: (fee) => `それと、砦まで運んでくれ。送料${fee}円はそっち持ちで頼む。`,
+    askDiscount: "まとめ買いだ、1割まけてくれんか？",
+    noCash: "今は持ち合わせがない…また来る",
+    soldOut: "品切れか…しかたない",
+    declined: "そうか…",
+    payDebt: "おう、ツケを払いに来た。",
+    partial: (amt) => `すまん、今日は半分の${amt}円だけだ。残りはまた今度払う。`,
+    paid: (amt, bank) => (bank ? `${amt}円、普通預金に振り込んでおいたぞ。` : `${amt}円、現金で持ってきた。`),
+    returnGoods: (goods) => `この前ツケで買った${goods}、瓶が割れておった。返品させてくれ。`,
+    cardAsk: "ギルドカードで払ってもいいか？",
+    cardOnly: "カードしか持っておらん…",
+    noteDebt: (amt) => `この前のツケ、ギルドの約束手形で払わせてくれ。額面${amt}円、期日は来月だ。`,
+    transferred: (amt) => `そういえば、この前のツケは銀行から振り込んでおいたぞ。${amt}円、届いとるか？`,
+  },
+  // 僧侶：丁寧語
+  lily: {
+    want: (item) => `${item}をいただけますか。`,
+    askCredit: "お代はツケにしていただけますか？ 月末には必ずお支払いします。",
+    askShipping: (fee) => `それと、神殿まで届けていただけますか。送料${fee}円はそちらのご負担でお願いします。`,
+    askDiscount: "たくさんいただくので、1割お安くしていただけませんか？",
+    noCash: "あいにく持ち合わせがなくて…また参りますね",
+    soldOut: "品切れなのですね…残念です",
+    declined: "そうですか…",
+    payDebt: "先日のお代をお支払いしに参りました。",
+    partial: (amt) => `申し訳ありません、今日は半分の${amt}円だけで…残りは改めてお持ちします。`,
+    paid: (amt, bank) => (bank ? `${amt}円、普通預金にお振り込みしておきました。` : `${amt}円、現金でお持ちしました。`),
+    returnGoods: (goods) => `先日ツケでいただいた${goods}、中身が傷んでいました。返品させていただけますか？`,
+    cardAsk: "ギルドカードでお支払いしてもよろしいですか？",
+    cardOnly: "申し訳ありません、カードしか持っていなくて…",
+    noteDebt: (amt) => `先日のお代、ギルドの約束手形でお支払いさせてください。額面${amt}円、期日は来月です。`,
+    transferred: (amt) => `そういえば、先日のお代は銀行からお振り込みしました。${amt}円、届いていますか？`,
+  },
+};
+
+/** そのお客さんの話し方（お客さん以外が来たときは丁寧語） */
+export const voiceOf = (who: CharacterId): Voice => VOICES[who as keyof typeof VOICES] ?? VOICES.lily;
