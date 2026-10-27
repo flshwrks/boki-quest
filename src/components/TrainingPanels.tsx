@@ -9,7 +9,7 @@ import { EXAM_PASS } from "@/game/logic";
 import { DRILL_SIZE, LESSONS_WITH_QUESTIONS, type Mastery, lessonsLeft, masteryOf, weakLessons } from "@/game/training";
 import type { DrillSession, GameState, LessonId } from "@/game/types";
 import { CbtEntryForm } from "./CbtEntryForm";
-import { MissDetail } from "./ExamPanel";
+import { MissDetail, QuestionText } from "./ExamPanel";
 import { Btn, Portrait, Win } from "./ui";
 
 /** 習熟度マップの段（店の成長の順、決算、試験対策） */
@@ -208,7 +208,7 @@ export function DrillPanel({
         ))}
       </div>
       <p className="mb-1 text-xs text-dim">{LESSON_BY_ID[q.lesson].title}</p>
-      <p className="mb-3 rounded-lg border border-white/30 p-2">{q.text}</p>
+      <QuestionText q={q} className="mb-3 rounded-lg border border-white/30 p-2" />
       {result === null ? (
         <>
           <div className="rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b]">

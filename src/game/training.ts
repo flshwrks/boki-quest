@@ -4,7 +4,8 @@ import { type Entry, sameEntry } from "@/engine/journal";
 import { parseAmount } from "@/engine/format";
 import { EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
-import { closingProblem, ledgerProblem, subBookProblem } from "@/content/mockExam";
+import { pick } from "@/content/eventKit";
+import { closingProblem, inventoryProblem, ledgerProblem, slipsProblem, subBookProblem, theoryProblem, trialAfterProblem } from "@/content/mockExam";
 import { advance, gradeQuestions, lessonOfTemplate, logPractice, logPractices, pickQuestions } from "./logic";
 import { type Rand, shuffle } from "./random";
 import type { DrillSession, ExamQuestion, FillAnswer, FillBlank, FillProblem, GameState, LessonId, MockSession, Mistake } from "./types";
@@ -80,7 +81,9 @@ export function weakLessons(state: GameState, mastery = masteryOf(state)): Lesso
 
 /** まだ克服していないミスを、問題の形にする（審査の問題は問題集から、店の取引は記帳した仕訳から） */
 function mistakeQuestion(state: GameState, m: Mistake): ExamQuestion | undefined {
-  if (m.templateId.startsWith("exam:")) return EXAM_BANK.find((q) => q.text === m.exam);
+  // 審査やギルドの帳簿相談で出た問題は、問題集にそのまま載っている
+  const banked = EXAM_BANK.find((q) => q.text === m.exam);
+  if (banked) return banked;
   const lesson = lessonOfTemplate(m.templateId);
   const record = state.journal.find((r) => r.templateId === m.templateId && r.exam === m.exam);
   return lesson && record ? { lesson, text: m.exam, answer: record.entry } : undefined;
@@ -146,7 +149,12 @@ export const lessonsLeft = (state: GameState) => LESSONS.filter((l) => !state.le
 
 export function makeMock(state: GameState, rand: Rand): MockSession {
   const questions = pickQuestions(state, MOCK_QUESTIONS, rand, false);
-  const problems = [ledgerProblem(rand), subBookProblem(rand), closingProblem(rand)];
+  // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ
+  const problems = [
+    pick(rand, [ledgerProblem, inventoryProblem, slipsProblem]),
+    pick(rand, [subBookProblem, theoryProblem]),
+    pick(rand, [closingProblem, trialAfterProblem]),
+  ].map((make) => make(rand));
   return {
     questions,
     answers: questions.map(() => null),

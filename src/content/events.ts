@@ -6,6 +6,7 @@ import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
 import { LV5_TEMPLATES } from "./eventsLv5";
+import { COVERAGE_TEMPLATES } from "./eventsCoverage";
 import { DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
 
 // ───────── 設立・銀行 ─────────
@@ -786,4 +787,5 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   ...LV4_TEMPLATES,
   ...CLOSING_TEMPLATES,
   ...LV5_TEMPLATES,
+  ...COVERAGE_TEMPLATES,
 };

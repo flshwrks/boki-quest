@@ -327,7 +327,7 @@ const payCorporateTax = payBalance("未払法人税等", {
 
 // ───────── 新年度の再振替仕訳 ─────────
 
-function reversal(lesson: LessonId, account: AccountName, to: AccountName, line: string): EventTemplate {
+export function reversal(lesson: LessonId, account: AccountName, to: AccountName, line: string): EventTemplate {
   return {
     lesson,
     build: (ctx) => {
@@ -391,6 +391,7 @@ export const CLOSING_PLAN: QueueItem[] = [
   ev("close-prepaid"),
   ev("close-unpaid-interest"),
   ev("close-accrued-interest"),
+  ev("close-unearned-rent"),
   ev("close-supplies"),
   ev("close-cashdiff"),
   ev("close-salestax"),
@@ -401,4 +402,10 @@ export const CLOSING_PLAN: QueueItem[] = [
 ];
 
 /** 新しい年度の初日に、いちばん初めに行う再振替仕訳 */
-export const OPENING_PLAN: QueueItem[] = [ev("reverse-prepaid"), ev("reverse-unpaid-interest"), ev("reverse-accrued-interest"), ev("reverse-supplies")];
+export const OPENING_PLAN: QueueItem[] = [
+  ev("reverse-prepaid"),
+  ev("reverse-unpaid-interest"),
+  ev("reverse-accrued-interest"),
+  ev("reverse-unearned-rent"),
+  ev("reverse-supplies"),
+];

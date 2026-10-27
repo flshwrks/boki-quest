@@ -1,8 +1,13 @@
 "use client";
 
+import { useState } from "react";
+import { EXAM_BANK } from "@/content/examBank";
 import { LESSON_BY_ID, type Diagram } from "@/content/lessons";
 import type { LessonId } from "@/game/types";
-import { CATEGORY_LABEL } from "@/engine/accounts";
+import { type AccountName, CATEGORY_LABEL } from "@/engine/accounts";
+import { type Entry, isEmptyEntry, sameEntry } from "@/engine/journal";
+import { CbtEntryForm } from "./CbtEntryForm";
+import { MissDetail, QuestionText } from "./ExamPanel";
 import { Btn, CATEGORY_BG, Dialogue, EntryTable, Portrait, Speaker, Win } from "./ui";
 
 const FIVE = (
@@ -87,18 +92,71 @@ function DiagramView({ d }: { d: Diagram }) {
   }
 }
 
+/** 講義の早送り：知っている内容なら、確認問題1問に正解すれば要点だけ見て修了できる */
+function SkipQuiz({ lessonId, accounts, onSkip, onBack }: { lessonId: LessonId; accounts: AccountName[]; onSkip: () => void; onBack: () => void }) {
+  const q = EXAM_BANK.find((x) => x.lesson === lessonId)!;
+  const lesson = LESSON_BY_ID[lessonId];
+  const [draft, setDraft] = useState<Entry | null>(null);
+  const [result, setResult] = useState<boolean | null>(null);
+  return (
+    <Win title={`確認問題：${lesson.title}`}>
+      <QuestionText q={q} className="mb-3 rounded-lg border border-white/30 p-2" />
+      {result === null ? (
+        <>
+          <div className="rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b]">
+            <CbtEntryForm accounts={accounts} initial={null} onChange={setDraft} />
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Btn onClick={() => draft && setResult(sameEntry(draft, q.answer))} disabled={!draft || isEmptyEntry(draft)}>
+              答え合わせ
+            </Btn>
+            <Btn variant="ghost" onClick={onBack}>
+              やっぱり講義を受ける
+            </Btn>
+          </div>
+        </>
+      ) : result ? (
+        <>
+          <p className="stamp mb-2 text-2xl text-ok">◯ 正解！</p>
+          <p className="mb-1 text-sm">要点だけ確認しておこう。</p>
+          <ul className="mb-3 list-disc pl-5 text-sm">
+            {lesson.summary.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ul>
+          <Btn onClick={onSkip}>講義を修了する</Btn>
+        </>
+      ) : (
+        <>
+          <p className="stamp mb-2 text-2xl text-ng">✕ おしい</p>
+          <MissDetail answer={q.answer} mine={draft} />
+          <div className="mt-3">
+            <Btn onClick={onBack}>講義を受ける</Btn>
+          </div>
+        </>
+      )}
+    </Win>
+  );
+}
+
 export function LessonView({
   lessonId,
   page,
   onTurn,
   finishLabel = "講義を終える",
+  skip,
 }: {
   lessonId: LessonId;
   page: number;
   onTurn: (delta: number) => void;
   finishLabel?: string;
+  /** 早送りを許すときだけ渡す。確認問題で使える科目と、正解したときの処理 */
+  skip?: { accounts: AccountName[]; onSkip: () => void };
 }) {
+  const [quiz, setQuiz] = useState(false);
   const lesson = LESSON_BY_ID[lessonId];
+  const canSkip = !!skip && page === 0 && EXAM_BANK.some((q) => q.lesson === lessonId);
+  if (quiz && skip) return <SkipQuiz lessonId={lessonId} accounts={skip.accounts} onSkip={skip.onSkip} onBack={() => setQuiz(false)} />;
   const p = lesson.pages[page];
   const speaker = p.speaker ?? "hoho";
   const last = page === lesson.pages.length - 1;
@@ -135,6 +193,13 @@ export function LessonView({
         </Btn>
         <Btn onClick={() => onTurn(1)}>{last ? finishLabel : "つぎへ"}</Btn>
       </div>
+      {canSkip && (
+        <p className="mt-2 text-right text-xs">
+          <button type="button" className="text-dim underline hover:text-white" onClick={() => setQuiz(true)}>
+            知っている内容なら、確認問題1問で飛ばす
+          </button>
+        </p>
+      )}
     </Win>
   );
 }

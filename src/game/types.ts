@@ -44,9 +44,31 @@ export type LessonId =
   | "salestax"
   | "interimtax"
   | "dividends"
+  // 出題範囲を網羅するために追加した講義
+  | "taxes"
+  | "voucher"
+  | "deposits"
+  | "notesloan"
+  | "fixedsale"
+  | "rentals"
+  | "advanced"
   // 試験対策（模擬試験の第2問で使う）
   | "ledgerclose"
-  | "subbooks";
+  | "subbooks"
+  | "inventorybook"
+  | "slips";
+
+/** 証ひょう（請求書・領収書など）。仕訳のもとになる書類 */
+export interface Voucher {
+  /** 書類の名前（「納品書兼請求書」「領収書」など） */
+  title: string;
+  /** 宛名・発行者・日付など、表の上に書く行 */
+  lines: string[];
+  head: string[];
+  rows: string[][];
+  /** 合計や支払期限など、表の下に書く行 */
+  notes: string[];
+}
 
 /** 相手ごとに追跡する債権・債務の科目。合計は帳簿の残高と一致させる（通しプレイのテストで検証） */
 export const CREDIT_KINDS = [
@@ -115,6 +137,10 @@ export interface Transaction {
   note?: string;
   /** 商品の売買（返品を含む）。消費税を習ったあとは、税抜方式の消費税を自動で加える */
   taxable?: boolean;
+  /** 仕訳のもとになる書類（証ひょう） */
+  doc?: Voucher;
+  /** 店の帳簿には記入しない練習の仕訳（ギルドの帳簿相談） */
+  offBooks?: boolean;
   effect?: Effect;
 }
 
@@ -170,6 +196,7 @@ export interface TxSession {
 
 export interface ResultInfo {
   tx: Transaction;
+  templateId: string;
   firstTry: boolean;
   trustDelta: number;
   combo: number;
@@ -235,6 +262,8 @@ export interface FillProblem {
   lead: string[];
   /** 決算整理事項などの番号つきの一覧 */
   items?: string[];
+  /** items の見出し（省くと「決算整理事項」） */
+  itemsTitle?: string;
   /** 問題として与える表（決算整理前残高試算表など） */
   given?: FillTable[];
   /** 答案用紙 */
@@ -265,6 +294,8 @@ export interface ExamQuestion {
   text: string;
   answer: Entry;
   lesson: LessonId;
+  /** 証ひょうを見て仕訳する問題 */
+  doc?: Voucher;
 }
 
 /** 昇格審査。本番CBTと同じく、問題を行き来して最後にまとめて採点する */

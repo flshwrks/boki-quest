@@ -8,6 +8,7 @@ import { LEVELS } from "@/content/world";
 import { EXAM_PASS, examScore } from "@/game/logic";
 import type { ExamQuestion, ExamSession } from "@/game/types";
 import { CbtEntryForm } from "./CbtEntryForm";
+import { VoucherView } from "./VoucherView";
 import { play } from "./sfx";
 import { AnswerExplain, Btn, EntryTable, Portrait, Win } from "./ui";
 
@@ -61,6 +62,16 @@ function Intro({ exam, onBegin }: { exam: ExamSession; onBegin: () => void }) {
   );
 }
 
+/** 問題文。証ひょうつきの問題なら、書類もいっしょに出す */
+export function QuestionText({ q, className = "" }: { q: ExamQuestion; className?: string }) {
+  return (
+    <div className={className}>
+      <p>{q.text}</p>
+      {q.doc && <VoucherView doc={q.doc} />}
+    </div>
+  );
+}
+
 /** 間違えた問題の正解と、自分の解答（開くと見える） */
 export function MissDetail({ answer, mine }: { answer: Entry; mine: Entry | null }) {
   return (
@@ -86,7 +97,7 @@ export function ExamReview({ questions, answers, graded }: { questions: ExamQues
           <p>
             <span className={graded[i] ? "text-ok" : "text-ng"}>{graded[i] ? "◯" : "✕"}</span> 第{i + 1}問（{LESSON_BY_ID[q.lesson].title}）
           </p>
-          <p className="my-1">{q.text}</p>
+          <QuestionText q={q} className="my-1" />
           {!graded[i] && <MissDetail answer={q.answer} mine={answers[i]} />}
         </li>
       ))}
@@ -246,7 +257,7 @@ export function ExamPanel({
     <CbtFrame title={LEVELS[exam.toLevel].exam} right={<Countdown startedAt={exam.startedAt} minutes={exam.minutes} onTimeUp={onGrade} />}>
       <QuestionNav count={exam.questions.length} index={index} answered={answered} onSelect={setIndex} />
       <p className="mb-1 text-xs text-[#55607a]">第{index + 1}問　次の取引について仕訳しなさい。</p>
-      <p className="mb-3 rounded border border-[#b8bfd3] bg-white p-2">{q.text}</p>
+      <QuestionText q={q} className="mb-3 rounded border border-[#b8bfd3] bg-white p-2" />
       <CbtEntryForm key={index} accounts={accounts} initial={exam.answers[index]} onChange={(entry) => onAnswer(index, entry)} />
       <CbtFooter index={index} count={exam.questions.length} onSelect={setIndex} unanswered={unanswered} onGrade={onGrade} />
     </CbtFrame>

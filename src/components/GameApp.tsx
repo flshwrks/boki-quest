@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { balanceIn, netBalances } from "@/engine/ledger";
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
+import { LESSON_BY_ID } from "@/content/lessons";
 import { LEVELS, dateLabel } from "@/content/world";
 import {
   advance,
@@ -23,6 +24,7 @@ import {
   nextDay,
   submitEntry,
   turnLessonPage,
+  skipLesson,
   unlockedAccounts,
   takeHint,
 } from "@/game/logic";
@@ -435,7 +437,15 @@ export default function GameApp() {
       );
       break;
     case "lesson":
-      panel = <LessonView lessonId={p.lesson} page={p.page} onTurn={(d) => update((s) => turnLessonPage(s, d))} />;
+      panel = (
+        <LessonView
+          key={p.lesson}
+          lessonId={p.lesson}
+          page={p.page}
+          onTurn={(d) => update((s) => turnLessonPage(s, d))}
+          skip={{ accounts: [...unlockedAccounts(state), ...LESSON_BY_ID[p.lesson].accounts], onSkip: () => update(skipLesson) }}
+        />
+      );
       break;
     case "lessonDone":
       panel = <LessonDonePanel lesson={p.lesson} onNext={() => update((s) => afterLesson(s, rand))} />;

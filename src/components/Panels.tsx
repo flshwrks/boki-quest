@@ -50,6 +50,7 @@ export function DayStartPanel({
         {lesson && (
           <li>
             📖 今日の講義：<span className="text-gold">{LESSON_BY_ID[lesson].title}</span>
+            {LESSON_BY_ID[lesson].level < state.level && <span className="ml-1 text-xs text-dim">（補講：あとから追加された内容）</span>}
           </li>
         )}
         <li>🧑‍🤝‍🧑 来店予定の冒険者：およそ {expectedCustomers(state)} 人（評判が上がると増える）</li>

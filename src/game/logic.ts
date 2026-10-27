@@ -81,9 +81,9 @@ export function newGame(shopName: string, rand: Rand): GameState {
   return { ...state, queue: planDay(state, rand) };
 }
 
-/** 次に受ける講義（1日1つ） */
-function nextLesson(state: GameState): Lesson | undefined {
-  return lessonsForLevel(state.level).find((l) => !state.lessonsDone.includes(l.id));
+/** 次に受ける講義（1日1つ）。今の Lv までの講義で、まだ受けていないもの（後から足された講義は「補講」になる） */
+export function nextLesson(state: GameState): Lesson | undefined {
+  return LESSONS.find((l) => l.level >= 1 && l.level <= state.level && !state.lessonsDone.includes(l.id));
 }
 
 const ev = (id: string, guided = false): QueueItem => ({ kind: "event", id, guided });
@@ -154,6 +154,8 @@ function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
 
 /** 選択肢の取引を仕上げる：消費税を習ったあとは商品の売買に消費税を加え、払うお金が残高より多ければ選べない理由をつける */
 function prepareTx(state: GameState, ctx: Ctx, tx: Transaction): { tx: Transaction; disabled?: string } {
+  // 店の帳簿に記入しない練習は、店のお金とは関係がない
+  if (tx.offBooks) return { tx };
   const taxed = tx.taxable && state.lessonsDone.includes("salestax") ? withSalesTax(tx) : tx;
   return { tx: taxed, disabled: moneyShortage(ctx, taxed) };
 }
@@ -218,7 +220,7 @@ export function startOrder(state: GameState, item: ItemId, qty: number, pay: Pur
 
 /** 正解の画面の次へ。朝の注文なら朝の画面に戻り、それ以外は今日の予定を進める */
 export function afterResult(state: GameState, rand: Rand): GameState {
-  if (state.phase.kind === "result" && state.journal.at(-1)?.templateId === ORDER) return { ...state, phase: { kind: "dayStart" } };
+  if (state.phase.kind === "result" && state.phase.info.templateId === ORDER) return { ...state, phase: { kind: "dayStart" } };
   return advance(state, rand);
 }
 
@@ -261,6 +263,18 @@ export function advance(state: GameState, rand: Rand): GameState {
     return { ...state, queue, phase: { kind: "event", event: { ...built, choices, templateId: id, guided } } };
   }
   return { ...state, queue, phase: { kind: "dayEnd" } };
+}
+
+/** 講義の早送り：確認問題に正解したら、講義を受けたことにする */
+export function skipLesson(state: GameState): GameState {
+  if (state.phase.kind !== "lesson") return state;
+  const { lesson, returnTo } = state.phase;
+  const logged = logPractice(state, lesson, true);
+  return {
+    ...logged,
+    lessonsDone: state.lessonsDone.includes(lesson) ? state.lessonsDone : [...state.lessonsDone, lesson],
+    phase: { kind: "lessonDone", lesson, returnTo },
+  };
 }
 
 export function turnLessonPage(state: GameState, delta: number): GameState {
@@ -359,16 +373,18 @@ export function submitEntry(state: GameState, input: Entry): GameState {
   const sales = sumAmounts(s.tx.answer.credit.filter((l) => l.account === "売上"));
   const purchases = sumAmounts(s.tx.answer.debit.filter((l) => l.account === "仕入"));
 
+  // ギルドの帳簿相談などの練習は、店の帳簿（仕訳帳）には記入しない
+  const offBooks = !!s.tx.offBooks;
   let next: GameState = {
     ...state,
-    journal: [...state.journal, { day: state.day, templateId: s.templateId, exam: s.tx.exam, entry: s.tx.answer }],
+    journal: offBooks ? state.journal : [...state.journal, { day: state.day, templateId: s.templateId, exam: s.tx.exam, entry: s.tx.answer }],
     trust: clamp(state.trust + trustDelta),
     combo,
     bestCombo: Math.max(state.bestCombo, combo),
     reputation: clamp(state.reputation + comboRep),
     today: {
-      sales: state.today.sales + sales,
-      purchases: state.today.purchases + purchases,
+      sales: state.today.sales + (offBooks ? 0 : sales),
+      purchases: state.today.purchases + (offBooks ? 0 : purchases),
       correct: state.today.correct + 1,
       firstTry: state.today.firstTry + (firstTry ? 1 : 0),
       bestCombo: Math.max(state.today.bestCombo, combo),
@@ -377,7 +393,7 @@ export function submitEntry(state: GameState, input: Entry): GameState {
   next = applyEffect(next, s.tx.effect);
   // 最初の答えで合っていたかを記録する（ヒントを使ったら「合っていた」には数えない）
   if (s.attempts === 0) next = logPractice(next, lessonOfTemplate(s.templateId), firstTry);
-  const info: ResultInfo = { tx: s.tx, firstTry, trustDelta, combo, comboMessage };
+  const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, combo, comboMessage };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
 }
 

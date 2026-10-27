@@ -245,6 +245,16 @@ describe("通しプレイ", () => {
       "interim-tax",
       "dividend-decide",
       "dividend-pay",
+      "repair",
+      "invoice-purchase",
+      "time-deposit",
+      "time-deposit-mature",
+      "attic-rent",
+      "close-unearned-rent",
+      "reverse-unearned-rent",
+      "guild-notesloan",
+      "guild-fixedsale",
+      "guild-advanced",
     ]) {
       expect(seen.has(t), `${t} が一度も登場しない`).toBe(true);
     }

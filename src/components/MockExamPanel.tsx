@@ -7,7 +7,7 @@ import { EXAM_PASS } from "@/game/logic";
 import { MOCK_QUESTIONS, mockFullParts, mockParts, mockScore, problemScore } from "@/game/training";
 import type { FillAnswer, FillBlank, FillCell, FillProblem, FillTable, MockSession } from "@/game/types";
 import { CbtEntryForm } from "./CbtEntryForm";
-import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamPanel";
+import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav, QuestionText } from "./ExamPanel";
 import { Btn, Portrait, Win, fmt } from "./ui";
 
 const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");
@@ -181,7 +181,7 @@ export function FillSheet({
       ))}
       {problem.items && (
         <div className="mb-3 rounded border border-[#b8bfd3] bg-white p-2 text-sm">
-          <p className="mb-1 font-bold">決算整理事項</p>
+          <p className="mb-1 font-bold">{problem.itemsTitle ?? "決算整理事項"}</p>
           <ol className="list-decimal pl-5">
             {problem.items.map((it) => (
               <li key={it}>{it}</li>
@@ -318,7 +318,7 @@ export function MockExamPanel({
       {page < n ? (
         <>
           <p className="mb-1 text-xs text-[#55607a]">第1問（{page + 1}）　次の取引について仕訳しなさい。（3点）</p>
-          <p className="mb-3 rounded border border-[#b8bfd3] bg-white p-2">{mock.questions[page].text}</p>
+          <QuestionText q={mock.questions[page]} className="mb-3 rounded border border-[#b8bfd3] bg-white p-2" />
           <CbtEntryForm key={page} accounts={accounts} initial={mock.answers[page]} onChange={(entry) => onAnswer(page, entry)} />
         </>
       ) : (

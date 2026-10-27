@@ -6,6 +6,7 @@ import { categoryHint, type Entry } from "@/engine/journal";
 import type { TxSession } from "@/game/types";
 import { CardEntryForm } from "./CardEntryForm";
 import { CbtEntryForm } from "./CbtEntryForm";
+import { VoucherView } from "./VoucherView";
 import { Btn, EntryTable, Portrait, Speaker, Win } from "./ui";
 
 /** card：カードを置く入力（序盤向け）／cbt：本番と同じプルダウン入力 */
@@ -34,10 +35,12 @@ export function JournalInput({
   return (
     <div className="flex flex-col gap-3">
       <Win>
+        {tx.offBooks && <p className="mb-1 inline-block rounded-full border border-white/40 px-2 text-xs text-dim">ギルドの帳簿相談（店の帳簿には記入しない）</p>}
         <p className="text-sm">{tx.story}</p>
         <div className="mt-2 rounded-lg border-2 border-gold/70 bg-gold/10 p-2">
           <div className="text-xs text-gold">試験ではこう出る</div>
           <p>{tx.exam}</p>
+          {tx.doc && <VoucherView doc={tx.doc} />}
         </div>
       </Win>
 

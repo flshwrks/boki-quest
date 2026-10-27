@@ -305,6 +305,24 @@ function closingCase(rand: Rand): ClosingCase {
   );
   adj.push(entry([["支払利息", accrued]], [["未払利息", accrued]]));
 
+  // 9. 家賃の経過勘定（前受か未収のどちらか）
+  const monthlyRent = 1000 * ri(rand, 5, 12);
+  if (rand() < 0.5) {
+    // 毎年 rm 月1日に向こう1年分を受け取る。試算表には期首の再振替分（rm−4か月）と当期の1年分が入っている
+    const rm = ri(rand, 6, 12);
+    const ahead = monthlyRent * (rm - 4);
+    c.受取家賃 = monthlyRent * 12 + ahead;
+    items.push(`受取家賃は、毎年${rm}月1日に向こう1年分（毎年同額）を受け取っているものである。前受分を月割で計上する。`);
+    adj.push(entry([["受取家賃", ahead]], [["前受家賃", ahead]]));
+    focus.add("受取家賃").add("前受家賃");
+  } else {
+    const unpaid = ri(rand, 1, 3);
+    c.受取家賃 = monthlyRent * (12 - unpaid);
+    items.push(`受取家賃は月額${fmt(monthlyRent)}円であり、${unpaid}か月分が未収である。`);
+    adj.push(entry([["未収家賃", monthlyRent * unpaid]], [["受取家賃", monthlyRent * unpaid]]));
+    focus.add("受取家賃").add("未収家賃");
+  }
+
   // 税引前当期純利益がほどよい額になるよう、売上を決める
   const pretaxWithoutSales = statements([entry(linesOf(d), linesOf({ ...c, 売上: 0 })), ...adj]).netIncome;
   const target = 10000 * ri(rand, 30, 120);
@@ -376,22 +394,12 @@ export function closingProblem(rand: Rand): FillProblem {
   ];
   const bsTotal = sumAmounts(s.assets) - sumAmounts(s.contras);
 
-  const tb = trialBalance([trial]);
-  const tbRows: FillCell[][] = tb.map((r) => [r.debit ? fmt(r.debit) : "", r.account, r.credit ? fmt(r.credit) : ""]);
-  const tbTotal = trialBalanceTotals(tb).debit;
-
   return {
     title: "第3問 決算整理後の財務諸表",
     short: "第3問",
     lesson: "closing",
     lead: [`次の決算整理前残高試算表と決算整理事項にもとづいて、${FISCAL}の損益計算書と貸借対照表の空欄を埋めなさい。`],
-    given: [
-      {
-        title: "決算整理前残高試算表",
-        head: ["借方", "勘定科目", "貸方"],
-        rows: [...tbRows, [fmt(tbTotal), "合計", fmt(tbTotal)]],
-      },
-    ],
+    given: [trialTable("決算整理前残高試算表", [trial])],
     items,
     sheet: [
       {
@@ -412,4 +420,267 @@ export function closingProblem(rand: Rand): FillProblem {
 /** 左右の表を1行ずつ横に並べる（短いほうは空欄で埋める） */
 function zip(left: FillCell[][], right: FillCell[][]): FillCell[][] {
   return Array.from({ length: Math.max(left.length, right.length) }, (_, i) => [...(left[i] ?? ["", ""]), ...(right[i] ?? ["", ""])]);
+}
+
+/** 残高試算表の表（借方・勘定科目・貸方）。cell を渡すと、金額を空欄にできる */
+function trialTable(title: string, entries: Entry[], cell?: (account: AccountName, amount: number) => FillCell): FillTable {
+  const tb = trialBalance(entries);
+  const show = (a: AccountName, x: number): FillCell => (x ? (cell ? cell(a, x) : fmt(x)) : "");
+  const total = trialBalanceTotals(tb).debit;
+  return {
+    title,
+    head: ["借方", "勘定科目", "貸方"],
+    rows: [...tb.map((r) => [show(r.account, r.debit), r.account, show(r.account, r.credit)]), [fmt(total), "合計", fmt(total)]],
+  };
+}
+
+/** 第3問（別形式）：決算整理後残高試算表を作る */
+export function trialAfterProblem(rand: Rand): FillProblem {
+  const { trial, items, adjustments, focus } = closingCase(rand);
+  // 繰越利益剰余金は決算整理では変わらないので、空欄にしない
+  focus.delete("繰越利益剰余金");
+  const b = blanks();
+  const sheet = trialTable("決算整理後残高試算表", [trial, ...adjustments], (a, x) => (focus.has(a) ? b.amount(x) : fmt(x)));
+  const net = statements([trial, ...adjustments]).netIncome;
+  return {
+    title: "第3問 決算整理後残高試算表",
+    short: "第3問",
+    lesson: "closing",
+    lead: [`次の決算整理前残高試算表と決算整理事項にもとづいて、${FISCAL}の決算整理後残高試算表の空欄を埋め、当期純利益を答えなさい。`],
+    given: [trialTable("決算整理前残高試算表", [trial])],
+    items,
+    sheet: [sheet, { title: "当期純利益", head: ["", "金額"], rows: [["当期純利益", b.amount(net)]] }],
+    blanks: b.score(35),
+  };
+}
+
+// ───────── 第2問(1) 商品有高帳 ─────────
+
+interface Lot {
+  qty: number;
+  price: number;
+}
+
+const lotCells = (l: Lot | undefined): string[] => (l ? [`${l.qty}`, fmt(l.price), fmt(l.qty * l.price)] : ["", "", ""]);
+
+/** 先入先出法か移動平均法で、1か月分の商品有高帳を作る。移動平均の単価が割り切れる数字だけを選ぶ */
+export function inventoryProblem(rand: Rand): FillProblem {
+  const fifo = rand() < 0.5;
+  for (;;) {
+    const q0 = 10 * ri(rand, 1, 3);
+    const c0 = 10 * ri(rand, 10, 15);
+    const q1 = 10 * ri(rand, 2, 4);
+    const c1 = c0 + 10 * ri(rand, 1, 4);
+    const s1 = q0 + 10 * ri(rand, 1, q1 / 10 - 1);
+    const q2 = 10 * ri(rand, 2, 4);
+    const c2 = c1 + 10 * ri(rand, -2, 3);
+    const left = q0 + q1 - s1 + q2;
+    const s2 = 10 * ri(rand, 1, left / 10 - 1);
+    const price = Math.max(c0, c1, c2) + 10 * ri(rand, 5, 10);
+    const avg1 = (q0 * c0 + q1 * c1) / (q0 + q1);
+    const r1 = q0 + q1 - s1;
+    const avg2 = (r1 * avg1 + q2 * c2) / (r1 + q2);
+    if (!fifo && (!Number.isInteger(avg1) || !Number.isInteger(avg2))) continue;
+    return inventorySheet(fifo, { q0, c0, q1, c1, s1, q2, c2, s2, price });
+  }
+}
+
+function inventorySheet(
+  fifo: boolean,
+  d: { q0: number; c0: number; q1: number; c1: number; s1: number; q2: number; c2: number; s2: number; price: number },
+): FillProblem {
+  const b = blanks();
+  const rows: FillCell[][] = [];
+  let lots: Lot[] = [{ qty: d.q0, price: d.c0 }];
+  let cogs = 0;
+  /** 残高の行（先入先出法なら単価ごと、移動平均法なら1行） */
+  const balance = () =>
+    fifo
+      ? lots
+      : [{ qty: lots.reduce((a, l) => a + l.qty, 0), price: lots.reduce((a, l) => a + l.qty * l.price, 0) / lots.reduce((a, l) => a + l.qty, 0) }];
+  /** 1つの取引を、受入・払出・残高の行にする。blankBalance のとき残高の金額（移動平均なら単価）を空欄に */
+  const push = (date: string, memo: string, inLot: Lot | undefined, outLots: Lot[], blankOut: boolean, blankBalance: boolean) => {
+    const bal = balance();
+    const n = Math.max(1, outLots.length, bal.length);
+    for (let i = 0; i < n; i++) {
+      const out = outLots[i];
+      const balLot = bal[i];
+      // 移動平均法では、売上の行の単価も空欄にする（単価を書いておくと平均単価の答えがわかってしまう）
+      const hidePrice = blankOut && !fifo;
+      const amountCell = (x: number, blank: boolean): FillCell => (blank ? b.amount(x) : fmt(x));
+      const outCells: FillCell[] = out ? [`${out.qty}`, amountCell(out.price, hidePrice), amountCell(out.qty * out.price, blankOut)] : ["", "", ""];
+      let balCells: FillCell[] = lotCells(balLot);
+      if (balLot && (blankBalance || hidePrice))
+        balCells = fifo
+          ? [`${balLot.qty}`, fmt(balLot.price), b.amount(balLot.qty * balLot.price)]
+          : [`${balLot.qty}`, b.amount(balLot.price), fmt(balLot.qty * balLot.price)];
+      rows.push([i === 0 ? date : "", i === 0 ? memo : "", ...lotCells(i === 0 ? inLot : undefined), ...outCells, ...balCells]);
+    }
+  };
+  const receive = (lot: Lot) => {
+    lots = fifo ? [...lots, lot] : balance().concat(lot);
+    if (!fifo) lots = balance();
+  };
+  const sell = (qty: number): Lot[] => {
+    const out: Lot[] = [];
+    let rest = qty;
+    const next: Lot[] = [];
+    for (const l of fifo ? lots : balance()) {
+      const take = Math.min(rest, l.qty);
+      if (take > 0) out.push({ qty: take, price: l.price });
+      if (l.qty > take) next.push({ qty: l.qty - take, price: l.price });
+      rest -= take;
+    }
+    lots = next;
+    cogs += out.reduce((a, l) => a + l.qty * l.price, 0);
+    return out;
+  };
+
+  push("6/1", "前月繰越", { qty: d.q0, price: d.c0 }, [], false, false);
+  receive({ qty: d.q1, price: d.c1 });
+  push("6/8", "仕入", { qty: d.q1, price: d.c1 }, [], false, !fifo);
+  push("6/15", "売上", undefined, sell(d.s1), true, false);
+  receive({ qty: d.q2, price: d.c2 });
+  push("6/22", "仕入", { qty: d.q2, price: d.c2 }, [], false, !fifo);
+  push("6/27", "売上", undefined, sell(d.s2), true, fifo);
+
+  const sales = (d.s1 + d.s2) * d.price;
+  const method = fifo ? "先入先出法" : "移動平均法";
+  return {
+    title: `第2問(1) 商品有高帳（${method}）`,
+    short: "第2問(1)",
+    lesson: "inventorybook",
+    itemsTitle: "資料",
+    lead: [
+      `次の資料にもとづいて、${method}によりA商品の商品有高帳の空欄を埋め、6月の売上原価と売上総利益を答えなさい。なお、帳簿の締め切りは不要である。`,
+    ],
+    items: [
+      `6月1日 前月繰越 ${d.q0}個 @${fmt(d.c0)}円`,
+      `6月8日 仕入 ${d.q1}個 @${fmt(d.c1)}円`,
+      `6月15日 売上 ${d.s1}個 @${fmt(d.price)}円（売価）`,
+      `6月22日 仕入 ${d.q2}個 @${fmt(d.c2)}円`,
+      `6月27日 売上 ${d.s2}個 @${fmt(d.price)}円（売価）`,
+    ],
+    sheet: [
+      {
+        title: "商品有高帳（A商品）",
+        head: ["日付", "摘要", "受入数量", "受入単価", "受入金額", "払出数量", "払出単価", "払出金額", "残高数量", "残高単価", "残高金額"],
+        rows,
+      },
+      {
+        title: "6月の売上原価と売上総利益",
+        head: ["", "金額"],
+        rows: [
+          ["売上原価", b.amount(cogs)],
+          ["売上総利益", b.amount(sales - cogs)],
+        ],
+      },
+    ],
+    blanks: b.score(10),
+  };
+}
+
+// ───────── 第2問(1) 伝票と仕訳日計表 ─────────
+
+type Slip = { kind: "入金伝票" | "出金伝票" | "振替伝票"; debit: AccountName; credit: AccountName; amount: number };
+
+export function slipsProblem(rand: Rand): FillProblem {
+  const amt = (lo: number, hi: number) => 1000 * ri(rand, lo, hi);
+  const slips: Slip[] = shuffle(
+    [
+      { kind: "入金伝票", debit: "現金", credit: "売掛金", amount: amt(20, 60) },
+      { kind: "入金伝票", debit: "現金", credit: "売上", amount: amt(10, 40) },
+      { kind: "出金伝票", debit: "仕入", credit: "現金", amount: amt(10, 40) },
+      { kind: "出金伝票", debit: "買掛金", credit: "現金", amount: amt(20, 50) },
+      { kind: "出金伝票", debit: "消耗品費", credit: "現金", amount: amt(1, 5) },
+      { kind: "振替伝票", debit: "仕入", credit: "買掛金", amount: amt(30, 80) },
+      { kind: "振替伝票", debit: "売掛金", credit: "売上", amount: amt(40, 90) },
+      { kind: "振替伝票", debit: "買掛金", credit: "普通預金", amount: amt(10, 30) },
+    ] satisfies Slip[],
+    rand,
+  );
+  const given: FillCell[][] = slips.map((s, i) => [
+    `No.${101 + i}`,
+    s.kind,
+    s.kind === "入金伝票" ? s.credit : s.kind === "出金伝票" ? s.debit : `（借）${s.debit} ／（貸）${s.credit}`,
+    fmt(s.amount),
+  ]);
+  // 仕訳日計表：科目ごとに、借方と貸方それぞれの合計（残高ではない）
+  const sums = new Map<AccountName, { debit: number; credit: number }>();
+  for (const s of slips) {
+    const add = (a: AccountName, side: "debit" | "credit") =>
+      sums.set(a, { ...(sums.get(a) ?? { debit: 0, credit: 0 }), [side]: (sums.get(a)?.[side] ?? 0) + s.amount });
+    add(s.debit, "debit");
+    add(s.credit, "credit");
+  }
+  const focus = new Set<AccountName>(["現金", "売掛金", "買掛金", "仕入", "売上"]);
+  const b = blanks();
+  const cell = (a: AccountName, x: number): FillCell => (x ? (focus.has(a) ? b.amount(x) : fmt(x)) : "");
+  const accounts = inMasterOrder([...sums.keys()]);
+  const total = slips.reduce((a, s) => a + s.amount, 0);
+  return {
+    title: "第2問(1) 伝票と仕訳日計表",
+    short: "第2問(1)",
+    lesson: "slips",
+    lead: [
+      "当社は、入金伝票・出金伝票・振替伝票の3伝票制を採用している。次の本日分の伝票にもとづいて、仕訳日計表の空欄を埋めなさい。",
+      "入金伝票・出金伝票には、現金の相手の科目を示している。",
+    ],
+    given: [{ title: "本日分の伝票", head: ["番号", "伝票", "科目", "金額"], rows: given }],
+    sheet: [
+      {
+        title: "仕訳日計表",
+        head: ["借方", "勘定科目", "貸方"],
+        rows: [...accounts.map((a) => [cell(a, sums.get(a)!.debit), a, cell(a, sums.get(a)!.credit)]), [b.amount(total), "合計", fmt(total)]],
+      },
+    ],
+    blanks: b.score(10),
+  };
+}
+
+// ───────── 第2問(2) 語群選択（理論） ─────────
+
+/** 空欄（　）に入る語と、その文。どれも3級の範囲の基本的な用語 */
+export const THEORY: [string, string][] = [
+  ["主要簿", "仕訳帳と総勘定元帳は（　）とよばれ、それ以外の帳簿は補助簿とよばれる。"],
+  ["損益", "決算において、収益と費用の各勘定の残高は（　）勘定に振り替える。"],
+  ["付随費用", "土地を購入したときの仲介手数料や登記料などの（　）は、土地の取得原価に含める。"],
+  ["減価償却", "建物や備品の価値の減少を、使用する各期間に費用として配分する手続きを（　）という。"],
+  ["前受収益", "当期に受け取った収益のうち、次期以降に属する分は（　）として負債に計上する。"],
+  ["未払費用", "当期の費用のうち、まだ支払っていない分は（　）として負債に計上する。"],
+  ["先入先出法", "商品有高帳において、先に受け入れた商品から先に払い出したとみなして払出単価を決める方法を（　）という。"],
+  ["利益準備金", "株式会社が繰越利益剰余金から配当をするときは、会社法の規定により一定額を（　）として積み立てる。"],
+  ["振替伝票", "3伝票制では、入金伝票・出金伝票と（　）を用いる。"],
+  ["売掛金元帳", "得意先ごとに売掛金の増減を記録する補助簿を（　）という。得意先元帳ともいう。"],
+  ["資本的支出", "建物の価値を高めたり耐用年数を延ばしたりする支出を（　）といい、建物の取得原価に加える。"],
+  ["償却債権取立益", "前期以前に貸倒れとして処理した債権を回収したときは、（　）勘定で処理する。"],
+];
+
+const THEORY_DISTRACTORS = [
+  "補助簿",
+  "繰越利益剰余金",
+  "移動平均法",
+  "前払費用",
+  "未収収益",
+  "修繕費",
+  "合計試算表",
+  "買掛金元帳",
+  "入金伝票",
+  "貸倒引当金戻入",
+];
+
+export function theoryProblem(rand: Rand): FillProblem {
+  const words = [...THEORY.map(([w]) => w), ...THEORY_DISTRACTORS].sort();
+  const b = blanks();
+  const rows: FillCell[][] = shuffle(THEORY, rand)
+    .slice(0, 5)
+    .map(([word, text], i) => [`(${i + 1})`, text, b.select(word, words)]);
+  return {
+    title: "第2問(2) 語群選択",
+    short: "第2問(2)",
+    lesson: "ledgerclose",
+    lead: ["次の各文の（　）にあてはまる最も適当な語を、語群から選びなさい。"],
+    sheet: [{ head: ["", "文", "語"], rows }],
+    blanks: b.score(10),
+  };
 }
