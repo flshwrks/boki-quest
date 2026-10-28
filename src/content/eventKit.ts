@@ -3,7 +3,7 @@
 import { type AccountName, categoryOf } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, Credit, CreditKind, GameEvent, GameState, ItemId, LessonId, Transaction } from "@/game/types";
-import { CHARACTERS, DAYS_PER_MONTH, ITEMS, LEVELS, itemsForLevel } from "./world";
+import { CHARACTERS, DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
 
 export { fmt as n } from "@/engine/format";
 export { entry as je } from "@/engine/journal";
@@ -26,6 +26,8 @@ export interface EventTemplate {
   schedule?: "daily";
   /** 復習の取引。習った論点を順に回すとき、その論点の中でこの取引が選ばれる重み */
   review?: number;
+  /** 期日の決済など、決まった後始末の取引。習熟した論点なら、見習いのノエルに記帳を任せられる */
+  routine?: true;
   /**
    * お客さんの来店として出す重み（いつもの現金・ツケのお客さんは2）。
    * 講義を受けたら、来店するお客さんの払い方や用件がこの重みでまざる
@@ -106,16 +108,20 @@ export function dueCredits(state: GameState, kind: CreditKind, days: number): Cr
 /** 取り崩す債権・債務の一覧（全額） */
 export const settleAll = (cs: Credit[]) => cs.map((c) => ({ id: c.id, amount: c.amount }));
 
-/** 期日に決済する債権・債務：どの口座で決済し、発生から何日で期日が来るか */
-const SETTLEMENT: Partial<Record<CreditKind, { via: AccountName; days: number }>> = {
-  受取手形: { via: "当座預金", days: 2 },
-  支払手形: { via: "当座預金", days: 3 },
-  電子記録債権: { via: "当座預金", days: 2 },
-  電子記録債務: { via: "当座預金", days: 3 },
-  クレジット売掛金: { via: "普通預金", days: 2 },
-  受取商品券: { via: "普通預金", days: 2 },
-  未払金: { via: "普通預金", days: 2 },
-  所得税預り金: { via: "普通預金", days: 2 },
+/**
+ * 期日に決済する債権・債務：どの口座で決済し、発生から何日以上たったものを、月の何日目に決済するか。
+ * 期日を月の決まった日にそろえて、同じ種類の決済を1本の仕訳にまとめる（毎日少しずつ決済しない）。
+ * 日は月の中でばらけるように割り振る
+ */
+const SETTLEMENT: Partial<Record<CreditKind, { via: AccountName; days: number; on: number }>> = {
+  受取手形: { via: "当座預金", days: 2, on: 2 },
+  電子記録債務: { via: "当座預金", days: 2, on: 2 },
+  所得税預り金: { via: "普通預金", days: 1, on: 2 },
+  支払手形: { via: "当座預金", days: 2, on: 3 },
+  電子記録債権: { via: "当座預金", days: 2, on: 3 },
+  クレジット売掛金: { via: "普通預金", days: 1, on: 4 },
+  受取商品券: { via: "普通預金", days: 1, on: 4 },
+  未払金: { via: "普通預金", days: 1, on: 5 },
 };
 
 /** 当座預金で決済を待っている債務を差し引いた、新しい支払いに使える当座預金 */
@@ -142,12 +148,14 @@ export function settleDue(
     idea: string;
   },
 ): EventTemplate {
-  const { via, days } = SETTLEMENT[kind]!;
+  const { via, days, on } = SETTLEMENT[kind]!;
   const receivable = categoryOf(kind) === "asset";
   return {
     lesson: t.lesson,
     schedule: "daily",
+    routine: true,
     build: (ctx) => {
+      if (dayInMonth(ctx.state.day) !== on) return null;
       const due = dueCredits(ctx.state, kind, days);
       if (due.length === 0) return null;
       const amt = sumAmounts(due);

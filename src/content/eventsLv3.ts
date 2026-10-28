@@ -440,6 +440,7 @@ const pettyReport: EventTemplate = {
 const pettyReplenish: EventTemplate = {
   lesson: "pettycash",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const fund = ctx.balance("小口現金");
     if (fund <= 0 || fund >= PETTY_FUND) return null;

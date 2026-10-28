@@ -13,7 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES } from "@/content/events";
-import { choose, newGame, nextLesson, planDay, skipLesson, submitEntry } from "./logic";
+import { advance, choose, newGame, nextLesson, planDay, skipLesson, submitEntry } from "./logic";
 import { seededRand } from "./random";
 import { makeMock, mockFullParts } from "./training";
 import type { FillCell, FillProblem, GameState } from "./types";
@@ -174,6 +174,38 @@ describe("お客さんの来店", () => {
     const total = [...count.values()].reduce((a, b) => a + b, 0);
     expect((count.get("customer") ?? 0) / total).toBeLessThan(0.5);
     for (const id of ["card-sale", "customer-note", "giftcert-sale", "sales-return", "customer-split"]) expect(count.get(id), id).toBeGreaterThan(0);
+  });
+});
+
+describe("見習いのノエルに任せる", () => {
+  /** 月の2日目（ツケの回収の日）。先月のツケが1件あり、掛け取引の習熟度は★3 */
+  const collectDay = (autoPost: boolean): GameState => {
+    const base = newGame("テスト商店", seededRand(1));
+    const learned = LESSONS.filter((l) => l.level >= 1 && l.level <= 4).map((l) => l.id);
+    return {
+      ...base,
+      day: 7,
+      level: 4,
+      lessonsDone: learned,
+      autoPost,
+      credits: [{ id: "c1", kind: "売掛金", who: "allen", amount: 12000, day: 3 }],
+      practice: Array.from({ length: 10 }, () => ({ day: 6, lesson: "credit" as const, ok: true })),
+      queue: [{ kind: "event", id: "collect" }],
+      phase: { kind: "dayStart" },
+    };
+  };
+
+  it("オンなら、習熟度★3の論点の後始末をノエルが記帳し、閉店時に見せる（正誤の記録には数えない）", () => {
+    const s = advance(collectDay(true), seededRand(2));
+    expect(s.phase.kind).toBe("dayEnd");
+    expect(s.journal.at(-1)).toMatchObject({ templateId: "collect", auto: true, entry: { debit: [{ account: "普通預金", amount: 12000 }], credit: [{ account: "売掛金", amount: 12000 }] } });
+    expect(s.credits).toEqual([]);
+    expect(s.practice.length).toBe(10);
+  });
+
+  it("オフなら、自分で記帳する", () => {
+    const s = advance(collectDay(false), seededRand(2));
+    expect(s.phase.kind).toBe("event");
   });
 });
 

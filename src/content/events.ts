@@ -476,32 +476,30 @@ const ad: EventTemplate = {
 
 // ───────── 掛けの回収・支払い ─────────
 
+/** 先月までのツケ（売掛金）を、月の2日目にまとめて回収する（月末締め・翌月入金） */
 const collect: EventTemplate = {
   lesson: "credit",
   schedule: "daily",
-  build: ({ state, rand }) => {
-    const due = creditsOf(state, "売掛金").filter((c) => c.day < state.day);
+  routine: true,
+  build: ({ state }) => {
+    if (dayInMonth(state.day) !== 2) return null;
+    const monthStart = state.day - 1;
+    const due = creditsOf(state, "売掛金").filter((c) => c.day < monthStart);
     if (due.length === 0) return null;
-    const c = pick(rand, due);
-    const partial = c.amount >= 10000 && rand() < 0.3;
-    const amt = partial ? Math.floor(c.amount / 2 / 100) * 100 : c.amount;
-    const viaBank = rand() < 0.4;
-    const to: AccountName = viaBank ? "普通預金" : "現金";
+    const amt = sumAmounts(due);
+    const who = [...new Set(due.map((c) => name(c.who)))].join("・");
     return {
-      speaker: c.who,
-      lines: [
-        voiceOf(c.who).payDebt,
-        partial ? voiceOf(c.who).partial(n(amt)) : voiceOf(c.who).paid(n(amt), viaBank),
-      ],
+      speaker: "luke",
+      lines: ["先月分のツケの代金が、まとめて普通預金に振り込まれています。", `${who}さんから、合計${n(amt)}円です。`],
       choices: [
         {
-          label: "受け取る",
+          label: "記帳する",
           tx: {
-            story: `${name(c.who)}からツケの代金${n(amt)}円を${viaBank ? "普通預金への振込で" : "現金で"}受け取った。`,
-            exam: viaBank ? `売掛金${n(amt)}円が普通預金口座に振り込まれた。` : `売掛金${n(amt)}円を現金で回収した。`,
-            answer: je([[to, amt]], [["売掛金", amt]]),
+            story: `${who}から、先月分のツケの代金${n(amt)}円が普通預金に振り込まれた。`,
+            exam: `売掛金${n(amt)}円が普通預金口座に振り込まれた。`,
+            answer: je([["普通預金", amt]], [["売掛金", amt]]),
             idea: "代金を受け取る権利（売掛金）はどうなった？ お金はどこに入った？",
-            effect: { settleCredits: [{ id: c.id, amount: amt }], reputation: 1 },
+            effect: { settleCredits: settleAll(due), reputation: 1 },
           },
         },
       ],
@@ -512,12 +510,13 @@ const collect: EventTemplate = {
 const paySupplier: EventTemplate = {
   lesson: "credit",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const { state } = ctx;
     const mine = creditsOf(state, "買掛金", "gantetsu");
     if (mine.length === 0) return null;
-    const due = mine.some((c) => c.day <= state.day - 2) || dayInMonth(state.day) === DAYS_PER_MONTH;
-    if (!due) return null;
+    // 掛け代金は月末払い
+    if (dayInMonth(state.day) !== DAYS_PER_MONTH) return null;
     const amt = sumAmounts(mine);
     const settle = settleAll(mine);
     const tx = (via: "普通預金" | "現金"): Transaction => ({

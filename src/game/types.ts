@@ -172,6 +172,8 @@ export interface JournalRecord {
   templateId: string;
   exam: string;
   entry: Entry;
+  /** 見習いのノエルが代わりに記帳した取引 */
+  auto?: true;
 }
 
 export interface Mistake {
@@ -362,6 +364,8 @@ export interface GameState {
   practice: PracticeRecord[];
   /** 模擬試験の成績 */
   mocks: MockResult[];
+  /** 慣れた決済（習熟度★3の論点の後始末）を、見習いのノエルに記帳してもらう */
+  autoPost: boolean;
   /** 決算日の間だけ、決算整理を始めた時点の仕訳の件数（精算表の「修正記入」をここから数える） */
   closingFrom: number | null;
   today: DayStats;

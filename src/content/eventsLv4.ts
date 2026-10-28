@@ -47,6 +47,7 @@ const bankLoan: EventTemplate = {
 const loanRepay: EventTemplate = {
   lesson: "loans",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const due = dueLoan(ctx.state, "借入金");
     if (!due) return null;
@@ -128,6 +129,7 @@ const lendAllen: EventTemplate = {
 const loanCollect: EventTemplate = {
   lesson: "loans",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const due = dueLoan(ctx.state, "貸付金");
     if (!due) return null;

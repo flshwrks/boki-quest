@@ -14,18 +14,20 @@ import { OrderPanel } from "./OrderPanel";
 import { TrialBalanceTable } from "./BookModal";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { LedgerViz } from "./LedgerViz";
-import { AccountChip, AnswerExplain, Btn, Dialogue, Portrait, Speaker, Win, fmt } from "./ui";
+import { AccountChip, AnswerExplain, Btn, Dialogue, EntryTable, Portrait, Speaker, Win, fmt } from "./ui";
 
 export function DayStartPanel({
   state,
   onOpen,
   onOrder,
   onTraining,
+  onToggleAutoPost,
 }: {
   state: GameState;
   onOpen: () => void;
   onOrder: (item: ItemId, qty: number, pay: PurchasePay) => void;
   onTraining: () => void;
+  onToggleAutoPost: () => void;
 }) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
@@ -84,6 +86,17 @@ export function DayStartPanel({
         </p>
       )}
       {state.lessonsDone.includes("trade") && <OrderPanel state={state} onOrder={onOrder} />}
+      {state.lessonsDone.includes("payroll") && (
+        <label className="mb-3 flex cursor-pointer items-start gap-2 rounded-lg border border-white/30 p-2 text-sm">
+          <input type="checkbox" checked={state.autoPost} onChange={onToggleAutoPost} className="mt-1" />
+          <span>
+            慣れた決済は、見習いのノエルに記帳してもらう
+            <span className="block text-xs text-dim">
+              期日の決済やツケの回収など、習熟度が★3の論点の後始末だけ。ノエルが書いた仕訳は閉店のときに見せてくれる（正誤の記録には数えない）
+            </span>
+          </span>
+        </label>
+      )}
       <div className="flex flex-wrap gap-2">
         <Btn onClick={onOpen}>開店する！</Btn>
         {state.day > 1 && (
@@ -231,6 +244,8 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
     return tips[state.day % tips.length];
   }, [state.day, state.lessonsDone]);
   const t = state.today;
+  // 今日、ノエルが代わりに記帳した取引
+  const auto = state.journal.filter((r) => r.day === state.day && r.auto);
   return (
     <Win title={`${dateLabel(state.day)} 閉店`}>
       <div className="mb-3 flex items-center gap-4">
@@ -252,6 +267,22 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
           </dd>
         </dl>
       </div>
+      {auto.length > 0 && (
+        <details className="mb-3 rounded-lg border border-white/30 p-2 text-sm" open>
+          <summary className="cursor-pointer">
+            <Portrait id="noel" size={24} className="mr-1 inline-block align-middle" still />
+            ノエルが記帳した取引（{auto.length}件）。仕訳を確かめておこう
+          </summary>
+          <ul className="mt-2 flex flex-col gap-2">
+            {auto.map((r, i) => (
+              <li key={i}>
+                <p className="mb-1 text-xs">{r.exam}</p>
+                <EntryTable entry={r.entry} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <div className="flex gap-3 text-sm">
         <Portrait id="hoho" size={44} className="shrink-0" />
         <div>

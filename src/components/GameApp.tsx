@@ -26,6 +26,7 @@ import {
   submitEntry,
   turnLessonPage,
   skipLesson,
+  toggleAutoPost,
   unlockedAccounts,
   takeHint,
 } from "@/game/logic";
@@ -439,6 +440,7 @@ export default function GameApp() {
           onOpen={() => update((s) => advance(s, rand))}
           onOrder={(item, qty, pay) => update((s) => startOrder(s, item, qty, pay))}
           onTraining={() => update(openTraining)}
+          onToggleAutoPost={() => update(toggleAutoPost)}
         />
       );
       break;

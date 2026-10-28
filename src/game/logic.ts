@@ -72,6 +72,7 @@ export function initialState(shopName: string): GameState {
     bestCombo: 0,
     practice: [],
     mocks: [],
+    autoPost: false,
     today: emptyDay(),
     phase: { kind: "dayStart" },
   };
@@ -174,7 +175,7 @@ function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[
   for (const r of state.practice) last.set(r.lesson, r.day);
   const mastery = masteryOf(state);
   const candidates = state.lessonsDone.filter((id) => id !== today && !EVERYDAY.has(id) && (REVIEW_TEMPLATES.has(id) || BANK_BY_LESSON.has(id)));
-  const count = 1 + state.level;
+  const count = Math.min(MAX_REVIEWS, state.level);
   const due = (id: LessonId, pace: number) => {
     const weak = mastery.get(id)?.stars === 1;
     return (state.day - (last.get(id) ?? 0)) * pace + (weak ? 4 : 0) + rand() * 2;
@@ -201,6 +202,10 @@ function walkIn(options: [string, number][], rand: Rand): QueueItem {
   return id === "customer" ? ev(id) : { kind: "event", id, fallback: "customer" };
 }
 
+/** 1日のお客さんと復習の上限（1日の記帳を10件あまりにおさめる） */
+const MAX_CUSTOMERS = 4;
+const MAX_REVIEWS = 4;
+
 export function planDay(state: GameState, rand: Rand): QueueItem[] {
   // 開業日は開業に必要な講義をまとめて受け、お客さんを1人だけ迎える
   if (state.day === 1) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
@@ -215,15 +220,14 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   if (willHave("expenses") && dim === 1) q.push(ev("rent"));
   if (willHave("expenses") && dim === 3) q.push(ev("utility"));
   for (const [id, t] of DAILY) if (has(t.lesson)) q.push(ev(id));
-  if (has("credit") && state.credits.filter((c) => c.kind === "売掛金").length > 1 && rand() < 0.5) q.push(ev("collect"));
 
   q.push(ev("bank"), ev("wholesale"));
   if (rand() < 0.5) q.push(ev("wholesale"));
   if (has("returns") && rand() < 0.3) q.push(ev("purchase-return"));
 
   const extras = reviewItems(state, rand, lesson?.id);
-  // 評判が上がるほど、店が大きくなるほど、お客さんが増える
-  const customers = 1 + state.level + Math.floor(state.reputation / 25);
+  // 評判が上がるほど、店が大きくなるほど、お客さんが増える（1日が長くなりすぎないよう、上限つき。店が育った分は1回の取引の量がふえる）
+  const customers = Math.min(MAX_CUSTOMERS, 1 + state.level + Math.floor(state.reputation / 25));
   const walkIns = WALK_INS.filter(([id]) => has(TEMPLATES[id].lesson));
   const rest = shuffle([...Array.from({ length: customers }, () => walkIn(walkIns, rand)), ...extras], rand);
   const half = Math.ceil(rest.length / 2);
@@ -333,22 +337,32 @@ export function afterResult(state: GameState, rand: Rand): GameState {
   return advance(state, rand);
 }
 
+/** ノエルが記帳できるのは、給料の講義で雇ったあとの、習熟度★3の論点の決まった後始末（選べる仕訳が1つだけのもの） */
+function autoPostTx(state: GameState, templateId: string, choices: Choice[], mastery: Map<LessonId, Mastery> | undefined): Transaction | undefined {
+  const t = TEMPLATES[templateId];
+  if (!state.autoPost || !mastery || !t?.routine || !state.lessonsDone.includes("payroll") || mastery.get(t.lesson)?.stars !== 3) return undefined;
+  const ready = choices.filter((c) => c.tx && !c.disabled);
+  return ready.length === 1 ? ready[0].tx : undefined;
+}
+
 /** キューから次の講義・イベントを取り出す。空になったら一日の終わり */
 export function advance(state: GameState, rand: Rand): GameState {
+  let cur = state;
   const queue = [...state.queue];
-  const ctx = ctxOf(state, rand, false);
+  let ctx = ctxOf(cur, rand, false);
+  const mastery = state.autoPost ? masteryOf(state) : undefined;
   while (queue.length > 0) {
     const head = queue.shift()!;
     if (head.kind === "lesson") {
-      if (state.lessonsDone.includes(head.id)) continue;
-      return { ...state, queue, phase: { kind: "lesson", lesson: head.id, page: 0 } };
+      if (cur.lessonsDone.includes(head.id)) continue;
+      return { ...cur, queue, phase: { kind: "lesson", lesson: head.id, page: 0 } };
     }
-    if (head.kind === "worksheet") return { ...state, queue, phase: { kind: "worksheet", answered: [null, null] } };
-    if (head.kind === "report") return { ...state, queue, phase: { kind: "report" } };
+    if (head.kind === "worksheet") return { ...cur, queue, phase: { kind: "worksheet", answered: [null, null] } };
+    if (head.kind === "report") return { ...cur, queue, phase: { kind: "report" } };
     const { id, topic, fallback } = head;
     const guided = !!head.guided;
     /** その取引を組み立てる。取引がない・講義をまだ受けていない・一度きりでもう済んだ・今日は起こせない、なら null */
-    const tryBuild = (tid: string) => buildable(state, { ...ctx, guided, topic }, tid);
+    const tryBuild = (tid: string) => buildable(cur, { ...ctx, guided, topic }, tid);
     let built = tryBuild(id);
     let templateId = id === "guild" ? guildId(topic) : id;
     if (!built && fallback) {
@@ -365,9 +379,16 @@ export function advance(state: GameState, rand: Rand): GameState {
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
     choices = choices.map((c) => {
       if (!c.tx) return c;
-      const { tx, disabled } = prepareTx(state, ctx, c.tx);
+      const { tx, disabled } = prepareTx(cur, ctx, c.tx);
       return { ...c, tx, disabled: c.disabled ?? disabled };
     });
+    // 慣れた後始末はノエルが記帳して、次の取引へ進む（閉店時に一覧で見せる）
+    const auto = guided ? undefined : autoPostTx(cur, templateId, choices, mastery);
+    if (auto) {
+      cur = postToBooks(cur, templateId, auto, true);
+      ctx = ctxOf(cur, rand, false);
+      continue;
+    }
     if (choices.every((c) => c.disabled)) {
       choices.push({
         label: "今は見送る（お金が足りない）",
@@ -375,9 +396,9 @@ export function advance(state: GameState, rand: Rand): GameState {
         effect: { reputation: -1 },
       });
     }
-    return { ...state, queue, phase: { kind: "event", event: { ...built, choices, templateId, guided } } };
+    return { ...cur, queue, phase: { kind: "event", event: { ...built, choices, templateId, guided } } };
   }
-  return { ...state, queue, phase: { kind: "dayEnd" } };
+  return { ...cur, queue, phase: { kind: "dayEnd" } };
 }
 
 /** 講義の早送り：確認問題に正解したら、講義を受けたことにする */
@@ -516,12 +537,12 @@ export function submitEntry(state: GameState, input: Entry): GameState {
 }
 
 /** 店の帳簿に記入する：仕訳帳に載せ、今日の売上・仕入に足し、在庫やツケなどの効果を反映する */
-function postToBooks(state: GameState, templateId: string, tx: Transaction): GameState {
+function postToBooks(state: GameState, templateId: string, tx: Transaction, auto = false): GameState {
   const sales = sumAmounts(tx.answer.credit.filter((l) => l.account === "売上"));
   const purchases = sumAmounts(tx.answer.debit.filter((l) => l.account === "仕入"));
   const posted: GameState = {
     ...state,
-    journal: [...state.journal, { day: state.day, templateId, exam: tx.exam, entry: tx.answer }],
+    journal: [...state.journal, { day: state.day, templateId, exam: tx.exam, entry: tx.answer, ...(auto && { auto: true as const }) }],
     today: { ...state.today, sales: state.today.sales + sales, purchases: state.today.purchases + purchases },
   };
   return applyEffect(posted, tx.effect);
@@ -689,3 +710,6 @@ export function answerQuiz(state: GameState, index: number, correct: boolean): G
   const answered = p.answered.map((a, i) => (i === index ? correct : a));
   return { ...state, trust: clamp(state.trust + (correct ? 3 : 0)), phase: { ...p, answered } };
 }
+
+/** 慣れた決済をノエルに任せるかを切り替える */
+export const toggleAutoPost = (state: GameState): GameState => ({ ...state, autoPost: !state.autoPost });

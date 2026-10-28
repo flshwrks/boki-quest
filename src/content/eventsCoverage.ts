@@ -219,6 +219,7 @@ const timeDeposit: EventTemplate = {
 const timeDepositMature: EventTemplate = {
   lesson: "deposits",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const { state } = ctx;
     const principal = ctx.balance("定期預金");
@@ -291,6 +292,7 @@ const noteLoan: EventTemplate = {
 const noteLoanRepay: EventTemplate = {
   lesson: "notesloan",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const c = maturedCredit(ctx.state, "手形借入金");
     if (!c) return null;
