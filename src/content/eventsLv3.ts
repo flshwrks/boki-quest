@@ -5,7 +5,6 @@ import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, CreditKind, ItemId, LessonId } from "@/game/types";
 import {
   CUSTOMER_PREFS,
-  type Ctx,
   type EventTemplate,
   checkingRoom,
   creditsOf,
@@ -15,25 +14,12 @@ import {
   name,
   needDeposit,
   pick,
+  pickSale,
   settleAll,
   settleDue,
-  tradeScale,
   voiceOf,
 } from "./eventKit";
-import { ITEMS, dayInMonth, itemsForLevel } from "./world";
-
-/** 在庫のある商品から、お客さんが買いそうな量を決める。売れる物がなければ null */
-function pickSale(ctx: Ctx, who: CharacterId, minAmount = 1000): { item: ItemId; qty: number; amount: number } | null {
-  const pref = CUSTOMER_PREFS[who];
-  const candidates = itemsForLevel(ctx.state.level).filter((i) => ctx.state.stock[i] > 0);
-  const liked = candidates.filter((i) => pref.items.includes(i));
-  const pool = liked.length > 0 ? liked : candidates;
-  if (pool.length === 0) return null;
-  const item = pick(ctx.rand, pool);
-  const qty = Math.min(pick(ctx.rand, pref.qty[item] ?? [5, 10]) * tradeScale(ctx.state.level), ctx.state.stock[item]);
-  const amount = ITEMS[item].price * qty;
-  return amount >= minAmount ? { item, qty, amount } : null;
-}
+import { ITEMS, dayInMonth } from "./world";
 
 const saleStory = (who: CharacterId, item: ItemId, qty: number) => `${name(who)}に${ITEMS[item].name}を${qty}${ITEMS[item].unit}売った`;
 

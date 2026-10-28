@@ -1,7 +1,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, GameState, ItemId, Transaction } from "@/game/types";
-import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale } from "./eventKit";
+import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale, pickSale } from "./eventKit";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
@@ -313,15 +313,13 @@ const customerSplit: EventTemplate = {
   review: 0.3,
   walkIn: 1,
   build: (ctx) => {
-    const { state, rand } = ctx;
+    const { rand } = ctx;
     const who: CharacterId = pick(rand, ["allen", "mina", "gord", "lily"] as const);
     const pref = CUSTOMER_PREFS[who];
-    const stocked = pref.items.filter((i) => ITEMS[i].level <= state.level && state.stock[i] > 0);
-    if (stocked.length === 0) return null;
-    const item = pick(rand, stocked);
+    const sale = pickSale(ctx, who);
+    if (!sale) return null;
+    const { item, qty, amount } = sale;
     const it = ITEMS[item];
-    const qty = Math.min(pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level), state.stock[item]);
-    const amount = it.price * qty;
     // 現金で払うのは3〜6割（1,000円単位）
     const cash = Math.floor((amount * pick(rand, [0.3, 0.4, 0.5, 0.6])) / 1000) * 1000;
     if (cash <= 0 || cash >= amount) return null;
@@ -817,7 +815,8 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   wholesale: wholesale("any"),
   "wholesale-credit": wholesale("credit"),
   "wholesale-freight": { ...wholesale("freight"), review: 0.3 },
-  customer: customer("any"),
+  // いつもの現金・ツケのお客さん（来店の重みは2。習った払い方のお客さんは1ずつ）
+  customer: { ...customer("any"), walkIn: 2 },
   "customer-credit": { ...customer("credit"), review: 0.4 },
   "customer-split": customerSplit,
   supplies,

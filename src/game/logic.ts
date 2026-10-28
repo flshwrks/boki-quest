@@ -99,8 +99,17 @@ const lessonItems = (l: Lesson): QueueItem[] => [
 const DAILY = Object.entries(TEMPLATES).filter(([, t]) => t.schedule === "daily");
 /** 復習の取引（論点ごと）と、その論点の中で選ばれる重み */
 export const REVIEW_TEMPLATES = new Map<LessonId, [string, number][]>();
+/** お客さんの来店として出す取引と、その重み */
+const WALK_INS: [string, number][] = [];
 for (const [id, t] of Object.entries(TEMPLATES)) {
   if (t.review) REVIEW_TEMPLATES.set(t.lesson, [...(REVIEW_TEMPLATES.get(t.lesson) ?? []), [id, t.review]]);
+  if (t.walkIn) WALK_INS.push([id, t.walkIn]);
+}
+
+/** 重みつきで1つ選ぶ（候補がなければ undefined） */
+function pickWeighted(options: [string, number][], rand: Rand): string | undefined {
+  let roll = rand() * options.reduce((a, [, w]) => a + w, 0);
+  return options.find(([, w]) => (roll -= w) < 0)?.[0];
 }
 /** 毎日の売り買いで必ず練習する論点（復習の対象から外す）。消費税は、習ったあとの売り買いすべてに含まれる */
 export const EVERYDAY = new Set<LessonId>(["basics", "trade", "salestax"]);
@@ -172,23 +181,14 @@ function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[
   return chosen.map(({ id: topic }) => {
     // 一度きりの取引で、もう済んだものは選ばない
     const options = (REVIEW_TEMPLATES.get(topic) ?? []).filter(([t]) => !onceUsed(state, t));
-    const total = options.reduce((a, [, w]) => a + w, 0);
-    let roll = rand() * total;
-    const id = options.find(([, w]) => (roll -= w) < 0)?.[0] ?? "guild";
+    const id = pickWeighted(options, rand) ?? "guild";
     return { kind: "event", id, topic };
   });
 }
 
-/** お客さんの来店としてまざる取引と、その重み。いつもの現金・ツケのお客さんは重み2 */
-const WALK_INS = Object.entries(TEMPLATES).flatMap(([id, t]): [string, number][] => (t.walkIn ? [[id, t.walkIn]] : []));
-const USUAL_CUSTOMER: [string, number] = ["customer", 2];
-
 /** お客さん1人分の来店。習った払い方や用件のお客さんをまぜ、今日は起こせなければいつものお客さんにする */
-function walkIn(state: GameState, rand: Rand): QueueItem {
-  const options = [USUAL_CUSTOMER, ...WALK_INS.filter(([id]) => state.lessonsDone.includes(TEMPLATES[id].lesson))];
-  const total = options.reduce((a, [, w]) => a + w, 0);
-  let roll = rand() * total;
-  const id = options.find(([, w]) => (roll -= w) < 0)?.[0] ?? "customer";
+function walkIn(options: [string, number][], rand: Rand): QueueItem {
+  const id = pickWeighted(options, rand) ?? "customer";
   return id === "customer" ? ev(id) : { kind: "event", id, fallback: "customer" };
 }
 
@@ -215,7 +215,8 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   const extras = reviewItems(state, rand, lesson?.id);
   // 評判が上がるほど、店が大きくなるほど、お客さんが増える
   const customers = 1 + state.level + Math.floor(state.reputation / 25);
-  const rest = shuffle([...Array.from({ length: customers }, () => walkIn(state, rand)), ...extras], rand);
+  const walkIns = WALK_INS.filter(([id]) => has(TEMPLATES[id].lesson));
+  const rest = shuffle([...Array.from({ length: customers }, () => walkIn(walkIns, rand)), ...extras], rand);
   const half = Math.ceil(rest.length / 2);
   q.push(...rest.slice(0, half), ev("bank"), ...rest.slice(half));
   // 特注クエストの手付金はクエストの段階で判定するので、常に最後に置いておけばよい

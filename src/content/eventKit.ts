@@ -3,7 +3,7 @@
 import { type AccountName, categoryOf } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, Credit, CreditKind, GameEvent, GameState, ItemId, LessonId, Transaction } from "@/game/types";
-import { CHARACTERS, LEVELS } from "./world";
+import { CHARACTERS, ITEMS, LEVELS, itemsForLevel } from "./world";
 
 export { fmt as n } from "@/engine/format";
 export { entry as je } from "@/engine/journal";
@@ -42,6 +42,19 @@ export const decline = (label: string, reply: string, reputation = 0): Choice =>
 
 /** 店が大きくなるほど、一度に売り買いする量がふえる */
 export const tradeScale = (level: number) => LEVELS[level].scale;
+
+/** 在庫のある商品から、お客さんが買いそうな量を決める。売れる物がなければ null */
+export function pickSale(ctx: Ctx, who: CharacterId, minAmount = 1000): { item: ItemId; qty: number; amount: number } | null {
+  const pref = CUSTOMER_PREFS[who];
+  const candidates = itemsForLevel(ctx.state.level).filter((i) => ctx.state.stock[i] > 0);
+  const liked = candidates.filter((i) => pref.items.includes(i));
+  const pool = liked.length > 0 ? liked : candidates;
+  if (pool.length === 0) return null;
+  const item = pick(ctx.rand, pool);
+  const qty = Math.min(pick(ctx.rand, pref.qty[item] ?? [5, 10]) * tradeScale(ctx.state.level), ctx.state.stock[item]);
+  const amount = ITEMS[item].price * qty;
+  return amount >= minAmount ? { item, qty, amount } : null;
+}
 
 /** 残高が足りなければ、選べない理由を返す */
 export const need = (ctx: Ctx, account: AccountName, amount: number) =>
