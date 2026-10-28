@@ -13,7 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES } from "@/content/events";
-import { advance, choose, newGame, nextLesson, planDay, skipLesson, submitEntry } from "./logic";
+import { advance, choose, newGame, nextLesson, planDay, skipLesson, startOrder, submitEntry } from "./logic";
 import { seededRand } from "./random";
 import { makeMock, mockFullParts } from "./training";
 import type { FillCell, FillProblem, GameState } from "./types";
@@ -206,6 +206,20 @@ describe("見習いのノエルに任せる", () => {
   it("オフなら、自分で記帳する", () => {
     const s = advance(collectDay(false), seededRand(2));
     expect(s.phase.kind).toBe("event");
+  });
+
+  it("朝の仕入れは、商品売買が★3なら（掛けなら掛け取引も★3なら）ノエルが記帳し、朝の画面のまま", () => {
+    // 開業前の帳簿は空（現金がない）なので、掛けで仕入れる
+    const stars3 = (lesson: "trade" | "credit") => Array.from({ length: 10 }, () => ({ day: 6, lesson, ok: true }));
+    const s = { ...collectDay(true), practice: [...stars3("trade"), ...stars3("credit")] };
+    const done = startOrder(s, "potion", 10, "買掛金");
+    expect(done.phase.kind).toBe("dayStart");
+    expect(done.journal.at(-1)).toMatchObject({ templateId: "order", auto: true, entry: { debit: [{ account: "仕入" }], credit: [{ account: "買掛金" }] } });
+    expect(done.stock.potion).toBe(s.stock.potion + 10);
+    expect(done.practice.length).toBe(s.practice.length);
+    // 掛け取引がまだ★3でない・任せていないときは、自分で記帳する
+    expect(startOrder({ ...s, practice: stars3("trade") }, "potion", 10, "買掛金").phase.kind).toBe("journal");
+    expect(startOrder({ ...s, autoPost: false }, "potion", 10, "買掛金").phase.kind).toBe("journal");
   });
 });
 

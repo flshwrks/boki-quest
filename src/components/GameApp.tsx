@@ -281,6 +281,13 @@ function Title({
   );
 }
 
+/** 同じ種類の場面の中で、先頭に戻したい区切り（講義のページ・ドリルの問題） */
+function pageOf(phase: Phase): number | string {
+  if (phase.kind === "lesson") return phase.page;
+  if (phase.kind === "drill") return phase.drill.index;
+  return "";
+}
+
 export default function GameApp() {
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState<LocalSave | null>(null);
@@ -379,6 +386,17 @@ export default function GameApp() {
     const timer = setTimeout(() => setToast([]), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // 場面が進んだら（次の取引・講義の次のページ・ドリルの次の問題など）、ページの先頭に戻す。
+  // 下までスクロールして記帳したあと、毎回手で上に戻さなくてよいように
+  // 朝の画面でノエルが仕入れを記帳したときは、注文の欄から動かさない
+  const posts = state?.phase.kind === "dayStart" ? "" : state?.journal.length;
+  const scene = state && [state.day, state.phase.kind, posts, state.queue.length, pageOf(state.phase)].join(":");
+  useEffect(() => {
+    if (!scene || window.scrollY === 0) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  }, [scene]);
 
   const prevPhase = state?.phase.kind;
   useEffect(() => {

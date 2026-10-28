@@ -4,8 +4,8 @@ import { useState } from "react";
 import { sumAmounts } from "@/engine/journal";
 import { type PurchasePay, lowestStockItem, orderQtys, orderStep } from "@/content/events";
 import { ITEMS, itemsForLevel } from "@/content/world";
-import { orderPreview } from "@/game/logic";
-import type { GameState, ItemId } from "@/game/types";
+import { ORDER, autoOrder, orderPreview } from "@/game/logic";
+import type { GameState, ItemId, JournalRecord } from "@/game/types";
 import { Sprite } from "./Sprite";
 import { Btn, fmt } from "./ui";
 
@@ -35,6 +35,12 @@ export function OrderPanel({ state, onOrder }: { state: GameState; onOrder: (ite
   const it = ITEMS[item];
   const subtotal = it.cost * qty;
   const total = sumAmounts(tx.answer.debit);
+  const auto = autoOrder(state, pay);
+  // 今朝ノエルが記帳した仕入れ（仕訳帳の後ろから今日の分だけ）
+  const posted: JournalRecord[] = [];
+  for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) {
+    if (state.journal[i].auto && state.journal[i].templateId === ORDER) posted.unshift(state.journal[i]);
+  }
 
   return (
     <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
@@ -88,9 +94,18 @@ export function OrderPanel({ state, onOrder }: { state: GameState; onOrder: (ite
           <span className="text-dim">／店での売値 1{it.unit}{fmt(it.price)}円</span>
         </span>
         <Btn variant="ghost" disabled={!!disabled} onClick={() => onOrder(item, qty, pay)}>
-          {disabled ? `注文できない（${disabled}）` : "注文して記帳する"}
+          {disabled ? `注文できない（${disabled}）` : auto ? "注文する（ノエルが記帳）" : "注文して記帳する"}
         </Btn>
       </div>
+      {posted.length > 0 && (
+        <ul className="mt-2 border-t border-white/20 pt-1 text-xs">
+          {posted.map((r, i) => (
+            <li key={i}>
+              📝 ノエルが記帳：<span className="text-dim">{r.exam}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

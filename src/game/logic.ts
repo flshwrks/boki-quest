@@ -273,7 +273,7 @@ function prepareTx(state: GameState, ctx: Ctx, tx: Transaction): { tx: Transacti
 }
 
 /** 朝の仕入れ注文の記録に使う templateId */
-const ORDER = "order";
+export const ORDER = "order";
 
 /** 取引の種類（templateId）から、その論点の講義を引く。朝の注文は商品売買 */
 export function lessonOfTemplate(templateId: string): LessonId | undefined {
@@ -324,11 +324,23 @@ export function orderPreview(state: GameState, item: ItemId, qty: number, pay: P
   return prepareTx(state, ctxOf(state, Math.random, false), purchaseTx(item, qty, pay));
 }
 
-/** 開店前に、ガンテツへ仕入れを注文する。記帳が終わったら朝の画面に戻る */
+/**
+ * 朝の仕入れの記帳をノエルに任せられるか。商品売買（掛けなら掛け取引も）が習熟度★3のときだけ。
+ * 苦手なうちは自分で記帳して、仕入の仕訳を体に覚えさせる
+ */
+export function autoOrder(state: GameState, pay: PurchasePay): boolean {
+  if (!state.autoPost || !canAutoPost(state)) return false;
+  const mastery = masteryOf(state);
+  const topics: LessonId[] = pay === "買掛金" ? ["trade", "credit"] : ["trade"];
+  return topics.every((l) => mastery.get(l)?.stars === 3);
+}
+
+/** 開店前に、ガンテツへ仕入れを注文する。記帳が終わったら朝の画面に戻る（ノエルに任せていれば、そのまま朝の画面） */
 export function startOrder(state: GameState, item: ItemId, qty: number, pay: PurchasePay): GameState {
   if (state.phase.kind !== "dayStart") return state;
   const { tx, disabled } = orderPreview(state, item, qty, pay);
   if (disabled) return state;
+  if (autoOrder(state, pay)) return postToBooks(state, ORDER, tx, true);
   return { ...state, phase: { kind: "journal", session: txSession(tx, "gantetsu", ORDER) } };
 }
 
