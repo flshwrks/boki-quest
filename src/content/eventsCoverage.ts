@@ -6,7 +6,7 @@
 import type { AccountName } from "@/engine/accounts";
 import type { Choice, LessonId, Transaction, Voucher } from "@/game/types";
 import { BANK_BY_LESSON } from "./examBank";
-import { type EventTemplate, adjustment, creditsOf, decline, interestOf, je, lastRecord, n, needCash, payFrom, pct, pick, viaPhrase } from "./eventKit";
+import { type EventTemplate, adjustment, creditsOf, decline, interestOf, je, lastRecord, maturedCredit, n, needCash, payFrom, pct, pick, viaPhrase } from "./eventKit";
 import { reversal } from "./eventsClosing";
 import { lowestStockItem, orderQtys, purchaseTx } from "./events";
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, calendarMonth, monthOfYear, yearStartDay } from "./world";
@@ -262,8 +262,8 @@ const noteLoan: EventTemplate = {
     if (creditsOf(state, "手形借入金").length > 0) return null;
     // 利息を先に払うので、期日が決算日をまたぐと前払利息の整理が要る。そうならない時期だけ持ちかける
     if (yearStartDay(state.day) + DAYS_PER_YEAR - state.day <= NOTE_LOAN.months * DAYS_PER_MONTH) return null;
-    const interest = interestOf(NOTE_LOAN);
     const { amount, rate, months } = NOTE_LOAN;
+    const interest = interestOf(NOTE_LOAN);
     return {
       speaker: "luke",
       lines: [
@@ -292,7 +292,7 @@ const noteLoanRepay: EventTemplate = {
   lesson: "notesloan",
   schedule: "daily",
   build: (ctx) => {
-    const c = creditsOf(ctx.state, "手形借入金").find((x) => x.day + (x.months ?? 0) * DAYS_PER_MONTH <= ctx.state.day);
+    const c = maturedCredit(ctx.state, "手形借入金");
     if (!c) return null;
     return {
       speaker: "luke",

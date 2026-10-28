@@ -3,7 +3,7 @@
 import { type AccountName, categoryOf } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, Credit, CreditKind, GameEvent, GameState, ItemId, LessonId, Transaction } from "@/game/types";
-import { CHARACTERS, ITEMS, LEVELS, itemsForLevel } from "./world";
+import { CHARACTERS, DAYS_PER_MONTH, ITEMS, LEVELS, itemsForLevel } from "./world";
 
 export { fmt as n } from "@/engine/format";
 export { entry as je } from "@/engine/journal";
@@ -93,6 +93,10 @@ export function creditsOf(state: GameState, kind: CreditKind, who?: CharacterId)
 
 /** その種類の取引のうち、最後に記帳したもの */
 export const lastRecord = (state: GameState, templateId: string) => state.journal.findLast((r) => r.templateId === templateId);
+
+/** 期日（発生から months か月後）が来た借入・貸付（借入金・手形借入金・貸付金） */
+export const maturedCredit = (state: GameState, kind: CreditKind) =>
+  creditsOf(state, kind).find((c) => c.day + (c.months ?? 0) * DAYS_PER_MONTH <= state.day);
 
 /** その種類の債権・債務のうち、発生から days 日以上たったもの */
 export function dueCredits(state: GameState, kind: CreditKind, days: number): Credit[] {

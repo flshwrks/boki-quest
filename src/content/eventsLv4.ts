@@ -3,13 +3,12 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { GameState, Transaction } from "@/game/types";
-import { PAY_SOURCES, type EventTemplate, voiceOf, creditsOf, decline, dueCredits, interestOf, je, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
+import { PAY_SOURCES, type EventTemplate, voiceOf, creditsOf, decline, dueCredits, interestOf, je, maturedCredit, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, LEVELS, dayInMonth } from "./world";
-
 
 /** 返済期日（借りた日から months か月後）が来た借入金・貸付金と、その利息 */
 function dueLoan(state: GameState, kind: "借入金" | "貸付金") {
-  const c = creditsOf(state, kind).find((c) => c.day + (c.months ?? 0) * DAYS_PER_MONTH <= state.day);
+  const c = maturedCredit(state, kind);
   return c && { c, interest: interestOf(c) };
 }
 

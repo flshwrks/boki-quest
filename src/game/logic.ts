@@ -150,6 +150,12 @@ function onceUsed(state: GameState, id: string): boolean {
   return state.journal.some((r) => r.templateId === id && r.day >= since);
 }
 
+/** その取引を組み立てる。取引がない・講義をまだ受けていない・一度きりでもう済んだ・今日は起こせない、なら null */
+function buildable(state: GameState, ctx: Ctx, id: string) {
+  const t = TEMPLATES[id];
+  return t && state.lessonsDone.includes(t.lesson) && !onceUsed(state, id) ? t.build(ctx) : null;
+}
+
 /** ギルドの帳簿相談の取引名（"guild-論点"。正誤の記録で論点に戻す） */
 const GUILD_PREFIX = "guild-";
 const guildId = (topic: LessonId | undefined) => `${GUILD_PREFIX}${topic}`;
@@ -178,16 +184,15 @@ function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[
     .map((id) => ({ id, score: due(id, 1) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, count * 3);
-  const ctx = ctxOf(state, rand, false);
-  const ready = new Map(
-    shortlist.map(({ id }) => [id, (REVIEW_TEMPLATES.get(id) ?? []).filter(([t]) => !onceUsed(state, t) && TEMPLATES[t].build(ctx) !== null)]),
-  );
+  // 試しに組み立てるだけなので、ゲームの乱数は使わない
+  const trial = ctxOf(state, () => 0.5, false);
+  const ready = ([t]: [string, number]) => buildable(state, trial, t) !== null;
   // 今日の店で起こせる論点を優先し、ギルドの帳簿相談でしか出せない論点（決算整理や、今は起こせない取引）は半分の頻度にする
   const chosen = shortlist
-    .map(({ id, score }) => ({ id, score: ready.get(id)!.length > 0 ? score : score / 2 }))
+    .map(({ id, score }) => ({ id, score: (REVIEW_TEMPLATES.get(id) ?? []).some(ready) ? score : score / 2 }))
     .sort((a, b) => b.score - a.score)
     .slice(0, count);
-  return chosen.map(({ id: topic }) => ({ kind: "event", id: pickWeighted(ready.get(topic)!, rand) ?? "guild", topic }));
+  return chosen.map(({ id: topic }) => ({ kind: "event", id: pickWeighted((REVIEW_TEMPLATES.get(topic) ?? []).filter(ready), rand) ?? "guild", topic }));
 }
 
 /** お客さん1人分の来店。習った払い方や用件のお客さんをまぜ、今日は起こせなければいつものお客さんにする */
@@ -343,10 +348,7 @@ export function advance(state: GameState, rand: Rand): GameState {
     const { id, topic, fallback } = head;
     const guided = !!head.guided;
     /** その取引を組み立てる。取引がない・講義をまだ受けていない・一度きりでもう済んだ・今日は起こせない、なら null */
-    const tryBuild = (tid: string) => {
-      const t = TEMPLATES[tid];
-      return t && state.lessonsDone.includes(t.lesson) && !onceUsed(state, tid) ? t.build({ ...ctx, guided, topic }) : null;
-    };
+    const tryBuild = (tid: string) => buildable(state, { ...ctx, guided, topic }, tid);
     let built = tryBuild(id);
     let templateId = id === "guild" ? guildId(topic) : id;
     if (!built && fallback) {

@@ -334,7 +334,7 @@ describe("復習", () => {
     for (const [lesson, ds] of topicDays) {
       if (EVERYDAY.has(lesson as LessonId)) continue;
       // 店でくり返し起こせる取引（一度きり・年1回でないもの）がある論点は15日以内、それ以外は20日以内。
-      // その日に店で起こせなければギルドの帳簿相談として半分の頻度で回るので、間隔はその分のびる
+      // 実際の予定組みは「今日、店で起こせるか」で決まる（起こせなければギルドの帳簿相談として半分の頻度）。ここではその目安として once の有無で分ける
       const repeatable = (REVIEW_TEMPLATES.get(lesson as LessonId) ?? []).some(([id]) => !TEMPLATES[id].once);
       const limit = repeatable ? 15 : 20;
       const uniq = [...new Set(ds)];
