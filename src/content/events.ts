@@ -308,7 +308,7 @@ function customer(mode: "any" | "credit"): EventTemplate {
 
 const supplies: EventTemplate = {
   lesson: "expenses",
-  schedule: 0.35,
+  review: 0.35,
   build: (ctx) => {
     const [thing, examThing] = pick(ctx.rand, [
       ["帳面用の羊皮紙とインク", "事務用の文房具"],
@@ -382,7 +382,7 @@ const utility: EventTemplate = {
 
 const letter: EventTemplate = {
   lesson: "expenses",
-  schedule: 0.25,
+  review: 0.25,
   build: (ctx) => {
     const amt = pick(ctx.rand, [500, 800, 1000]);
     return {
@@ -407,7 +407,7 @@ const letter: EventTemplate = {
 
 const ad: EventTemplate = {
   lesson: "expenses",
-  schedule: 0.2,
+  review: 0.2,
   build: (ctx) => {
     if (ctx.state.reputation >= 90) return null;
     const amt = 10000;
@@ -528,7 +528,7 @@ const purchaseReturn: EventTemplate = {
 
 const salesReturn: EventTemplate = {
   lesson: "returns",
-  schedule: 0.25,
+  review: 0.25,
   build: ({ state, rand }) => {
     const cs = creditsOf(state, "売掛金").filter((c) => c.item && (c.qty ?? 0) >= 2);
     if (cs.length === 0) return null;
@@ -564,7 +564,7 @@ const STAFF = { price: 60000, deposit: 20000, cost: 40000, advance: 10000 };
 
 const orderStaff: EventTemplate = {
   lesson: "advances",
-  schedule: 0.15,
+  review: 0.15,
   build: (ctx) => {
     if (ctx.state.quest) return null;
     return {
@@ -682,7 +682,7 @@ const deliverStaff: EventTemplate = {
 
 const cashdiff: EventTemplate = {
   lesson: "cashdiff",
-  schedule: 0.2,
+  review: 0.2,
   build: (ctx) => {
     const { state, rand } = ctx;
     const cash = ctx.balance("現金");
@@ -771,9 +771,9 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   bank,
   wholesale: wholesale("any"),
   "wholesale-credit": wholesale("credit"),
-  "wholesale-freight": { ...wholesale("freight"), schedule: 0.3 },
+  "wholesale-freight": { ...wholesale("freight"), review: 0.3 },
   customer: customer("any"),
-  "customer-credit": { ...customer("credit"), schedule: 0.4 },
+  "customer-credit": { ...customer("credit"), review: 0.4 },
   supplies,
   rent,
   utility,

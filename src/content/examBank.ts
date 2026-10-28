@@ -356,3 +356,7 @@ export const EXAM_BANK: ExamQuestion[] = [
   q("advanced", "買掛金30,000円を普通預金口座から支払った際に、誤って借方を売掛金と記帳していたので、これを訂正する。", [["買掛金", 30000]], [["売掛金", 30000]]),
   q("advanced", "増資のため、株式200株を1株あたり5,000円で発行し、払込金が当座預金口座に入金された。", [["当座預金", 1000000]], [["資本金", 1000000]]),
 ];
+
+/** 論点ごとの問題（ギルドの帳簿相談・講義の早送り・ドリルで使う） */
+export const BANK_BY_LESSON = new Map<LessonId, ExamQuestion[]>();
+for (const q of EXAM_BANK) BANK_BY_LESSON.set(q.lesson, [...(BANK_BY_LESSON.get(q.lesson) ?? []), q]);

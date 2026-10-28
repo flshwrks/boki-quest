@@ -5,7 +5,7 @@
 
 import type { AccountName } from "@/engine/accounts";
 import type { Choice, LessonId, Transaction, Voucher } from "@/game/types";
-import { EXAM_BANK } from "./examBank";
+import { BANK_BY_LESSON } from "./examBank";
 import { type EventTemplate, adjustment, decline, interestOf, je, lastRecord, n, needCash, payFrom, pct, pick, viaPhrase } from "./eventKit";
 import { reversal } from "./eventsClosing";
 import { lowestStockItem, orderQtys, purchaseTx } from "./events";
@@ -15,7 +15,7 @@ import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, calendarMonth, monthOfYear, yearS
 
 const repair: EventTemplate = {
   lesson: "taxes",
-  schedule: 0.1,
+  review: 0.1,
   build: (ctx) => {
     const amt = pick(ctx.rand, [3000, 5000, 8000]);
     const tx = (via: AccountName): Transaction => ({
@@ -34,7 +34,7 @@ const repair: EventTemplate = {
 
 const revenueStamp: EventTemplate = {
   lesson: "taxes",
-  schedule: 0.08,
+  review: 0.08,
   build: (ctx) => {
     const amt = 2000;
     return {
@@ -59,7 +59,7 @@ const revenueStamp: EventTemplate = {
 
 const misc: EventTemplate = {
   lesson: "taxes",
-  schedule: 0.06,
+  review: 0.06,
   build: (ctx) => {
     const amt = 1000;
     return {
@@ -88,7 +88,7 @@ const VEHICLE_TAX = 6000;
 
 const vehicleTax: EventTemplate = {
   lesson: "taxes",
-  schedule: 0.3,
+  review: 0.3,
   once: "year",
   build: (ctx) => {
     if (ctx.balance("車両運搬具") <= 0) return null;
@@ -110,7 +110,7 @@ const vehicleTax: EventTemplate = {
 
 const invoicePurchase: EventTemplate = {
   lesson: "voucher",
-  schedule: 0.25,
+  review: 0.25,
   build: (ctx) => {
     const { state, rand } = ctx;
     if (!ctx.has("credit")) return null;
@@ -144,7 +144,7 @@ const invoicePurchase: EventTemplate = {
 
 const receiptSupplies: EventTemplate = {
   lesson: "voucher",
-  schedule: 0.12,
+  review: 0.12,
   build: (ctx) => {
     const amt = 3000;
     return {
@@ -185,7 +185,7 @@ const DEPOSIT_RATE = 0.02;
 
 const timeDeposit: EventTemplate = {
   lesson: "deposits",
-  schedule: 0.3,
+  review: 0.3,
   build: (ctx) => {
     const { state } = ctx;
     if (ctx.balance("定期預金") > 0) return null;
@@ -312,7 +312,7 @@ const unearnedRent: EventTemplate = {
 
 const recovery: EventTemplate = {
   lesson: "advanced",
-  schedule: 0.1,
+  review: 0.1,
   build: (ctx) => {
     const { state } = ctx;
     // 前の年度までに貸倒れにしたツケのうち、まだ回収の話が来ていないもの
@@ -362,14 +362,15 @@ const GUILD_IDEA: Partial<Record<LessonId, string>> = {
 const guild: EventTemplate = {
   lesson: "basics",
   build: (ctx) => {
-    const pool = EXAM_BANK.filter((q) => q.lesson === ctx.topic);
-    if (!ctx.topic || pool.length === 0) return null;
+    const { topic } = ctx;
+    const pool = topic && BANK_BY_LESSON.get(topic);
+    if (!topic || !pool) return null;
     const q = pick(ctx.rand, pool);
     const tx: Transaction = {
       story: "商人ギルドに届いた、よその商会からの帳簿の相談。店の帳簿には記入しない。",
       exam: q.text,
       answer: q.answer,
-      idea: GUILD_IDEA[ctx.topic] ?? "増えたもの・減ったものを書き出してみよう。どの科目の、どちら側かな？",
+      idea: GUILD_IDEA[topic] ?? "増えたもの・減ったものを書き出してみよう。どの科目の、どちら側かな？",
       doc: q.doc,
       offBooks: true,
     };

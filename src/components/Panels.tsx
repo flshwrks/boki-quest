@@ -6,7 +6,7 @@ import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, isMakeUp, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
-import { LEVEL_UP, balance, entriesOf, expectedCustomers, todaysLesson, totalSales } from "@/game/logic";
+import { LEVEL_UP, balance, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
 import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
 import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
@@ -29,8 +29,7 @@ export function DayStartPanel({
 }) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
-  // 復習のために今日の予定に入っている論点
-  const review = [...new Set(state.queue.flatMap((q) => (q.kind === "event" && q.topic && !q.guided ? [q.topic] : [])))];
+  const review = reviewTopics(state);
   const goal = LEVEL_UP[state.level];
   const next = LEVELS[state.level + 1];
   if (state.closingFrom !== null) {

@@ -2,7 +2,7 @@
 
 import { type Entry, sameEntry } from "@/engine/journal";
 import { parseAmount } from "@/engine/format";
-import { EXAM_BANK } from "@/content/examBank";
+import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
 import { pick } from "@/content/eventKit";
 import {
@@ -17,7 +17,9 @@ import {
   totalsTrialProblem,
   worksheetProblem,
 } from "@/content/mockExam";
-import { advance, gradeQuestions, lessonOfTemplate, logPractice, logPractices, pickQuestions } from "./logic";
+import { type Mastery, advance, gradeQuestions, lessonOfTemplate, logPractice, logPractices, pickQuestions , masteryOf } from "./logic";
+
+export { type Mastery, masteryOf };
 import { type Rand, shuffle } from "./random";
 import type { DrillSession, ExamQuestion, FillAnswer, FillBlank, FillProblem, GameState, LessonId, MockSession, Mistake } from "./types";
 
@@ -28,7 +30,7 @@ export const MOCK_QUESTIONS = 15;
 const MOCK_POINTS = 3;
 
 /** 審査・模試の問題がある論点（ドリルで練習できる論点） */
-export const LESSONS_WITH_QUESTIONS = new Set(EXAM_BANK.map((q) => q.lesson));
+export const LESSONS_WITH_QUESTIONS = new Set(BANK_BY_LESSON.keys());
 
 export function openTraining(state: GameState): GameState {
   return state.phase.kind === "dayStart" ? { ...state, phase: { kind: "training" } } : state;
@@ -50,33 +52,6 @@ export function afterLesson(state: GameState, rand: Rand): GameState {
 }
 
 // ───────── 習熟度 ─────────
-
-/** 直近の何回分で習熟度をはかるか（昔のミスをいつまでも引きずらないように） */
-const RECENT = 10;
-
-export interface Mastery {
-  tries: number;
-  correct: number;
-  /** 1：練習中／2：まずまず／3：得意 */
-  stars: 1 | 2 | 3;
-}
-
-export function masteryOf(state: GameState): Map<LessonId, Mastery> {
-  const all = new Map<LessonId, boolean[]>();
-  for (const r of state.practice) {
-    const oks = all.get(r.lesson);
-    if (oks) oks.push(r.ok);
-    else all.set(r.lesson, [r.ok]);
-  }
-  const map = new Map<LessonId, Mastery>();
-  for (const [lesson, oks] of all) {
-    const recent = oks.slice(-RECENT);
-    const correct = recent.filter(Boolean).length;
-    const rate = correct / recent.length;
-    map.set(lesson, { tries: recent.length, correct, stars: rate >= 0.9 && recent.length >= 5 ? 3 : rate >= 0.7 ? 2 : 1 });
-  }
-  return map;
-}
 
 /** 苦手な順に並べた、習った論点（ドリルで練習できる論点だけ） */
 export function weakLessons(state: GameState, mastery = masteryOf(state)): LessonId[] {

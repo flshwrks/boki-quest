@@ -19,7 +19,7 @@ const LOAN = { amount: 300000, rate: 0.03, months: 6 };
 
 const bankLoan: EventTemplate = {
   lesson: "loans",
-  schedule: 0.08,
+  review: 0.08,
   build: (ctx) => {
     if (creditsOf(ctx.state, "借入金").length > 0) return null;
     const { amount, rate, months } = LOAN;
@@ -100,7 +100,7 @@ const LEND = { amount: 50000, rate: 0.06, months: 4 };
 
 const lendAllen: EventTemplate = {
   lesson: "loans",
-  schedule: 0.12,
+  review: 0.12,
   build: (ctx) => {
     if (creditsOf(ctx.state, "貸付金").length > 0) return null;
     const { amount, rate, months } = LEND;
@@ -228,7 +228,7 @@ const buyWagon: EventTemplate = {
 
 const buyRegister: EventTemplate = {
   lesson: "fixedassets",
-  schedule: 0.08,
+  review: 0.08,
   once: "game",
   build: (ctx) => {
     const price = 80000;
@@ -272,7 +272,7 @@ const SALARY = { gross: 30000, tax: 1500, insurance: 3000 };
 
 const noelAdvance: EventTemplate = {
   lesson: "payroll",
-  schedule: 0.15,
+  review: 0.15,
   build: (ctx) => {
     if (creditsOf(ctx.state, "立替金").length > 0) return null;
     const amt = pick(ctx.rand, [2000, 3000]);
@@ -389,7 +389,7 @@ const TRIP_ADVANCE = 20000;
 
 const tripAdvance: EventTemplate = {
   lesson: "suspense",
-  schedule: 0.12,
+  review: 0.12,
   build: (ctx) => {
     if (creditsOf(ctx.state, "仮払金").length > 0) return null;
     return {
@@ -449,7 +449,7 @@ const tripSettle: EventTemplate = {
 
 const unknownDeposit: EventTemplate = {
   lesson: "suspense",
-  schedule: 0.15,
+  review: 0.15,
   build: ({ state, rand }) => {
     if (creditsOf(state, "仮受金").length > 0) return null;
     const ar = creditsOf(state, "売掛金");

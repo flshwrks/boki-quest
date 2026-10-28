@@ -75,7 +75,7 @@ const allowance: EventTemplate = {
 
 const badDebt: EventTemplate = {
   lesson: "allowance",
-  schedule: 0.06,
+  review: 0.06,
   build: (ctx) => {
     const { state, rand } = ctx;
     const ar = creditsOf(state, "売掛金").filter((c) => c.amount >= 2000);

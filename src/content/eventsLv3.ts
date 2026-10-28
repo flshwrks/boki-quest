@@ -44,7 +44,7 @@ function convertPayable(
 ): EventTemplate {
   return {
     lesson: t.lesson,
-    schedule: kind === "支払手形" ? 0.25 : 0.2,
+    review: kind === "支払手形" ? 0.25 : 0.2,
     build: (ctx) => {
       const ap = creditsOf(ctx.state, "買掛金", "gantetsu");
       if (ap.length === 0) return null;
@@ -102,7 +102,7 @@ const openChecking: EventTemplate = {
 
 const customerNote: EventTemplate = {
   lesson: "notes",
-  schedule: 0.3,
+  review: 0.3,
   build: (ctx) => {
     const { state, rand } = ctx;
     const ar = creditsOf(state, "売掛金").filter((c) => c.amount >= 5000);
@@ -185,7 +185,7 @@ const notePayDue = settleDue("支払手形", {
 
 const erecordReceive: EventTemplate = {
   lesson: "erecords",
-  schedule: 0.25,
+  review: 0.25,
   build: ({ state, rand }) => {
     const ar = creditsOf(state, "売掛金");
     if (ar.length === 0) return null;
@@ -242,7 +242,7 @@ const CARD_FEE_RATE = 0.02;
 
 const cardSale: EventTemplate = {
   lesson: "creditcard",
-  schedule: 0.4,
+  review: 0.4,
   build: (ctx) => {
     const who: CharacterId = pick(ctx.rand, ["allen", "mina", "gord", "lily"] as const);
     const sale = pickSale(ctx, who);
@@ -291,7 +291,7 @@ const cardCollect = settleDue("クレジット売掛金", {
 
 const giftcertSale: EventTemplate = {
   lesson: "giftcert",
-  schedule: 0.3,
+  review: 0.3,
   build: (ctx) => {
     const sale = pickSale(ctx, "lily", 2000);
     if (!sale) return null;
@@ -346,7 +346,7 @@ const FIXTURES = [
 
 const buyFixture: EventTemplate = {
   lesson: "payables",
-  schedule: 0.1,
+  review: 0.1,
   build: (ctx) => {
     if (!ctx.guided && creditsOf(ctx.state, "未払金").length > 0) return null;
     const f = pick(ctx.rand, FIXTURES);
@@ -387,7 +387,7 @@ const PETTY_FUND = 10000;
 
 const pettyAdvance: EventTemplate = {
   lesson: "pettycash",
-  schedule: 0.5,
+  review: 0.5,
   build: (ctx) => {
     if (ctx.balance("小口現金") > 0) return null;
     return {

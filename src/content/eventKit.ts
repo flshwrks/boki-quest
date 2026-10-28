@@ -22,11 +22,10 @@ export interface Ctx {
 
 export interface EventTemplate {
   lesson: LessonId;
-  /**
-   * 講義を受けた後の出番。daily：毎日判定（起きるかは build が決める）／
-   * 数値：復習の取引。習った論点を順に回すとき、その論点の中でこの取引が選ばれる重み
-   */
-  schedule?: "daily" | number;
+  /** daily：講義を受けた後、毎日判定する（起きるかは build が決める。期日の決済など） */
+  schedule?: "daily";
+  /** 復習の取引。習った論点を順に回すとき、その論点の中でこの取引が選ばれる重み */
+  review?: number;
   /** game：一度起きたら二度と起きない／year：会計年度に1回／day：1日に1回（進行側でまとめて判定する） */
   once?: "game" | "year" | "day";
   build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;
