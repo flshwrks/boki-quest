@@ -32,6 +32,7 @@ export function DayStartPanel({
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
   const review = reviewTopics(state);
+  const days = businessDays(state);
   const goal = LEVEL_UP[state.level];
   const next = LEVELS[state.level + 1];
   if (state.closingFrom !== null) {
@@ -63,7 +64,7 @@ export function DayStartPanel({
           </li>
         )}
       </ul>
-      {goal && next && businessDays(state) > 1 && (
+      {goal && next && days > 1 && (
         <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
           <div className="mb-1 text-gold">
             「{next.name}」へ成長する条件（そろうと翌朝{next.exam}）
@@ -74,7 +75,7 @@ export function DayStartPanel({
           ))}
           <Goal label="売上の累計" now={totalSales(state)} target={goal.sales} unit="円" />
           <Goal label="帳簿の信用" now={state.trust} target={goal.trust} />
-          <Goal label="営業日数" now={businessDays(state)} target={goal.days} unit="日目" />
+          <Goal label="営業日数" now={days} target={goal.days} unit="日目" />
           {state.examRetryDay > state.day && <p className="mt-1 text-xs text-dim">審査の再挑戦は {dateLabel(state.examRetryDay)} から</p>}
         </div>
       )}
@@ -99,7 +100,7 @@ export function DayStartPanel({
       )}
       <div className="flex flex-wrap gap-2">
         <Btn onClick={onOpen}>開店する！</Btn>
-        {businessDays(state) > 1 && (
+        {days > 1 && (
           <Btn variant="ghost" onClick={onTraining}>
             📚 試験対策
           </Btn>

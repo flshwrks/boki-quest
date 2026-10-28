@@ -25,9 +25,14 @@ function migrate(raw: Saved): GameState | null {
   while (MIGRATIONS[s.version]) s = MIGRATIONS[s.version](s);
   if (s.version !== 2) return null;
   const saved = s as unknown as GameState;
-  const base = initialState(saved.shopName);
   const shifted = saved.openDay === undefined ? shortenFirstYear(saved) : saved;
-  return finishMigration(base, shifted);
+  const base = initialState(saved.shopName);
+  const stock = { ...base.stock, ...shifted.stock };
+  // 在庫の原価は後から増えた項目。古いセーブでは、いつもの仕入値で数え直す
+  const stockValue = shifted.stockValue ?? perItem((id) => stock[id] * ITEMS[id].cost);
+  const merged = { ...base, ...shifted, stock, stockValue };
+  // 正誤の記録は後から増えた項目。古いセーブでは、これまでの記帳から作り直す
+  return shifted.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };
 }
 
 /**
@@ -36,15 +41,15 @@ function migrate(raw: Saved): GameState | null {
  * 取引の順番・ツケや借入の期日までの日数・帳簿の残高は変わらない
  */
 function shortenFirstYear(saved: GameState): GameState {
-  const closed = saved.closingFrom !== null || saved.journal.some((r) => r.templateId === "closing-transfer");
-  const room = DAYS_PER_YEAR - 5 - saved.day;
-  const by = closed || room <= 0 ? 0 : Math.min(OPEN_DAY - 1, Math.floor(room / DAYS_PER_MONTH) * DAYS_PER_MONTH);
+  // 決算の月（3月）に入っていたら、もうずらさない（決算を終えたセーブもここに入る）
+  const room = DAYS_PER_YEAR - DAYS_PER_MONTH - saved.day;
+  const by = Math.max(0, Math.min(OPEN_DAY - 1, Math.floor(room / DAYS_PER_MONTH) * DAYS_PER_MONTH));
   const at = <T extends { day: number }>(x: T): T => ({ ...x, day: x.day + by });
   return {
     ...saved,
     day: saved.day + by,
     openDay: 1 + by,
-    examRetryDay: saved.examRetryDay ? saved.examRetryDay + by : saved.examRetryDay,
+    examRetryDay: saved.examRetryDay + by,
     journal: saved.journal.map(at),
     credits: saved.credits.map(at),
     mistakes: saved.mistakes.map(at),
@@ -54,15 +59,6 @@ function shortenFirstYear(saved: GameState): GameState {
     quest: saved.quest && at(saved.quest),
     cashDiff: saved.cashDiff && at(saved.cashDiff),
   };
-}
-
-function finishMigration(base: GameState, saved: GameState): GameState {
-  const stock = { ...base.stock, ...saved.stock };
-  // 在庫の原価は後から増えた項目。古いセーブでは、いつもの仕入値で数え直す
-  const stockValue = saved.stockValue ?? perItem((id) => stock[id] * ITEMS[id].cost);
-  const merged = { ...base, ...saved, stock, stockValue };
-  // 正誤の記録は後から増えた項目。古いセーブでは、これまでの記帳から作り直す
-  return saved.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };
 }
 
 // ───────── 端末内の保存 ─────────

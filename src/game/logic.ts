@@ -209,7 +209,7 @@ const MAX_REVIEWS = 4;
 
 export function planDay(state: GameState, rand: Rand): QueueItem[] {
   // 開業日は開業に必要な講義をまとめて受け、お客さんを1人だけ迎える
-  if (state.day === state.openDay) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
+  if (businessDays(state) === 1) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
   const has = (id: LessonId) => state.lessonsDone.includes(id);
   const dim = dayInMonth(state.day);
   const q: QueueItem[] = [];
