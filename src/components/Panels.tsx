@@ -29,6 +29,8 @@ export function DayStartPanel({
 }) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
+  // 復習のために今日の予定に入っている論点
+  const review = [...new Set(state.queue.flatMap((q) => (q.kind === "event" && q.topic && !q.guided ? [q.topic] : [])))];
   const goal = LEVEL_UP[state.level];
   const next = LEVELS[state.level + 1];
   if (state.closingFrom !== null) {
@@ -54,6 +56,11 @@ export function DayStartPanel({
           </li>
         )}
         <li>🧑‍🤝‍🧑 来店予定の冒険者：およそ {expectedCustomers(state)} 人（評判が上がると増える）</li>
+        {review.length > 0 && (
+          <li>
+            🔁 今日の復習：<span className="text-gold">{review.map((id) => LESSON_BY_ID[id].title).join("・")}</span>
+          </li>
+        )}
       </ul>
       {goal && next && state.day > 1 && (
         <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">

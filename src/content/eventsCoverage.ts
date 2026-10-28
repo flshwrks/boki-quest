@@ -344,7 +344,7 @@ const recovery: EventTemplate = {
 
 // ───────── 商人ギルドの帳簿相談（店の帳簿には記入しない練習） ─────────
 
-/** ギルドの帳簿相談を出す論点と、そのときの最初のヒント */
+/** ギルドの帳簿相談での最初のヒント（論点ごと。ない論点は共通のヒント） */
 const GUILD_IDEA: Partial<Record<LessonId, string>> = {
   taxes: "税金のうち、利益にかからないものは租税公課じゃ。",
   voucher: "書類は誰が誰に出したものか、代金はどうしたかを読むのじゃ。",
@@ -355,33 +355,32 @@ const GUILD_IDEA: Partial<Record<LessonId, string>> = {
   advanced: "訂正なら、誤った仕訳の逆と正しい仕訳を合わせる。前の期に貸倒れにした債権の回収は収益じゃ。",
 };
 
-function guild(lesson: LessonId): EventTemplate {
-  const pool = EXAM_BANK.filter((q) => q.lesson === lesson);
-  return {
-    lesson,
-    schedule: 0.08,
-    build: (ctx) => {
-      const q = pick(ctx.rand, pool);
-      const tx: Transaction = {
-        story: "商人ギルドに届いた、よその商会からの帳簿の相談。店の帳簿には記入しない。",
-        exam: q.text,
-        answer: q.answer,
-        idea: GUILD_IDEA[lesson]!,
-        doc: q.doc,
-        offBooks: true,
-      };
-      const choices: Choice[] = [
-        { label: "相談にのる（仕訳を書く）", tx },
-        decline("今日は忙しいので断る", "セシル「わかりました。また今度お願いしますね」"),
-      ];
-      return {
-        speaker: "cecil",
-        lines: ["商人ギルドの帳簿相談です。よその商会から、こんな取引の仕訳を聞かれまして…", "店の帳簿には書かない練習ですから、気軽にどうぞ。"],
-        choices,
-      };
-    },
-  };
-}
+/**
+ * 商人ギルドの帳簿相談。ctx.topic の論点の問題を、問題集から出す（店の帳簿には記入しない）。
+ * 講義の練習や、復習で選んだ取引が起こせないときの代わりに使う
+ */
+const guild: EventTemplate = {
+  lesson: "basics",
+  build: (ctx) => {
+    const pool = EXAM_BANK.filter((q) => q.lesson === ctx.topic);
+    if (!ctx.topic || pool.length === 0) return null;
+    const q = pick(ctx.rand, pool);
+    const tx: Transaction = {
+      story: "商人ギルドに届いた、よその商会からの帳簿の相談。店の帳簿には記入しない。",
+      exam: q.text,
+      answer: q.answer,
+      idea: GUILD_IDEA[ctx.topic] ?? "増えたもの・減ったものを書き出してみよう。どの科目の、どちら側かな？",
+      doc: q.doc,
+      offBooks: true,
+    };
+    const choices: Choice[] = [{ label: "相談にのる（仕訳を書く）", tx }, decline("今日は忙しいので断る", "セシル「わかりました。また今度お願いしますね」")];
+    return {
+      speaker: "cecil",
+      lines: ["商人ギルドの帳簿相談です。よその商会から、こんな取引の仕訳を聞かれまして…", "店の帳簿には書かない練習ですから、気軽にどうぞ。"],
+      choices,
+    };
+  },
+};
 
 export const COVERAGE_TEMPLATES: Record<string, EventTemplate> = {
   repair,
@@ -396,5 +395,5 @@ export const COVERAGE_TEMPLATES: Record<string, EventTemplate> = {
   "close-unearned-rent": unearnedRent,
   "reverse-unearned-rent": reversal("rentals", "前受家賃", "受取家賃", "去年の決算で来年分にした家賃は、今年の収益じゃ。"),
   recovery,
-  ...Object.fromEntries((Object.keys(GUILD_IDEA) as LessonId[]).map((l) => [`guild-${l}`, guild(l)])),
+  guild,
 };

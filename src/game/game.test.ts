@@ -5,10 +5,12 @@ import { LESSONS, PREP_LEVEL } from "@/content/lessons";
 import { ITEMS, ITEM_IDS } from "@/content/world";
 import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { EXAM_BANK } from "@/content/examBank";
+import { TEMPLATES } from "@/content/events";
 import { newAchievements } from "@/content/achievements";
 import { LESSON_BY_ID } from "@/content/lessons";
 import {
   advance,
+  lessonOfTemplate,
   balance,
   beginExam,
   choose,
@@ -27,7 +29,7 @@ import {
   unlockedAccounts,
 } from "./logic";
 import { seededRand } from "./random";
-import { CREDIT_KINDS, type GameState } from "./types";
+import { CREDIT_KINDS, type GameState, type LessonId } from "./types";
 
 function checkInvariants(s: GameState) {
   for (const id of ITEM_IDS) {
@@ -55,6 +57,8 @@ function play(seed: number, days: number, mistakeRate = 0) {
   const rand = seededRand(seed);
   let s = newGame("テスト商店", rand);
   const seenTemplates = new Set<string>();
+  /** 論点ごとに、その論点の場面が出てきた日 */
+  const topicDays = new Map<string, number[]>();
   let steps = 0;
   while (s.day <= days) {
     if (++steps > 20000) throw new Error("進行が止まった");
@@ -73,6 +77,8 @@ function play(seed: number, days: number, mistakeRate = 0) {
         s = turnLessonPage(s, 1);
         break;
       case "event": {
+        const topic = lessonOfTemplate(p.event.templateId);
+        if (topic) topicDays.set(topic, [...(topicDays.get(topic) ?? []), s.day]);
         const enabled = p.event.choices.map((c, i) => [c, i] as const).filter(([c]) => !c.disabled);
         expect(enabled.length, `${p.event.templateId} に選べる選択肢がない`).toBeGreaterThan(0);
         const [, idx] = enabled[Math.floor(rand() * enabled.length)];
@@ -127,7 +133,7 @@ function play(seed: number, days: number, mistakeRate = 0) {
       }
     }
   }
-  return { s, seenTemplates };
+  return { s, seenTemplates, topicDays };
 }
 
 describe("採点", () => {
@@ -308,6 +314,21 @@ describe("朝の仕入れ注文", () => {
     expect(s.stock.potion).toBe(before + 10);
     expect(s.journal.at(-1)?.entry).toEqual({ debit: [{ account: "仕入", amount: 6000 }], credit: [{ account: "普通預金", amount: 6000 }] });
   });
+});
+
+describe("復習", () => {
+  it("習った論点の場面は、その後の営業でもくり返し出てくる（店で起こせる論点は10日以内、ギルドの相談だけの論点は20日以内）", () => {
+    const { s, topicDays } = play(2, 200);
+    const inStore = new Set(Object.values(TEMPLATES).filter((t) => typeof t.schedule === "number").map((t) => t.lesson));
+    for (const [lesson, ds] of topicDays) {
+      // 消費税は、習ったあとの売り買いすべてに含まれる
+      if (lesson === "salestax" || lesson === "basics" || lesson === "trade") continue;
+      const limit = inStore.has(lesson as LessonId) ? 10 : 20;
+      const uniq = [...new Set(ds)];
+      for (let i = 1; i < uniq.length; i++) expect(uniq[i] - uniq[i - 1], `${lesson} が ${uniq[i - 1]}日目から出てこない`).toBeLessThanOrEqual(limit);
+      expect(s.day - uniq.at(-1)!, `${lesson} が最後に出てから間があく`).toBeLessThanOrEqual(limit);
+    }
+  }, 120000);
 });
 
 describe("実績", () => {

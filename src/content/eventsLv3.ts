@@ -387,6 +387,7 @@ const PETTY_FUND = 10000;
 
 const pettyAdvance: EventTemplate = {
   lesson: "pettycash",
+  schedule: 0.5,
   build: (ctx) => {
     if (ctx.balance("小口現金") > 0) return null;
     return {

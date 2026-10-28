@@ -163,7 +163,7 @@ describe("ギルドの帳簿相談", () => {
   it("正解しても店の帳簿（仕訳帳）には記入せず、正誤だけ記録する", () => {
     const rand = seededRand(3);
     const base = newGame("テスト商店", rand);
-    const built = TEMPLATES["guild-fixedsale"].build({ state: base, rand, balance: () => 0, has: () => true, guided: false })!;
+    const built = TEMPLATES.guild.build({ state: base, rand, balance: () => 0, has: () => true, guided: false, topic: "fixedsale" })!;
     let s: GameState = {
       ...base,
       lessonsDone: [...base.lessonsDone, "fixedsale"],

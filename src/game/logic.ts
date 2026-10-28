@@ -89,12 +89,55 @@ export function nextLesson(state: GameState): Lesson | undefined {
 
 const ev = (id: string, guided = false): QueueItem => ({ kind: "event", id, guided });
 
-/** 講義と、その直後の練習取引 */
-const lessonItems = (l: Lesson): QueueItem[] => [{ kind: "lesson", id: l.id }, ...l.practice.map((t) => ev(t, true))];
+/** 講義と、その直後の練習取引（"guild" はその講義の論点のギルドの帳簿相談） */
+const lessonItems = (l: Lesson): QueueItem[] => [
+  { kind: "lesson", id: l.id },
+  ...l.practice.map((t): QueueItem => (t === "guild" ? { kind: "event", id: t, guided: true, topic: l.id } : ev(t, true))),
+];
 
 /** 講義を受けた後の取引。毎日判定するものと、ときどき起きるもの（確率つき） */
 const DAILY = Object.entries(TEMPLATES).filter(([, t]) => t.schedule === "daily");
-const EXTRAS = Object.entries(TEMPLATES).filter(([, t]) => typeof t.schedule === "number");
+/** 復習の取引（論点ごと）。schedule の数値は、その論点の中で選ばれる重み */
+const REVIEW_TEMPLATES = new Map<LessonId, [string, number][]>();
+for (const [id, t] of Object.entries(TEMPLATES)) {
+  if (typeof t.schedule === "number") REVIEW_TEMPLATES.set(t.lesson, [...(REVIEW_TEMPLATES.get(t.lesson) ?? []), [id, t.schedule]]);
+}
+/** 毎日の売り買いで必ず練習する論点（復習の対象から外す）。消費税は、習ったあとの売り買いすべてに含まれる */
+const EVERYDAY = new Set<LessonId>(["basics", "trade", "salestax"]);
+const BANKED = new Set(EXAM_BANK.map((q) => q.lesson));
+
+/**
+ * 復習の予定：習った論点から「しばらく練習していない」「苦手」なものを優先して選び、
+ * その論点の取引（なければギルドの帳簿相談）を入れる。講義で習ったことが、その後の営業でも必ず回ってくる
+ */
+function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[] {
+  const last = new Map<LessonId, number>();
+  const recent = new Map<LessonId, boolean[]>();
+  for (const r of state.practice) {
+    last.set(r.lesson, r.day);
+    recent.set(r.lesson, [...(recent.get(r.lesson) ?? []), r.ok].slice(-5));
+  }
+  const candidates = state.lessonsDone.filter((id) => id !== today && !EVERYDAY.has(id) && (REVIEW_TEMPLATES.has(id) || BANKED.has(id)));
+  const due = (id: LessonId) => {
+    const oks = recent.get(id) ?? [];
+    const weak = oks.length > 0 && oks.filter(Boolean).length / oks.length < 0.7;
+    // 店で起こせる論点を優先し、ギルドの帳簿相談でしか出せない論点（決算整理など）は半分の頻度にする
+    const pace = REVIEW_TEMPLATES.has(id) ? 1 : 0.5;
+    return (state.day - (last.get(id) ?? 0)) * pace + (weak ? 4 : 0) + rand() * 2;
+  };
+  const chosen = candidates
+    .map((id) => ({ id, score: due(id) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 1 + state.level);
+  return chosen.map(({ id: topic }) => {
+    // 一度きりの取引で、もう済んだものは選ばない
+    const options = (REVIEW_TEMPLATES.get(topic) ?? []).filter(([t]) => TEMPLATES[t].once !== "game" || !state.journal.some((r) => r.templateId === t));
+    const total = options.reduce((a, [, w]) => a + w, 0);
+    let roll = rand() * total;
+    const id = options.find(([, w]) => (roll -= w) < 0)?.[0] ?? "guild";
+    return { kind: "event", id, topic };
+  });
+}
 
 export function planDay(state: GameState, rand: Rand): QueueItem[] {
   // 開業日は開業に必要な講義をまとめて受け、お客さんを1人だけ迎える
@@ -116,7 +159,7 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   if (rand() < 0.5) q.push(ev("wholesale"));
   if (has("returns") && rand() < 0.3) q.push(ev("purchase-return"));
 
-  const extras = EXTRAS.filter(([, t]) => willHave(t.lesson) && rand() < (t.schedule as number)).map(([id]) => ev(id));
+  const extras = reviewItems(state, rand, lesson?.id);
   // 評判が上がるほど、店が大きくなるほど、お客さんが増える
   const customers = 1 + state.level + Math.floor(state.reputation / 25);
   const rest = shuffle([...Array.from({ length: customers }, () => ev("customer")), ...extras], rand);
@@ -167,6 +210,8 @@ const ORDER = "order";
 /** 取引の種類（templateId）から、その論点の講義を引く。朝の注文は商品売買 */
 export function lessonOfTemplate(templateId: string): LessonId | undefined {
   if (templateId === ORDER) return "trade";
+  // ギルドの帳簿相談は "guild-論点"
+  if (templateId.startsWith("guild-")) return templateId.slice("guild-".length) as LessonId;
   return TEMPLATES[templateId]?.lesson;
 }
 
@@ -237,15 +282,19 @@ export function advance(state: GameState, rand: Rand): GameState {
     }
     if (head.kind === "worksheet") return { ...state, queue, phase: { kind: "worksheet", answered: [null, null] } };
     if (head.kind === "report") return { ...state, queue, phase: { kind: "report" } };
-    const { id } = head;
+    const { id, topic } = head;
     const guided = !!head.guided;
     const template = TEMPLATES[id];
-    if (!template || !state.lessonsDone.includes(template.lesson)) continue;
-    if (template.once) {
-      const since = { game: 0, year: yearStartDay(state.day), day: state.day }[template.once];
-      if (state.journal.some((r) => r.templateId === id && r.day >= since)) continue;
+    const since = template?.once && { game: 0, year: yearStartDay(state.day), day: state.day }[template.once];
+    const ready =
+      !!template && state.lessonsDone.includes(template.lesson) && !(since !== undefined && state.journal.some((r) => r.templateId === id && r.day >= since));
+    let built = ready ? template.build({ ...ctx, guided, topic }) : null;
+    let templateId = id === "guild" ? `guild-${topic}` : id;
+    // 復習で選んだ取引が今日は起こせないときは、同じ論点のギルドの帳簿相談にする
+    if (!built && topic && id !== "guild") {
+      built = TEMPLATES.guild.build({ ...ctx, guided, topic });
+      templateId = `guild-${topic}`;
     }
-    const built = template.build({ ...ctx, guided });
     if (!built) continue;
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
@@ -261,7 +310,7 @@ export function advance(state: GameState, rand: Rand): GameState {
         effect: { reputation: -1 },
       });
     }
-    return { ...state, queue, phase: { kind: "event", event: { ...built, choices, templateId: id, guided } } };
+    return { ...state, queue, phase: { kind: "event", event: { ...built, choices, templateId, guided } } };
   }
   return { ...state, queue, phase: { kind: "dayEnd" } };
 }

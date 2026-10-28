@@ -1040,7 +1040,7 @@ export const LESSONS: Lesson[] = [
     level: 4,
     title: "手形貸付金・手形借入金",
     accounts: ["手形貸付金", "手形借入金"],
-    practice: ["guild-notesloan"],
+    practice: ["guild"],
     pages: [
       {
         text: "お金の貸し借りでも、借用証書のかわりに約束手形を使うことがある。このときは商品代金の受取手形・支払手形とは区別して、「手形貸付金」（資産）・「手形借入金」（負債）を使う。",
@@ -1068,7 +1068,7 @@ export const LESSONS: Lesson[] = [
     level: 5,
     title: "土地・建物と固定資産の売却",
     accounts: ["土地", "建物", "固定資産売却益", "固定資産売却損"],
-    practice: ["guild-fixedsale"],
+    practice: ["guild"],
     pages: [
       {
         text: "土地や建物を買ったときは、購入代価に仲介手数料・登記料・整地費用などの「付随費用」を足した額を取得原価にする。備品と同じ考え方じゃ。土地は使っても価値が減らないので、減価償却はしない。",
@@ -1168,7 +1168,7 @@ export const LESSONS: Lesson[] = [
     level: 5,
     title: "償却債権取立益・訂正仕訳・試算表のいろいろ",
     accounts: ["償却債権取立益"],
-    practice: ["guild-advanced"],
+    practice: ["guild"],
     pages: [
       {
         text: "前の期までに貸倒れとして処理した売掛金を、あとで回収できることもある。このときは「償却債権取立益」（収益）じゃ。売掛金はもう帳簿から消えておるから、売掛金を減らしてはいかん。今期に貸倒れにした分を今期に回収したなら、貸倒れの仕訳を取り消すだけじゃ。",

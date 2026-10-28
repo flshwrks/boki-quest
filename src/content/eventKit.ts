@@ -16,11 +16,16 @@ export interface Ctx {
   has: (lesson: LessonId) => boolean;
   /** 講義直後の練習。断る・半分だけなどの寄り道を出さない */
   guided: boolean;
+  /** 復習で出す論点（ギルドの帳簿相談で、どの論点の問題を出すか） */
+  topic?: LessonId;
 }
 
 export interface EventTemplate {
   lesson: LessonId;
-  /** 講義を受けた後の出番。daily：毎日判定（起きるかは build が決める）／数値：その確率でときどき起きる */
+  /**
+   * 講義を受けた後の出番。daily：毎日判定（起きるかは build が決める）／
+   * 数値：復習の取引。習った論点を順に回すとき、その論点の中でこの取引が選ばれる重み
+   */
   schedule?: "daily" | number;
   /** game：一度起きたら二度と起きない／year：会計年度に1回／day：1日に1回（進行側でまとめて判定する） */
   once?: "game" | "year" | "day";
