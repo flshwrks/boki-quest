@@ -6,10 +6,10 @@ import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, isMakeUp, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
-import { LEVEL_UP, balance, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
+import { LEVEL_UP, balance, canAutoPost, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
 import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
-import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
+import type { GameEvent, GameState, ItemId, JournalRecord, LessonId, ResultInfo } from "@/game/types";
 import { OrderPanel } from "./OrderPanel";
 import { TrialBalanceTable } from "./BookModal";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
@@ -86,7 +86,7 @@ export function DayStartPanel({
         </p>
       )}
       {state.lessonsDone.includes("trade") && <OrderPanel state={state} onOrder={onOrder} />}
-      {state.lessonsDone.includes("payroll") && (
+      {canAutoPost(state) && (
         <label className="mb-3 flex cursor-pointer items-start gap-2 rounded-lg border border-white/30 p-2 text-sm">
           <input type="checkbox" checked={state.autoPost} onChange={onToggleAutoPost} className="mt-1" />
           <span>
@@ -244,8 +244,12 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
     return tips[state.day % tips.length];
   }, [state.day, state.lessonsDone]);
   const t = state.today;
-  // 今日、ノエルが代わりに記帳した取引
-  const auto = state.journal.filter((r) => r.day === state.day && r.auto);
+  // 今日、ノエルが代わりに記帳した取引（仕訳帳の後ろから今日の分だけ見る）
+  const auto = useMemo(() => {
+    const today: JournalRecord[] = [];
+    for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) if (state.journal[i].auto) today.unshift(state.journal[i]);
+    return today;
+  }, [state.journal, state.day]);
   return (
     <Win title={`${dateLabel(state.day)} 閉店`}>
       <div className="mb-3 flex items-center gap-4">
@@ -274,8 +278,8 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
             ノエルが記帳した取引（{auto.length}件）。仕訳を確かめておこう
           </summary>
           <ul className="mt-2 flex flex-col gap-2">
-            {auto.map((r, i) => (
-              <li key={i}>
+            {auto.map((r) => (
+              <li key={`${r.templateId}-${r.exam}`}>
                 <p className="mb-1 text-xs">{r.exam}</p>
                 <EntryTable entry={r.entry} />
               </li>

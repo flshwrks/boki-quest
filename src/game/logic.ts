@@ -337,10 +337,13 @@ export function afterResult(state: GameState, rand: Rand): GameState {
   return advance(state, rand);
 }
 
-/** ノエルが記帳できるのは、給料の講義で雇ったあとの、習熟度★3の論点の決まった後始末（選べる仕訳が1つだけのもの） */
-function autoPostTx(state: GameState, templateId: string, choices: Choice[], mastery: Map<LessonId, Mastery> | undefined): Transaction | undefined {
+/** ノエルに記帳を任せられるか（給料の講義でノエルを雇ったあと） */
+export const canAutoPost = (state: GameState) => state.lessonsDone.includes("payroll");
+
+/** ノエルが記帳するのは、習熟度★3の論点の決まった後始末（選べる仕訳が1つだけのもの） */
+function autoPostTx(templateId: string, choices: Choice[], mastery: Map<LessonId, Mastery>): Transaction | undefined {
   const t = TEMPLATES[templateId];
-  if (!state.autoPost || !mastery || !t?.routine || !state.lessonsDone.includes("payroll") || mastery.get(t.lesson)?.stars !== 3) return undefined;
+  if (!t?.routine || mastery.get(t.lesson)?.stars !== 3) return undefined;
   const ready = choices.filter((c) => c.tx && !c.disabled);
   return ready.length === 1 ? ready[0].tx : undefined;
 }
@@ -350,7 +353,8 @@ export function advance(state: GameState, rand: Rand): GameState {
   let cur = state;
   const queue = [...state.queue];
   let ctx = ctxOf(cur, rand, false);
-  const mastery = state.autoPost ? masteryOf(state) : undefined;
+  // ノエルに任せているときだけ、習熟度を調べる
+  const mastery = cur.autoPost && canAutoPost(cur) ? masteryOf(cur) : undefined;
   while (queue.length > 0) {
     const head = queue.shift()!;
     if (head.kind === "lesson") {
@@ -383,7 +387,7 @@ export function advance(state: GameState, rand: Rand): GameState {
       return { ...c, tx, disabled: c.disabled ?? disabled };
     });
     // 慣れた後始末はノエルが記帳して、次の取引へ進む（閉店時に一覧で見せる）
-    const auto = guided ? undefined : autoPostTx(cur, templateId, choices, mastery);
+    const auto = mastery && !guided ? autoPostTx(templateId, choices, mastery) : undefined;
     if (auto) {
       cur = postToBooks(cur, templateId, auto, true);
       ctx = ctxOf(cur, rand, false);

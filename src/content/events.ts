@@ -1,7 +1,7 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, GameState, ItemId, Transaction } from "@/game/types";
-import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale, pickSale } from "./eventKit";
+import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale, pickSale, dueCredits } from "./eventKit";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
@@ -476,15 +476,17 @@ const ad: EventTemplate = {
 
 // ───────── 掛けの回収・支払い ─────────
 
-/** 先月までのツケ（売掛金）を、月の2日目にまとめて回収する（月末締め・翌月入金） */
+/** ツケを回収する月の日。先月までのツケ（売掛金）を、この日にまとめて回収する（月末締め・翌月入金） */
+const COLLECT_DAY = 2;
+
 const collect: EventTemplate = {
   lesson: "credit",
   schedule: "daily",
   routine: true,
   build: ({ state }) => {
-    if (dayInMonth(state.day) !== 2) return null;
-    const monthStart = state.day - 1;
-    const due = creditsOf(state, "売掛金").filter((c) => c.day < monthStart);
+    if (dayInMonth(state.day) !== COLLECT_DAY) return null;
+    // 月の初日より前に発生したツケ（＝先月までの分）
+    const due = dueCredits(state, "売掛金", COLLECT_DAY);
     if (due.length === 0) return null;
     const amt = sumAmounts(due);
     const who = [...new Set(due.map((c) => name(c.who)))].join("・");
