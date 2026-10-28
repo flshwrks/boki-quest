@@ -6,10 +6,10 @@ import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, isMakeUp, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
-import { LEVEL_UP, balance, businessDays, canAutoPost, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
+import { LEVEL_UP, autoPostedToday, balance, businessDays, canAutoPost, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
 import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
-import type { GameEvent, GameState, ItemId, JournalRecord, LessonId, ResultInfo } from "@/game/types";
+import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
 import { OrderPanel } from "./OrderPanel";
 import { TrialBalanceTable } from "./BookModal";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
@@ -245,12 +245,7 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
     return tips[state.day % tips.length];
   }, [state.day, state.lessonsDone]);
   const t = state.today;
-  // 今日、ノエルが代わりに記帳した取引（仕訳帳の後ろから今日の分だけ見る）
-  const auto = useMemo(() => {
-    const today: JournalRecord[] = [];
-    for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) if (state.journal[i].auto) today.unshift(state.journal[i]);
-    return today;
-  }, [state.journal, state.day]);
+  const auto = useMemo(() => autoPostedToday(state), [state.journal, state.day]);
   return (
     <Win title={`${dateLabel(state.day)} 閉店`}>
       <div className="mb-3 flex items-center gap-4">

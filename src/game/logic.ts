@@ -273,7 +273,7 @@ function prepareTx(state: GameState, ctx: Ctx, tx: Transaction): { tx: Transacti
 }
 
 /** 朝の仕入れ注文の記録に使う templateId */
-export const ORDER = "order";
+const ORDER = "order";
 
 /** 取引の種類（templateId）から、その論点の講義を引く。朝の注文は商品売買 */
 export function lessonOfTemplate(templateId: string): LessonId | undefined {
@@ -329,10 +329,20 @@ export function orderPreview(state: GameState, item: ItemId, qty: number, pay: P
  * 苦手なうちは自分で記帳して、仕入の仕訳を体に覚えさせる
  */
 export function autoOrder(state: GameState, pay: PurchasePay): boolean {
-  if (!state.autoPost || !canAutoPost(state)) return false;
+  if (!noelOn(state)) return false;
   const mastery = masteryOf(state);
-  const topics: LessonId[] = pay === "買掛金" ? ["trade", "credit"] : ["trade"];
+  const topics: LessonId[] = [lessonOfTemplate(ORDER)!, ...(pay === "買掛金" ? (["credit"] as const) : [])];
   return topics.every((l) => mastery.get(l)?.stars === 3);
+}
+
+/** 今日、ノエルが代わりに記帳した取引（仕訳帳の後ろから今日の分だけ見る）。orders なら朝の仕入れだけ */
+export function autoPostedToday(state: GameState, orders = false): JournalRecord[] {
+  const today: JournalRecord[] = [];
+  for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) {
+    const r = state.journal[i];
+    if (r.auto && (!orders || r.templateId === ORDER)) today.unshift(r);
+  }
+  return today;
 }
 
 /** 開店前に、ガンテツへ仕入れを注文する。記帳が終わったら朝の画面に戻る（ノエルに任せていれば、そのまま朝の画面） */
@@ -353,6 +363,9 @@ export function afterResult(state: GameState, rand: Rand): GameState {
 /** ノエルに記帳を任せられるか（給料の講義でノエルを雇ったあと） */
 export const canAutoPost = (state: GameState) => state.lessonsDone.includes("payroll");
 
+/** ノエルに任せる設定がオンで、任せられる時期か */
+const noelOn = (state: GameState) => state.autoPost && canAutoPost(state);
+
 /** ノエルが記帳するのは、習熟度★3の論点の決まった後始末（選べる仕訳が1つだけのもの） */
 function autoPostTx(templateId: string, choices: Choice[], mastery: Map<LessonId, Mastery>): Transaction | undefined {
   const t = TEMPLATES[templateId];
@@ -367,7 +380,7 @@ export function advance(state: GameState, rand: Rand): GameState {
   const queue = [...state.queue];
   let ctx = ctxOf(cur, rand, false);
   // ノエルに任せているときだけ、習熟度を調べる
-  const mastery = cur.autoPost && canAutoPost(cur) ? masteryOf(cur) : undefined;
+  const mastery = noelOn(cur) ? masteryOf(cur) : undefined;
   while (queue.length > 0) {
     const head = queue.shift()!;
     if (head.kind === "lesson") {

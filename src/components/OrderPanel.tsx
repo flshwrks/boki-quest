@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { sumAmounts } from "@/engine/journal";
 import { type PurchasePay, lowestStockItem, orderQtys, orderStep } from "@/content/events";
 import { ITEMS, itemsForLevel } from "@/content/world";
-import { ORDER, autoOrder, orderPreview } from "@/game/logic";
-import type { GameState, ItemId, JournalRecord } from "@/game/types";
+import { autoOrder, autoPostedToday, orderPreview } from "@/game/logic";
+import type { GameState, ItemId } from "@/game/types";
 import { Sprite } from "./Sprite";
 import { Btn, fmt } from "./ui";
 
@@ -35,12 +35,10 @@ export function OrderPanel({ state, onOrder }: { state: GameState; onOrder: (ite
   const it = ITEMS[item];
   const subtotal = it.cost * qty;
   const total = sumAmounts(tx.answer.debit);
-  const auto = autoOrder(state, pay);
-  // 今朝ノエルが記帳した仕入れ（仕訳帳の後ろから今日の分だけ）
-  const posted: JournalRecord[] = [];
-  for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) {
-    if (state.journal[i].auto && state.journal[i].templateId === ORDER) posted.unshift(state.journal[i]);
-  }
+  // 習熟度は正誤の記録が変わったときだけ数え直す（数量を変えるたびには数えない）
+  const auto = useMemo(() => autoOrder(state, pay), [state.practice, state.autoPost, state.lessonsDone, pay]);
+  // 今朝ノエルが記帳した仕入れ
+  const posted = useMemo(() => autoPostedToday(state, true), [state.journal, state.day]);
 
   return (
     <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
