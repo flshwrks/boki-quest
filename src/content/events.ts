@@ -139,6 +139,9 @@ export function purchaseTx(item: ItemId, qty: number, pay: PurchasePay, { fee = 
 
 const QTY: Record<ItemId, number[]> = { potion: [10, 20, 30], herb: [20, 30, 50], antidote: [10, 20], scroll: [5, 10], ether: [5, 10], elixir: [3, 5] };
 
+/** 朝の注文で△▽を押したときに増減する数（まとめて仕入れる商品は5個ずつ、少しずつの商品は1個ずつ。店が大きいほど多い） */
+export const orderStep = (item: ItemId, level: number) => (QTY[item][0] >= 10 ? 5 : 1) * tradeScale(level);
+
 /** 一度に仕入れる数の候補（店が大きいほど多い） */
 export const orderQtys = (item: ItemId, level: number) => QTY[item].map((q) => q * tradeScale(level));
 

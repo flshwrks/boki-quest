@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type AccountName, type Category, type Side, CATEGORY_LABEL, SIDE_LABEL, categoryOf, inMasterOrder, isAccountName, sideWithPos } from "@/engine/accounts";
 import { parseAmount } from "@/engine/format";
 import type { Entry } from "@/engine/journal";
-import { AccountChip, CATEGORY_BG, fmt } from "./ui";
+import { AccountChip, CATEGORY_BG, arrowSide, fmt } from "./ui";
 import { play } from "./sfx";
 
 interface Row {
@@ -50,17 +50,30 @@ export function CardEntryForm({ accounts, examText, onChange }: { accounts: Acco
     onChange(toEntry(next));
   };
 
-  /** 側を切り替えると、金額の入力先もその側の行へ移す */
-  const selectSide = (side: Side) => {
+  /** 側を切り替えると、金額の入力先もその側の行へ移す。keepTyping なら、その行の金額欄に入力の位置ごと移る */
+  const selectSide = (side: Side, keepTyping = false) => {
     if (side === activeSide) return;
     play("select");
     setActiveSide(side);
     const sideRows = rows.filter((r) => r.side === side);
     const target = sideRows.find((r) => r.account === null) ?? sideRows.find((r) => r.amount === "") ?? sideRows[0];
     if (target) setFocusId(target.id);
+    if (keepTyping && target) document.querySelector<HTMLInputElement>(`[data-amount-row="${target.id}"]`)?.focus();
     // 反対側の金額欄にカーソルが残らないようにする
-    if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+    else if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
   };
+
+  // ←→キーでも、借方・貸方の枠を切り替えられる
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const side = arrowSide(e);
+      if (!side || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+      e.preventDefault();
+      selectSide(side, e.target instanceof HTMLInputElement);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const focusRow = (r: Row) => {
     setFocusId(r.id);
@@ -163,6 +176,7 @@ export function CardEntryForm({ accounts, examText, onChange }: { accounts: Acco
                     </div>
                     <input
                       inputMode="numeric"
+                      data-amount-row={r.id}
                       value={r.amount}
                       onFocus={() => focusRow(r)}
                       onChange={(e) => update(r.id, { amount: e.target.value.replace(/[^\d,]/g, "") })}
@@ -207,7 +221,7 @@ export function CardEntryForm({ accounts, examText, onChange }: { accounts: Acco
       {/* 勘定科目カード */}
       <div className="mt-3 border-t border-white/20 pt-3">
         <p className="mb-1.5 text-xs text-dim">
-          カードをタップすると、<span className="text-gold">金色の枠</span>（{sideWithPos(activeSide)}）に置かれる。左右の枠をタップで切り替え
+          カードをタップすると、<span className="text-gold">金色の枠</span>（{sideWithPos(activeSide)}）に置かれる。左右の枠はタップか ←→キーで切り替え
         </p>
         <div className="flex flex-wrap gap-1.5">
           {inMasterOrder(accounts).map((acc) => (

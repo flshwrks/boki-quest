@@ -4,7 +4,7 @@ import { useState } from "react";
 import { type AccountName, type Side, SIDE_LABEL, inMasterOrder, isAccountName } from "@/engine/accounts";
 import { parseAmount } from "@/engine/format";
 import type { Entry } from "@/engine/journal";
-import { fmt } from "./ui";
+import { arrowSide, fmt } from "./ui";
 
 const ROWS = 4;
 
@@ -54,9 +54,23 @@ export function CbtEntryForm({
   };
 
   const cells = { debit, credit };
+
+  /** ←→キーで、同じ行の左右の欄へ移る（プルダウンでは←→で選択肢が変わらないようにする） */
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTableElement>) => {
+    const dir = arrowSide(e);
+    const el = e.target as HTMLElement;
+    const at = el.dataset.cell?.split("-").map(Number);
+    if (!dir || !at) return;
+    const [row, col] = at;
+    const next = col + (dir === "credit" ? 1 : -1);
+    if (next < 0 || next > 3) return;
+    e.preventDefault();
+    e.currentTarget.querySelector<HTMLElement>(`[data-cell="${row}-${next}"]`)?.focus();
+  };
+
   return (
     <div className="overflow-x-auto rounded-lg bg-[#f5f6fa] p-2 text-[#1d1d2b]">
-      <table className="w-full min-w-[520px] border-collapse text-sm">
+      <table className="w-full min-w-[520px] border-collapse text-sm" onKeyDown={onKeyDown}>
         <thead>
           <tr className="bg-[#dfe3ef] text-xs">
             <th className="border border-[#b8bfd3] py-1 font-normal">借方科目</th>
@@ -68,11 +82,12 @@ export function CbtEntryForm({
         <tbody>
           {Array.from({ length: ROWS }, (_, i) => (
             <tr key={i}>
-              {(["debit", "credit"] as const).map((side) => {
+              {(["debit", "credit"] as const).map((side, s) => {
                 const cell = cells[side][i];
                 return [
                   <td key={`${side}-a`} className="border border-[#b8bfd3] p-1">
                     <select
+                      data-cell={`${i}-${s * 2}`}
                       value={cell.account}
                       onChange={(e) => edit(side, i, { account: isAccountName(e.target.value) ? e.target.value : "" })}
                       aria-label={`${SIDE_LABEL[side]}科目 ${i + 1}行目`}
@@ -89,6 +104,7 @@ export function CbtEntryForm({
                   <td key={`${side}-n`} className="border border-[#b8bfd3] p-1">
                     <input
                       inputMode="numeric"
+                      data-cell={`${i}-${s * 2 + 1}`}
                       value={cell.amount}
                       onChange={(e) => edit(side, i, { amount: e.target.value.replace(/[^\d,]/g, "") })}
                       aria-label={`${SIDE_LABEL[side]}金額 ${i + 1}行目`}
