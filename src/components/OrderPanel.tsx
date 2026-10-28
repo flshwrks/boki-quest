@@ -15,16 +15,18 @@ const MAX_QTY = 999;
 /** 開店前に、ガンテツへ仕入れを注文する欄 */
 export function OrderPanel({ state, onOrder }: { state: GameState; onOrder: (item: ItemId, qty: number, pay: PurchasePay) => void }) {
   const items = itemsForLevel(state.level);
+  /** 商品を選んだときの数量（ふだん仕入れる数） */
+  const usualQty = (id: ItemId) => String(orderQtys(id, state.level)[0]);
   // 最初は、いちばん在庫の少ない商品を選んでおく
   const [item, setItem] = useState<ItemId>(() => lowestStockItem(state));
-  // 数量は自由に入力できる。△▽は商品ごとの刻みで増減する
-  const [qtyText, setQtyText] = useState(() => String(orderQtys(lowestStockItem(state), state.level)[0]));
-  const qty = Math.min(MAX_QTY, Math.max(0, parseInt(qtyText, 10) || 0));
+  // 数量は自由に入力できる（3桁まで）。△▽は商品ごとの刻みで増減する
+  const [qtyText, setQtyText] = useState(() => usualQty(item));
+  const qty = parseInt(qtyText, 10) || 0;
   const step = orderStep(item, state.level);
   const setQty = (q: number) => setQtyText(String(Math.min(MAX_QTY, Math.max(step, q))));
   const chooseItem = (id: ItemId) => {
     setItem(id);
-    setQtyText(String(orderQtys(id, state.level)[0]));
+    setQtyText(usualQty(id));
   };
   const pays: PurchasePay[] = state.lessonsDone.includes("credit") ? ["現金", "普通預金", "買掛金"] : ["現金", "普通預金"];
   const [pay, setPay] = useState<PurchasePay>(pays[0]);

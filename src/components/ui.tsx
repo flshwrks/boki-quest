@@ -236,7 +236,7 @@ export function AnimatedNumber({ value }: { value: number }) {
  * ←→キーで借方・貸方を移ってよいか。修飾キーつきは除く。
  * 文字の入力欄では、文字カーソルが端にあるとき（←なら先頭、→なら末尾）だけ動く
  */
-export function arrowSide(e: { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; target: EventTarget | null }): "debit" | "credit" | null {
+export function arrowSide(e: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "target">): "debit" | "credit" | null {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return null;
   const side = e.key === "ArrowLeft" ? "debit" : e.key === "ArrowRight" ? "credit" : null;
   if (!side) return null;

@@ -7,6 +7,8 @@ import type { Entry } from "@/engine/journal";
 import { arrowSide, fmt } from "./ui";
 
 const ROWS = 4;
+/** 1行の欄の数（借方科目・借方金額・貸方科目・貸方金額） */
+const COLUMNS = 4;
 
 interface Cell {
   account: AccountName | "";
@@ -55,17 +57,15 @@ export function CbtEntryForm({
 
   const cells = { debit, credit };
 
-  /** ←→キーで、同じ行の左右の欄へ移る（プルダウンでは←→で選択肢が変わらないようにする） */
+  /** ←→キーで、同じ行の左右の欄（借方科目・借方金額・貸方科目・貸方金額）へ移る。プルダウンでは←→で選択肢が変わらないようにする */
   const onKeyDown = (e: React.KeyboardEvent<HTMLTableElement>) => {
-    const dir = arrowSide(e);
-    const el = e.target as HTMLElement;
-    const at = el.dataset.cell?.split("-").map(Number);
-    if (!dir || !at) return;
-    const [row, col] = at;
-    const next = col + (dir === "credit" ? 1 : -1);
-    if (next < 0 || next > 3) return;
+    const dir = arrowSide(e.nativeEvent);
+    const { row, col } = (e.target as HTMLElement).dataset;
+    if (!dir || row === undefined || col === undefined) return;
+    const next = Number(col) + (dir === "credit" ? 1 : -1);
+    if (next < 0 || next >= COLUMNS) return;
     e.preventDefault();
-    e.currentTarget.querySelector<HTMLElement>(`[data-cell="${row}-${next}"]`)?.focus();
+    e.currentTarget.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${next}"]`)?.focus();
   };
 
   return (
@@ -87,7 +87,8 @@ export function CbtEntryForm({
                 return [
                   <td key={`${side}-a`} className="border border-[#b8bfd3] p-1">
                     <select
-                      data-cell={`${i}-${s * 2}`}
+                      data-row={i}
+                      data-col={s * 2}
                       value={cell.account}
                       onChange={(e) => edit(side, i, { account: isAccountName(e.target.value) ? e.target.value : "" })}
                       aria-label={`${SIDE_LABEL[side]}科目 ${i + 1}行目`}
@@ -104,7 +105,8 @@ export function CbtEntryForm({
                   <td key={`${side}-n`} className="border border-[#b8bfd3] p-1">
                     <input
                       inputMode="numeric"
-                      data-cell={`${i}-${s * 2 + 1}`}
+                      data-row={i}
+                      data-col={s * 2 + 1}
                       value={cell.amount}
                       onChange={(e) => edit(side, i, { amount: e.target.value.replace(/[^\d,]/g, "") })}
                       aria-label={`${SIDE_LABEL[side]}金額 ${i + 1}行目`}

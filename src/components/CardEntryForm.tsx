@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { type AccountName, type Category, type Side, CATEGORY_LABEL, SIDE_LABEL, categoryOf, inMasterOrder, isAccountName, sideWithPos } from "@/engine/accounts";
 import { parseAmount } from "@/engine/format";
 import type { Entry } from "@/engine/journal";
@@ -63,17 +63,18 @@ export function CardEntryForm({ accounts, examText, onChange }: { accounts: Acco
     else if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
   };
 
-  // ←→キーでも、借方・貸方の枠を切り替えられる
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const side = arrowSide(e);
-      if (!side || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
-      e.preventDefault();
-      selectSide(side, e.target instanceof HTMLInputElement);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+  // ←→キーでも、借方・貸方の枠を切り替えられる（キーの受け取りは一度だけ登録し、そのときの枠の状態で切り替える）
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    const side = arrowSide(e);
+    if (!side || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
+    e.preventDefault();
+    selectSide(side, e.target instanceof HTMLInputElement);
   });
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => onKey(e);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
 
   const focusRow = (r: Row) => {
     setFocusId(r.id);
