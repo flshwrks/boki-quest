@@ -48,3 +48,42 @@ describe("クラウド保存", () => {
     expect((await pushCloud("wrong", newGame("x", seededRand(1)), 0)).status).toBe("unauthorized");
   });
 });
+
+describe("最初の年度を短くする前のセーブ", () => {
+  /** 開業日（openDay）がない、4月1日に開業した古いセーブ */
+  const oldSave = (day: number, closed = false) => {
+    const { openDay: _, ...rest } = newGame("星のしずく", seededRand(1));
+    void _;
+    return {
+      ...rest,
+      day,
+      journal: [
+        { day: 40, templateId: "customer", exam: "", entry: { debit: [], credit: [] } },
+        ...(closed ? [{ day: 60, templateId: "closing-transfer", exam: "", entry: { debit: [], credit: [] } }] : []),
+      ],
+      credits: [{ id: "c1", kind: "売掛金" as const, who: "allen" as const, amount: 1000, day: 42 }],
+    };
+  };
+
+  it("最初の決算がまだなら、決算まで数日になるよう日付をすべて同じだけ進める（月の何日目かは変えない）", async () => {
+    vi.stubGlobal("fetch", fakeServer());
+    await pushCloud("pass", oldSave(45) as never, 0);
+    const fetched = await fetchCloud("pass");
+    if (fetched.status !== "ok" || !fetched.save) throw new Error("読み戻せない");
+    const s = fetched.save.state;
+    expect(s.day).toBe(55);
+    expect(s.openDay).toBe(11);
+    expect(s.journal[0].day).toBe(50);
+    expect(s.credits[0].day).toBe(52);
+  });
+
+  it("最初の決算を終えていれば、日付は変えない", async () => {
+    vi.stubGlobal("fetch", fakeServer());
+    await pushCloud("pass", oldSave(70, true) as never, 0);
+    const fetched = await fetchCloud("pass");
+    if (fetched.status !== "ok" || !fetched.save) throw new Error("読み戻せない");
+    expect(fetched.save.state.day).toBe(70);
+    expect(fetched.save.state.openDay).toBe(1);
+  });
+});
+

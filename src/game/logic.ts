@@ -6,7 +6,7 @@ import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
 import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
 import { LESSONS, LESSON_BY_ID, lessonsForLevel, lessonsUpTo, type Lesson } from "@/content/lessons";
-import { DAYS_PER_MONTH, ITEMS, ITEM_IDS, dayInMonth, isYearEnd, perItem, yearStartDay } from "@/content/world";
+import { DAYS_PER_MONTH, ITEMS, ITEM_IDS, OPEN_DAY, dayInMonth, isYearEnd, perItem, yearStartDay } from "@/content/world";
 import { CLOSING_PLAN, OPENING_PLAN } from "@/content/eventsClosing";
 import { fmt } from "@/engine/format";
 export type { Rand } from "./random";
@@ -52,7 +52,8 @@ export function initialState(shopName: string): GameState {
     version: 2,
     shopName,
     level: 1,
-    day: 1,
+    day: OPEN_DAY,
+    openDay: OPEN_DAY,
     trust: 50,
     reputation: 20,
     combo: 0,
@@ -208,7 +209,7 @@ const MAX_REVIEWS = 4;
 
 export function planDay(state: GameState, rand: Rand): QueueItem[] {
   // 開業日は開業に必要な講義をまとめて受け、お客さんを1人だけ迎える
-  if (state.day === 1) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
+  if (state.day === state.openDay) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
   const has = (id: LessonId) => state.lessonsDone.includes(id);
   const dim = dayInMonth(state.day);
   const q: QueueItem[] = [];
@@ -561,18 +562,21 @@ export const LEVEL_UP: Record<number, { days: number; sales: number; trust: numb
   1: { days: 4, sales: 50000, trust: 55, questions: 4, minutes: 12 },
   2: { days: 12, sales: 250000, trust: 60, questions: 5, minutes: 15 },
   3: { days: 22, sales: 600000, trust: 65, questions: 5, minutes: 15 },
-  // Lv5 は、最初の決算を終えてから
-  4: { days: 64, sales: 1500000, trust: 70, questions: 6, minutes: 18, requires: ["closing"] },
+  // Lv5 は、最初の決算（開業から30営業日目の3月末）を終えてから
+  4: { days: 31, sales: 1500000, trust: 70, questions: 6, minutes: 18, requires: ["closing"] },
 };
 
 export const EXAM_PASS = 70;
+
+/** 開業してから何営業日目か（開業日が1） */
+export const businessDays = (state: GameState) => state.day - state.openDay + 1;
 
 /** 今のLvの講義をすべて受け、売上累計と帳簿の信用が十分なら昇格審査を受けられる */
 export function canLevelUp(state: GameState): boolean {
   const goal = LEVEL_UP[state.level];
   if (!goal) return false;
   const lessonsDone = [...lessonsForLevel(state.level).map((l) => l.id), ...(goal.requires ?? [])].every((id) => state.lessonsDone.includes(id));
-  return lessonsDone && state.day >= goal.days && totalSales(state) >= goal.sales && state.trust >= goal.trust;
+  return lessonsDone && businessDays(state) >= goal.days && totalSales(state) >= goal.sales && state.trust >= goal.trust;
 }
 
 export function closeDay(state: GameState, rand: Rand = Math.random): GameState {

@@ -309,7 +309,7 @@ describe("朝の仕入れ注文", () => {
     const rand = seededRand(1);
     let s = newGame("テスト商店", rand);
     // 2日目の朝まで進める
-    while (!(s.day === 2 && s.phase.kind === "dayStart")) {
+    while (!(s.day === s.openDay + 1 && s.phase.kind === "dayStart")) {
       const p = s.phase;
       if (p.kind === "lesson") s = turnLessonPage(s, 1);
       else if (p.kind === "event") s = choose(s, p.event.choices.findIndex((c) => !c.disabled), rand);
@@ -329,14 +329,14 @@ describe("朝の仕入れ注文", () => {
 });
 
 describe("復習", () => {
-  it("習った論点の場面は、その後の営業でもくり返し出てくる（店でくり返し起こせる論点は15日以内、それ以外は20日以内）", () => {
+  it("習った論点の場面は、その後の営業でもくり返し出てくる（店でくり返し起こせる論点は20日以内、それ以外は25日以内）", () => {
     const { s, topicDays } = play(2, 200);
     for (const [lesson, ds] of topicDays) {
       if (EVERYDAY.has(lesson as LessonId)) continue;
-      // 店でくり返し起こせる取引（一度きり・年1回でないもの）がある論点は15日以内、それ以外は20日以内。
+      // 店でくり返し起こせる取引（一度きり・年1回でないもの）がある論点は20日以内、それ以外は25日以内（Lv5は1日4件で30以上の論点を回す）。
       // 実際の予定組みは「今日、店で起こせるか」で決まる（起こせなければギルドの帳簿相談として半分の頻度）。ここではその目安として once の有無で分ける
       const repeatable = (REVIEW_TEMPLATES.get(lesson as LessonId) ?? []).some(([id]) => !TEMPLATES[id].once);
-      const limit = repeatable ? 15 : 20;
+      const limit = repeatable ? 20 : 25;
       const uniq = [...new Set(ds)];
       for (let i = 1; i < uniq.length; i++) expect(uniq[i] - uniq[i - 1], `${lesson} が ${uniq[i - 1]}日目から出てこない`).toBeLessThanOrEqual(limit);
       expect(s.day - uniq.at(-1)!, `${lesson} が最後に出てから間があく`).toBeLessThanOrEqual(limit);

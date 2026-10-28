@@ -201,6 +201,12 @@ export const yearStartDay = (day: number) => (fiscalYear(day) - 1) * DAYS_PER_YE
 /** 会計年度の何か月目か（4月 = 1 … 3月 = 12） */
 export const monthOfYear = (day: number) => Math.floor(((day - 1) % DAYS_PER_YEAR) / DAYS_PER_MONTH) + 1;
 
+/**
+ * 開業の日：10月の最初の営業日。設立した年度の最初の決算は3月末（6か月・30営業日）になる。
+ * 実際の会社でも、最初の事業年度は12か月より短いことが多い
+ */
+export const OPEN_DAY = 6 * DAYS_PER_MONTH + 1;
+
 /** 年度の最終営業日（3月の最終日）か */
 export const isYearEnd = (day: number) => day % DAYS_PER_YEAR === 0;
 

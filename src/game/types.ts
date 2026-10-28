@@ -340,6 +340,8 @@ export interface GameState {
   shopName: string;
   level: number;
   day: number;
+  /** 開業した日（営業日数はここから数える） */
+  openDay: number;
   trust: number;
   reputation: number;
   combo: number;

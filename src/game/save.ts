@@ -1,4 +1,4 @@
-import { ITEMS, perItem } from "@/content/world";
+import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, OPEN_DAY, perItem } from "@/content/world";
 import { initialState, practiceFromHistory } from "./logic";
 import type { GameState, LessonId, QueueItem } from "./types";
 
@@ -26,6 +26,37 @@ function migrate(raw: Saved): GameState | null {
   if (s.version !== 2) return null;
   const saved = s as unknown as GameState;
   const base = initialState(saved.shopName);
+  const shifted = saved.openDay === undefined ? shortenFirstYear(saved) : saved;
+  return finishMigration(base, shifted);
+}
+
+/**
+ * 最初の年度を短くする前のセーブ（開業日が4月1日）。最初の決算をまだ迎えていなければ、
+ * 決算までの残りが数日になるよう、日付をすべて同じだけ進める（月の何日目かは変えない）。
+ * 取引の順番・ツケや借入の期日までの日数・帳簿の残高は変わらない
+ */
+function shortenFirstYear(saved: GameState): GameState {
+  const closed = saved.closingFrom !== null || saved.journal.some((r) => r.templateId === "closing-transfer");
+  const room = DAYS_PER_YEAR - 5 - saved.day;
+  const by = closed || room <= 0 ? 0 : Math.min(OPEN_DAY - 1, Math.floor(room / DAYS_PER_MONTH) * DAYS_PER_MONTH);
+  const at = <T extends { day: number }>(x: T): T => ({ ...x, day: x.day + by });
+  return {
+    ...saved,
+    day: saved.day + by,
+    openDay: 1 + by,
+    examRetryDay: saved.examRetryDay ? saved.examRetryDay + by : saved.examRetryDay,
+    journal: saved.journal.map(at),
+    credits: saved.credits.map(at),
+    mistakes: saved.mistakes.map(at),
+    // 正誤の記録・模試の成績がない古いセーブは、ないまま（あとで記帳の記録から作り直す）
+    practice: saved.practice?.map(at),
+    mocks: saved.mocks?.map(at),
+    quest: saved.quest && at(saved.quest),
+    cashDiff: saved.cashDiff && at(saved.cashDiff),
+  };
+}
+
+function finishMigration(base: GameState, saved: GameState): GameState {
   const stock = { ...base.stock, ...saved.stock };
   // 在庫の原価は後から増えた項目。古いセーブでは、いつもの仕入値で数え直す
   const stockValue = saved.stockValue ?? perItem((id) => stock[id] * ITEMS[id].cost);

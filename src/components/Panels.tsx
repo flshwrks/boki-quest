@@ -6,7 +6,7 @@ import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, isMakeUp, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
 import { LEVELS, dateLabel, fiscalYear } from "@/content/world";
-import { LEVEL_UP, balance, canAutoPost, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
+import { LEVEL_UP, balance, businessDays, canAutoPost, entriesOf, expectedCustomers, reviewTopics, todaysLesson, totalSales } from "@/game/logic";
 import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
 import type { GameEvent, GameState, ItemId, JournalRecord, LessonId, ResultInfo } from "@/game/types";
@@ -63,7 +63,7 @@ export function DayStartPanel({
           </li>
         )}
       </ul>
-      {goal && next && state.day > 1 && (
+      {goal && next && businessDays(state) > 1 && (
         <div className="mb-3 rounded-lg border border-white/30 p-2 text-sm">
           <div className="mb-1 text-gold">
             「{next.name}」へ成長する条件（そろうと翌朝{next.exam}）
@@ -74,7 +74,7 @@ export function DayStartPanel({
           ))}
           <Goal label="売上の累計" now={totalSales(state)} target={goal.sales} unit="円" />
           <Goal label="帳簿の信用" now={state.trust} target={goal.trust} />
-          <Goal label="営業日数" now={state.day} target={goal.days} unit="日目" />
+          <Goal label="営業日数" now={businessDays(state)} target={goal.days} unit="日目" />
           {state.examRetryDay > state.day && <p className="mt-1 text-xs text-dim">審査の再挑戦は {dateLabel(state.examRetryDay)} から</p>}
         </div>
       )}
@@ -99,7 +99,7 @@ export function DayStartPanel({
       )}
       <div className="flex flex-wrap gap-2">
         <Btn onClick={onOpen}>開店する！</Btn>
-        {state.day > 1 && (
+        {businessDays(state) > 1 && (
           <Btn variant="ghost" onClick={onTraining}>
             📚 試験対策
           </Btn>
