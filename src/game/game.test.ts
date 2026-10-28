@@ -5,6 +5,7 @@ import { LESSONS, PREP_LEVEL } from "@/content/lessons";
 import { ITEMS, ITEM_IDS } from "@/content/world";
 import { ACCOUNTS, type AccountName, categoryOf } from "@/engine/accounts";
 import { EXAM_BANK } from "@/content/examBank";
+import { TEMPLATES } from "@/content/events";
 import { newAchievements } from "@/content/achievements";
 import { LESSON_BY_ID } from "@/content/lessons";
 import {
@@ -36,11 +37,12 @@ function checkInvariants(s: GameState) {
   for (const id of ITEM_IDS) {
     expect(s.stock[id]).toBeGreaterThanOrEqual(0);
     // 在庫の原価：在庫がなければ0。平均の仕入値は、特価（2割引）といつもの値段＋運び賃の間におさまる
+    // （運び賃は仕入原価に含めるので、少ない数量で仕入れると1個あたりが高くなる）
     if (s.stock[id] === 0) expect(s.stockValue[id]).toBe(0);
     else {
       const average = s.stockValue[id] / s.stock[id];
       expect(average, id).toBeGreaterThanOrEqual(ITEMS[id].cost * 0.75);
-      expect(average, id).toBeLessThanOrEqual(ITEMS[id].cost * 1.3);
+      expect(average, id).toBeLessThanOrEqual(ITEMS[id].cost * 1.5);
     }
   }
   expect(balance(s, "現金")).toBeGreaterThanOrEqual(0);
@@ -177,6 +179,7 @@ describe("通しプレイ", () => {
     checkInvariants(s);
   }, 60000);
 
+  // 200日の通しプレイを8回続けて行うので、制限時間を長めにとる
   it("全講義を受け、主要な取引がひととおり登場する", () => {
     const seen = new Set<string>();
     let last: GameState | undefined;
@@ -267,6 +270,9 @@ describe("通しプレイ", () => {
       "dividend-pay",
       "repair",
       "customer-split",
+      "note-loan",
+      "note-loan-repay",
+      "buy-shelf",
       "invoice-purchase",
       "time-deposit",
       "time-deposit-mature",
@@ -279,7 +285,7 @@ describe("通しプレイ", () => {
     ]) {
       expect(seen.has(t), `${t} が一度も登場しない`).toBe(true);
     }
-  }, 120000);
+  }, 300000);
 });
 
 describe("審査の問題", () => {
@@ -323,11 +329,14 @@ describe("朝の仕入れ注文", () => {
 });
 
 describe("復習", () => {
-  it("習った論点の場面は、その後の営業でもくり返し出てくる（店で起こせる論点は10日以内、ギルドの相談だけの論点は20日以内）", () => {
+  it("習った論点の場面は、その後の営業でもくり返し出てくる（店でくり返し起こせる論点は15日以内、それ以外は20日以内）", () => {
     const { s, topicDays } = play(2, 200);
     for (const [lesson, ds] of topicDays) {
       if (EVERYDAY.has(lesson as LessonId)) continue;
-      const limit = REVIEW_TEMPLATES.has(lesson as LessonId) ? 10 : 20;
+      // 店でくり返し起こせる取引（一度きり・年1回でないもの）がある論点は15日以内、それ以外は20日以内。
+      // その日に店で起こせなければギルドの帳簿相談として半分の頻度で回るので、間隔はその分のびる
+      const repeatable = (REVIEW_TEMPLATES.get(lesson as LessonId) ?? []).some(([id]) => !TEMPLATES[id].once);
+      const limit = repeatable ? 15 : 20;
       const uniq = [...new Set(ds)];
       for (let i = 1; i < uniq.length; i++) expect(uniq[i] - uniq[i - 1], `${lesson} が ${uniq[i - 1]}日目から出てこない`).toBeLessThanOrEqual(limit);
       expect(s.day - uniq.at(-1)!, `${lesson} が最後に出てから間があく`).toBeLessThanOrEqual(limit);

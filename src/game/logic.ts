@@ -168,22 +168,26 @@ function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[
   for (const r of state.practice) last.set(r.lesson, r.day);
   const mastery = masteryOf(state);
   const candidates = state.lessonsDone.filter((id) => id !== today && !EVERYDAY.has(id) && (REVIEW_TEMPLATES.has(id) || BANK_BY_LESSON.has(id)));
-  const due = (id: LessonId) => {
+  const count = 1 + state.level;
+  const due = (id: LessonId, pace: number) => {
     const weak = mastery.get(id)?.stars === 1;
-    // 店で起こせる論点を優先し、ギルドの帳簿相談でしか出せない論点（決算整理など）は半分の頻度にする
-    const pace = REVIEW_TEMPLATES.has(id) ? 1 : 0.5;
     return (state.day - (last.get(id) ?? 0)) * pace + (weak ? 4 : 0) + rand() * 2;
   };
-  const chosen = candidates
-    .map((id) => ({ id, score: due(id) }))
+  // 間があいている論点の上位（選ぶ数の3倍）について、今日、店の取引として起こせるかを確かめる
+  const shortlist = candidates
+    .map((id) => ({ id, score: due(id, 1) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 1 + state.level);
-  return chosen.map(({ id: topic }) => {
-    // 一度きりの取引で、もう済んだものは選ばない
-    const options = (REVIEW_TEMPLATES.get(topic) ?? []).filter(([t]) => !onceUsed(state, t));
-    const id = pickWeighted(options, rand) ?? "guild";
-    return { kind: "event", id, topic };
-  });
+    .slice(0, count * 3);
+  const ctx = ctxOf(state, rand, false);
+  const ready = new Map(
+    shortlist.map(({ id }) => [id, (REVIEW_TEMPLATES.get(id) ?? []).filter(([t]) => !onceUsed(state, t) && TEMPLATES[t].build(ctx) !== null)]),
+  );
+  // 今日の店で起こせる論点を優先し、ギルドの帳簿相談でしか出せない論点（決算整理や、今は起こせない取引）は半分の頻度にする
+  const chosen = shortlist
+    .map(({ id, score }) => ({ id, score: ready.get(id)!.length > 0 ? score : score / 2 }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, count);
+  return chosen.map(({ id: topic }) => ({ kind: "event", id: pickWeighted(ready.get(topic)!, rand) ?? "guild", topic }));
 }
 
 /** お客さん1人分の来店。習った払い方や用件のお客さんをまぜ、今日は起こせなければいつものお客さんにする */

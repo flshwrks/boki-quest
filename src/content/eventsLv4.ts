@@ -15,7 +15,8 @@ function dueLoan(state: GameState, kind: "借入金" | "貸付金") {
 
 // ───────── 借入金・貸付金 ─────────
 
-const LOAN = { amount: 300000, rate: 0.03, months: 6 };
+// 期間は短めにして、借りる→利息とともに返す、をくり返し練習できるようにする（利息は円未満が出ない額）
+const LOAN = { amount: 300000, rate: 0.03, months: 3 };
 
 const bankLoan: EventTemplate = {
   lesson: "loans",
@@ -96,7 +97,7 @@ function repayTx(loan: { id: string; amount: number }, interest: number, paid: [
   };
 }
 
-const LEND = { amount: 50000, rate: 0.06, months: 4 };
+const LEND = { amount: 50000, rate: 0.06, months: 2 };
 
 const lendAllen: EventTemplate = {
   lesson: "loans",

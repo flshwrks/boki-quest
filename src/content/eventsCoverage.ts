@@ -6,7 +6,7 @@
 import type { AccountName } from "@/engine/accounts";
 import type { Choice, LessonId, Transaction, Voucher } from "@/game/types";
 import { BANK_BY_LESSON } from "./examBank";
-import { type EventTemplate, adjustment, decline, interestOf, je, lastRecord, n, needCash, payFrom, pct, pick, viaPhrase } from "./eventKit";
+import { type EventTemplate, adjustment, creditsOf, decline, interestOf, je, lastRecord, n, needCash, payFrom, pct, pick, viaPhrase } from "./eventKit";
 import { reversal } from "./eventsClosing";
 import { lowestStockItem, orderQtys, purchaseTx } from "./events";
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, calendarMonth, monthOfYear, yearStartDay } from "./world";
@@ -250,6 +250,103 @@ const timeDepositMature: EventTemplate = {
   },
 };
 
+// ───────── 手形借入金（利息は借りるときに差し引かれる） ─────────
+
+const NOTE_LOAN = { amount: 200000, rate: 0.03, months: 2 };
+
+const noteLoan: EventTemplate = {
+  lesson: "notesloan",
+  review: 1,
+  build: (ctx) => {
+    const { state } = ctx;
+    if (creditsOf(state, "手形借入金").length > 0) return null;
+    // 利息を先に払うので、期日が決算日をまたぐと前払利息の整理が要る。そうならない時期だけ持ちかける
+    if (yearStartDay(state.day) + DAYS_PER_YEAR - state.day <= NOTE_LOAN.months * DAYS_PER_MONTH) return null;
+    const interest = interestOf(NOTE_LOAN);
+    const { amount, rate, months } = NOTE_LOAN;
+    return {
+      speaker: "luke",
+      lines: [
+        "仕入れの資金に、手形でのご融資はいかがでしょう。約束手形を振り出していただく形です。",
+        `${n(amount)}円、年利${pct(rate)}、期間${months}か月。利息${n(interest)}円は先に差し引いて、当座預金にお入れします。`,
+      ],
+      choices: [
+        {
+          label: "手形を振り出して借りる",
+          tx: {
+            story: `約束手形を振り出して、王都銀行から${n(amount)}円を借りた。利息${n(interest)}円を差し引いた額が当座預金に入った。`,
+            exam: `約束手形を振り出して銀行から${n(amount)}円を借り入れ、利息${n(interest)}円を差し引かれた残額が当座預金口座に入金された（借入期間${months}か月）。`,
+            answer: je([["当座預金", amount - interest], ["支払利息", interest]], [["手形借入金", amount]]),
+            idea: "お金の貸し借りに使った手形は、支払手形ではない。先に差し引かれた利息は費用じゃ。",
+            note: `利息は ${n(amount)} × ${pct(rate)} × ${months}/12 = ${n(interest)}円じゃ。`,
+            effect: { addCredits: [{ kind: "手形借入金", who: "luke", amount, rate, months }] },
+          },
+        },
+        decline("今回は見送る", "ルーク「承知しました。またご入用のときに」"),
+      ],
+    };
+  },
+};
+
+const noteLoanRepay: EventTemplate = {
+  lesson: "notesloan",
+  schedule: "daily",
+  build: (ctx) => {
+    const c = creditsOf(ctx.state, "手形借入金").find((x) => x.day + (x.months ?? 0) * DAYS_PER_MONTH <= ctx.state.day);
+    if (!c) return null;
+    return {
+      speaker: "luke",
+      lines: [`手形借入金${n(c.amount)}円の期日です。利息は借りたときにいただいていますので、元本だけお支払いください。`],
+      choices: payFrom(
+        ctx,
+        c.amount,
+        ["当座預金", "普通預金"],
+        (via) => ({
+          story: `手形借入金${n(c.amount)}円を${viaPhrase(via)}返した。`,
+          exam: `手形借入金${n(c.amount)}円の返済期日となり、${viaPhrase(via)}返済した。`,
+          answer: je([["手形借入金", c.amount]], [[via, c.amount]]),
+          idea: "借りたお金を返すと、返す義務が減る。利息は借りたときに払い済みじゃ。",
+          effect: { settleCredits: [{ id: c.id, amount: c.amount }] },
+        }),
+        "返済する",
+      ),
+    };
+  },
+};
+
+// ───────── 備品の購入（付随費用を含める） ─────────
+
+const SHELF = { price: 40000, setup: 4000 };
+
+const buyShelf: EventTemplate = {
+  lesson: "fixedassets",
+  review: 1,
+  once: "year",
+  build: (ctx) => {
+    const total = SHELF.price + SHELF.setup;
+    return {
+      speaker: "gantetsu",
+      lines: ["店が手狭になってきたのう。新しい陳列棚をこしらえてやろうか。", `棚が${n(SHELF.price)}円、運んで据え付ける手間賃が${n(SHELF.setup)}円じゃ。`],
+      choices: [
+        ...payFrom(
+          ctx,
+          total,
+          ["普通預金", "当座預金"],
+          (via) => ({
+            story: `新しい陳列棚${n(SHELF.price)}円を買い、据付費${n(SHELF.setup)}円とあわせて${viaPhrase(via)}払った。`,
+            exam: `陳列用の棚${n(SHELF.price)}円を購入し、運送・据付費${n(SHELF.setup)}円とともに${viaPhrase(via)}支払った。`,
+            answer: je([["備品", total]], [[via, total]]),
+            idea: "何年も使う棚は備品。据え付けるまでにかかった費用は、どの科目に含める？",
+            note: `据付費は付随費用。だから備品は ${n(SHELF.price)} + ${n(SHELF.setup)} = ${n(total)}円じゃ。決算で減価償却するのも、この金額からじゃ。`,
+          }),
+          "支払う",
+        ),
+        decline("今はいらない", "ガンテツ「そうか。棚が要るときは言うんじゃぞ」"),
+      ],
+    };
+  },
+};
+
 // ───────── 家賃（屋根裏の貸し出し） ─────────
 
 export const ATTIC_RENT = 5000;
@@ -393,6 +490,9 @@ export const COVERAGE_TEMPLATES: Record<string, EventTemplate> = {
   "time-deposit": timeDeposit,
   "time-deposit-mature": timeDepositMature,
   "attic-rent": atticRent,
+  "note-loan": noteLoan,
+  "note-loan-repay": noteLoanRepay,
+  "buy-shelf": buyShelf,
   "close-unearned-rent": unearnedRent,
   "reverse-unearned-rent": reversal("rentals", "前受家賃", "受取家賃", "去年の決算で来年分にした家賃は、今年の収益じゃ。"),
   recovery,

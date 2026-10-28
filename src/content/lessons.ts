@@ -1040,7 +1040,7 @@ export const LESSONS: Lesson[] = [
     level: 4,
     title: "手形貸付金・手形借入金",
     accounts: ["手形貸付金", "手形借入金"],
-    practice: ["guild"],
+    practice: ["note-loan"],
     pages: [
       {
         text: "お金の貸し借りでも、借用証書のかわりに約束手形を使うことがある。このときは商品代金の受取手形・支払手形とは区別して、「手形貸付金」（資産）・「手形借入金」（負債）を使う。",
