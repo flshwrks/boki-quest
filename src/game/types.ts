@@ -326,7 +326,8 @@ export interface DayStats {
 export type QueueItem =
   | { kind: "lesson"; id: LessonId }
   // topic：復習のために入れた論点。その取引が起こせなければ、同じ論点のギルドの帳簿相談にする
-  | { kind: "event"; id: string; guided?: boolean; topic?: LessonId }
+  // fallback：その取引が今日は起こせないときに代わりに出す取引（お客さんの来店なら、いつものお客さん）
+  | { kind: "event"; id: string; guided?: boolean; topic?: LessonId; fallback?: string }
   // 決算日の最後に見る精算表と財務諸表
   | { kind: "worksheet" }
   | { kind: "report" };

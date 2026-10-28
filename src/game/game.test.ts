@@ -266,6 +266,7 @@ describe("通しプレイ", () => {
       "dividend-decide",
       "dividend-pay",
       "repair",
+      "customer-split",
       "invoice-purchase",
       "time-deposit",
       "time-deposit-mature",

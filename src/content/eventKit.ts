@@ -26,6 +26,11 @@ export interface EventTemplate {
   schedule?: "daily";
   /** 復習の取引。習った論点を順に回すとき、その論点の中でこの取引が選ばれる重み */
   review?: number;
+  /**
+   * お客さんの来店として出す重み（いつもの現金・ツケのお客さんは2）。
+   * 講義を受けたら、来店するお客さんの払い方や用件がこの重みでまざる
+   */
+  walkIn?: number;
   /** game：一度起きたら二度と起きない／year：会計年度に1回／day：1日に1回（進行側でまとめて判定する） */
   once?: "game" | "year" | "day";
   build(ctx: Ctx): Omit<GameEvent, "templateId"> | null;

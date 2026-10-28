@@ -103,6 +103,7 @@ const openChecking: EventTemplate = {
 const customerNote: EventTemplate = {
   lesson: "notes",
   review: 0.3,
+  walkIn: 1,
   build: (ctx) => {
     const { state, rand } = ctx;
     const ar = creditsOf(state, "売掛金").filter((c) => c.amount >= 5000);
@@ -243,6 +244,7 @@ const CARD_FEE_RATE = 0.02;
 const cardSale: EventTemplate = {
   lesson: "creditcard",
   review: 0.4,
+  walkIn: 1,
   build: (ctx) => {
     const who: CharacterId = pick(ctx.rand, ["allen", "mina", "gord", "lily"] as const);
     const sale = pickSale(ctx, who);
@@ -292,6 +294,7 @@ const cardCollect = settleDue("クレジット売掛金", {
 const giftcertSale: EventTemplate = {
   lesson: "giftcert",
   review: 0.3,
+  walkIn: 1,
   build: (ctx) => {
     const sale = pickSale(ctx, "lily", 2000);
     if (!sale) return null;

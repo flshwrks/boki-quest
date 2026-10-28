@@ -43,7 +43,7 @@ export function todaysLesson(state: GameState): LessonId | undefined {
 }
 
 export function expectedCustomers(state: GameState): number {
-  return state.queue.filter((q) => q.kind === "event" && q.id.startsWith("customer")).length;
+  return state.queue.filter((q) => q.kind === "event" && (q.id.startsWith("customer") || q.fallback === "customer")).length;
 }
 
 /** 新しいゲームの状態。セーブの読み込みでも、後から増えた項目の初期値として使う */
@@ -179,6 +179,19 @@ function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[
   });
 }
 
+/** お客さんの来店としてまざる取引と、その重み。いつもの現金・ツケのお客さんは重み2 */
+const WALK_INS = Object.entries(TEMPLATES).flatMap(([id, t]): [string, number][] => (t.walkIn ? [[id, t.walkIn]] : []));
+const USUAL_CUSTOMER: [string, number] = ["customer", 2];
+
+/** お客さん1人分の来店。習った払い方や用件のお客さんをまぜ、今日は起こせなければいつものお客さんにする */
+function walkIn(state: GameState, rand: Rand): QueueItem {
+  const options = [USUAL_CUSTOMER, ...WALK_INS.filter(([id]) => state.lessonsDone.includes(TEMPLATES[id].lesson))];
+  const total = options.reduce((a, [, w]) => a + w, 0);
+  let roll = rand() * total;
+  const id = options.find(([, w]) => (roll -= w) < 0)?.[0] ?? "customer";
+  return id === "customer" ? ev(id) : { kind: "event", id, fallback: "customer" };
+}
+
 export function planDay(state: GameState, rand: Rand): QueueItem[] {
   // 開業日は開業に必要な講義をまとめて受け、お客さんを1人だけ迎える
   if (state.day === 1) return [...LESSONS.filter((l) => l.opening).flatMap(lessonItems), ev("customer")];
@@ -202,7 +215,7 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   const extras = reviewItems(state, rand, lesson?.id);
   // 評判が上がるほど、店が大きくなるほど、お客さんが増える
   const customers = 1 + state.level + Math.floor(state.reputation / 25);
-  const rest = shuffle([...Array.from({ length: customers }, () => ev("customer")), ...extras], rand);
+  const rest = shuffle([...Array.from({ length: customers }, () => walkIn(state, rand)), ...extras], rand);
   const half = Math.ceil(rest.length / 2);
   q.push(...rest.slice(0, half), ev("bank"), ...rest.slice(half));
   // 特注クエストの手付金はクエストの段階で判定するので、常に最後に置いておけばよい
@@ -322,7 +335,7 @@ export function advance(state: GameState, rand: Rand): GameState {
     }
     if (head.kind === "worksheet") return { ...state, queue, phase: { kind: "worksheet", answered: [null, null] } };
     if (head.kind === "report") return { ...state, queue, phase: { kind: "report" } };
-    const { id, topic } = head;
+    const { id, topic, fallback } = head;
     const guided = !!head.guided;
     /** その取引を組み立てる。取引がない・講義をまだ受けていない・一度きりでもう済んだ・今日は起こせない、なら null */
     const tryBuild = (tid: string) => {
@@ -331,6 +344,10 @@ export function advance(state: GameState, rand: Rand): GameState {
     };
     let built = tryBuild(id);
     let templateId = id === "guild" ? guildId(topic) : id;
+    if (!built && fallback) {
+      built = tryBuild(fallback);
+      templateId = fallback;
+    }
     // 復習で選んだ取引が今日は起こせないときは、同じ論点のギルドの帳簿相談にする
     if (!built && topic && id !== "guild") {
       built = tryBuild("guild");

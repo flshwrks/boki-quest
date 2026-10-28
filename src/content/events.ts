@@ -307,6 +307,47 @@ function customer(mode: "any" | "credit"): EventTemplate {
   };
 }
 
+/** 代金の一部を現金で払い、残りはツケにするお客さん（一部現金取引） */
+const customerSplit: EventTemplate = {
+  lesson: "credit",
+  review: 0.3,
+  walkIn: 1,
+  build: (ctx) => {
+    const { state, rand } = ctx;
+    const who: CharacterId = pick(rand, ["allen", "mina", "gord", "lily"] as const);
+    const pref = CUSTOMER_PREFS[who];
+    const stocked = pref.items.filter((i) => ITEMS[i].level <= state.level && state.stock[i] > 0);
+    if (stocked.length === 0) return null;
+    const item = pick(rand, stocked);
+    const it = ITEMS[item];
+    const qty = Math.min(pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level), state.stock[item]);
+    const amount = it.price * qty;
+    // 現金で払うのは3〜6割（1,000円単位）
+    const cash = Math.floor((amount * pick(rand, [0.3, 0.4, 0.5, 0.6])) / 1000) * 1000;
+    if (cash <= 0 || cash >= amount) return null;
+    const rest = amount - cash;
+    const v = voiceOf(who);
+    return {
+      speaker: who,
+      lines: [pref.greet, `「${v.want(`${it.name}${qty}${it.unit}`)}」（売値 ${n(amount)}円）`, `（${n(cash)}円だけ現金で払い、残りはツケにしてほしいそうだ）`],
+      choices: [
+        {
+          label: "現金とツケで売る",
+          tx: {
+            story: `${name(who)}に${it.name}を${qty}${it.unit}売った。${n(cash)}円は現金で受け取り、残りはツケにした。`,
+            exam: `商品${n(amount)}円を売り上げ、代金のうち${n(cash)}円は現金で受け取り、残額は掛けとした。`,
+            answer: je([["現金", cash], ["売掛金", rest]], [["売上", amount]]),
+            idea: "受け取った現金と、あとで受け取る権利の2つに分かれるよ。売上は全額じゃ。",
+            taxable: true,
+            effect: { stock: { [item]: -qty }, reputation: 2, addCredits: [{ kind: "売掛金", who, amount: rest, item, qty }] },
+          },
+        },
+        decline("お断りする", `${name(who)}「${v.declined}」`, -2),
+      ],
+    };
+  },
+};
+
 // ───────── 費用 ─────────
 
 const supplies: EventTemplate = {
@@ -532,6 +573,7 @@ const purchaseReturn: EventTemplate = {
 const salesReturn: EventTemplate = {
   lesson: "returns",
   review: 0.25,
+  walkIn: 0.5,
   build: ({ state, rand }) => {
     const cs = creditsOf(state, "売掛金").filter((c) => c.item && (c.qty ?? 0) >= 2);
     if (cs.length === 0) return null;
@@ -777,6 +819,7 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   "wholesale-freight": { ...wholesale("freight"), review: 0.3 },
   customer: customer("any"),
   "customer-credit": { ...customer("credit"), review: 0.4 },
+  "customer-split": customerSplit,
   supplies,
   rent,
   utility,

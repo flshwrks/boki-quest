@@ -13,7 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES } from "@/content/events";
-import { choose, newGame, nextLesson, skipLesson, submitEntry } from "./logic";
+import { choose, newGame, nextLesson, planDay, skipLesson, submitEntry } from "./logic";
 import { seededRand } from "./random";
 import { makeMock, mockFullParts } from "./training";
 import type { FillCell, FillProblem, GameState } from "./types";
@@ -156,6 +156,24 @@ describe("カリキュラム", () => {
     const next = skipLesson(s);
     expect(next.lessonsDone).toContain("taxes");
     expect(next.phase.kind).toBe("lessonDone");
+  });
+});
+
+describe("お客さんの来店", () => {
+  it("講義を受けると、いつもの現金・ツケのお客さんより、習った払い方や用件のお客さんが多くなる", () => {
+    const base = newGame("テスト商店", seededRand(1));
+    const learned = LESSONS.filter((l) => l.level >= 1 && l.level <= 4).map((l) => l.id);
+    const s: GameState = { ...base, day: 30, level: 4, lessonsDone: learned };
+    const count = new Map<string, number>();
+    const rand = seededRand(7);
+    for (let i = 0; i < 100; i++) {
+      for (const q of planDay(s, rand)) {
+        if (q.kind === "event" && (q.id === "customer" || q.fallback === "customer")) count.set(q.id, (count.get(q.id) ?? 0) + 1);
+      }
+    }
+    const total = [...count.values()].reduce((a, b) => a + b, 0);
+    expect((count.get("customer") ?? 0) / total).toBeLessThan(0.5);
+    for (const id of ["card-sale", "customer-note", "giftcert-sale", "sales-return", "customer-split"]) expect(count.get(id), id).toBeGreaterThan(0);
   });
 });
 
