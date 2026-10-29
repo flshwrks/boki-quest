@@ -7,6 +7,7 @@ import type { GameState } from "@/game/types";
 import { Btn, fmt } from "./ui";
 
 const PAYS: { pay: UpgradePay; label: string }[] = [
+  { pay: "現金", label: "現金で買う" },
   { pay: "普通預金", label: "普通預金で買う" },
   { pay: "未払金", label: "月末払いで買う" },
 ];

@@ -407,7 +407,7 @@ export function upgradePreview(state: GameState, id: UpgradeId, pay: UpgradePay)
   const ctx = ctxOf(state, Math.random, false);
   const prepared = prepareTx(state, ctx, upgradeTx(id, pay));
   // 月末払いでも、払うあてのない買い物はしない
-  if (pay === "未払金" && ctx.balance("普通預金") < sumAmounts(prepared.tx.answer.debit)) return { ...prepared, disabled: "月末に払う普通預金が足りない" };
+  if (pay === "未払金" && ctx.balance("普通預金") + ctx.balance("現金") < sumAmounts(prepared.tx.answer.debit)) return { ...prepared, disabled: "月末に払うお金が足りない" };
   return prepared;
 }
 

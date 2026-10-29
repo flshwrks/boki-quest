@@ -50,7 +50,7 @@ export const UPGRADE_IDS = Object.keys(UPGRADES) as UpgradeId[];
 
 export const hasUpgrade = (state: GameState, id: UpgradeId) => state.upgrades.includes(id);
 
-export type UpgradePay = "普通預金" | "未払金";
+export type UpgradePay = "現金" | "普通預金" | "未払金";
 
 /** 設備を買う取引。付随費用は取得原価に含める。月末払いなら未払金（商品ではない物の後払い） */
 export function upgradeTx(id: UpgradeId, pay: UpgradePay): Transaction {
@@ -60,11 +60,11 @@ export function upgradeTx(id: UpgradeId, pay: UpgradePay): Transaction {
   const credit: AccountName = pay;
   const feeText = u.fee ? `、${u.fee.label}${n(fee)}円とともに` : "";
   return {
-    story: `${u.name}を${n(u.price)}円で買った${u.fee ? `（${u.fee.label}${n(fee)}円）` : ""}。${pay === "未払金" ? "代金は月末払い。" : "代金は普通預金から払った。"}`,
+    story: `${u.name}を${n(u.price)}円で買った${u.fee ? `（${u.fee.label}${n(fee)}円）` : ""}。${pay === "未払金" ? "代金は月末払い。" : `代金は${pay}で払った。`}`,
     exam:
       pay === "未払金"
         ? `${u.exam}${n(u.price)}円を購入し${u.fee ? `、${u.fee.label}${n(fee)}円とともに` : "、"}代金は月末に支払うこととした。`
-        : `${u.exam}${n(u.price)}円を購入し${feeText || "、"}代金は普通預金口座から支払った。`,
+        : `${u.exam}${n(u.price)}円を購入し${feeText || "、"}代金は${pay === "現金" ? "現金で" : "普通預金口座から"}支払った。`,
     answer: je([[u.account, cost]], [[credit, cost]]),
     idea: u.fee
       ? "長く使う設備を買った。据付費や登録手数料のような付随費用は、設備の金額（取得原価）に含めるよ。"

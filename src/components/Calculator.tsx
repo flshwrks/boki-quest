@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { evaluate } from "@/engine/calc";
 import { fmt } from "./ui";
 
@@ -21,6 +22,20 @@ export function useCalcResults() {
 /** 開いたらすぐキーボードで打てるようにする（関数を作り直さないので、開いたときの一度だけ） */
 const focusOnMount = (el: HTMLDivElement | null) => el?.focus({ preventScroll: true });
 
+/** PC（横幅の広い画面）か。PCでは電卓を画面の右下に浮かせる */
+const WIDE = "(min-width: 1024px)";
+function useWide() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(WIDE);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(WIDE).matches,
+    () => false,
+  );
+}
+
 const show = (v: number) => (Number.isInteger(v) ? fmt(v) : v.toLocaleString("ja-JP", { maximumFractionDigits: 4 }));
 
 /**
@@ -31,6 +46,7 @@ export function Calculator({ onResult }: { onResult: (v: number) => void }) {
   const [open, setOpen] = useState(false);
   const [expr, setExpr] = useState("");
   const [result, setResult] = useState<number | null>(null);
+  const wide = useWide();
 
   const press = (k: string) => {
     if (k === "C") {
@@ -73,16 +89,16 @@ export function Calculator({ onResult }: { onResult: (v: number) => void }) {
     );
   }
   const preview = result === null ? evaluate(expr) : null;
-  return (
+  const pad = (
     <div
       ref={focusOnMount}
       tabIndex={0}
       onKeyDown={onKeyDown}
-      className="w-56 rounded-lg border border-[#8a93ad] bg-[#e9ecf4] p-2 text-[#1d1d2b] shadow-lg outline-none focus:ring-2 focus:ring-[#4a6fd0]"
+      className={`w-60 rounded-lg border border-[#8a93ad] bg-[#e9ecf4] p-2 text-[#1d1d2b] shadow-lg outline-none focus:ring-2 focus:ring-[#4a6fd0] ${wide ? "fixed right-4 bottom-4 z-50" : ""}`}
       aria-label="電卓"
     >
       <div className="mb-1 flex items-center justify-between text-xs text-[#55607a]">
-        <span>電卓（= の答えは金額の候補に入る）</span>
+        <span>電卓（= の答えは金額の候補へ）</span>
         <button type="button" onClick={() => setOpen(false)} aria-label="電卓を閉じる" className="px-1">
           ×
         </button>
@@ -103,6 +119,8 @@ export function Calculator({ onResult }: { onResult: (v: number) => void }) {
       </div>
     </div>
   );
+  // PCでは画面の右下に浮かせて、入力欄を押し下げない（スクロールしても見える）。親のアニメーションの影響を受けないよう body に置く
+  return wide ? createPortal(pad, document.body) : pad;
 }
 
 function CalcKey({ k, onPress, op, wide }: { k: string; onPress: (k: string) => void; op?: boolean; wide?: boolean }) {

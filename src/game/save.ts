@@ -1,5 +1,7 @@
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, OPEN_DAY, perItem } from "@/content/world";
+import { UPGRADES, UPGRADE_IDS, type UpgradeId } from "@/content/upgrades";
 import { initialState, practiceFromHistory } from "./logic";
+import { rollRequests } from "./requests";
 import type { GameState, LessonId, QueueItem } from "./types";
 
 type Saved = Record<string, unknown> & { version: number };
@@ -30,9 +32,18 @@ function migrate(raw: Saved): GameState | null {
   const stock = { ...base.stock, ...shifted.stock };
   // 在庫の原価は後から増えた項目。古いセーブでは、いつもの仕入値で数え直す
   const stockValue = shifted.stockValue ?? perItem((id) => stock[id] * ITEMS[id].cost);
-  const merged = { ...base, ...shifted, stock, stockValue };
+  // 店の設備は後から増えた項目。古いセーブでは、ガンテツの売り込みで買った設備を拾う
+  const upgrades = shifted.upgrades ?? upgradesFromHistory(shifted);
+  const merged = { ...base, ...shifted, stock, stockValue, upgrades };
   // 正誤の記録は後から増えた項目。古いセーブでは、これまでの記帳から作り直す
-  return shifted.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };
+  const withPractice = shifted.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };
+  // 月の依頼書も後から増えた項目。読み込んだ月の分をすぐ出す
+  return withPractice.requests ? withPractice : rollRequests(withPractice);
+}
+
+function upgradesFromHistory(saved: GameState): UpgradeId[] {
+  const bought = saved.journal.filter((r) => r.templateId === "buy-fixture" || r.templateId === "buy-wagon");
+  return UPGRADE_IDS.filter((id) => bought.some((r) => r.exam.startsWith(UPGRADES[id].exam)));
 }
 
 /**
