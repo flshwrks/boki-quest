@@ -92,6 +92,7 @@ function storageRemove(key: string) {
 const KEY = "boki-quest-save-v1";
 const SAVED_AT_KEY = "boki-quest-saved-at";
 const PASSCODE_KEY = "boki-quest-passcode";
+const CLOUD_BASE_KEY = "boki-quest-cloud-base";
 
 export interface LocalSave {
   state: GameState;
@@ -125,6 +126,45 @@ export function clearGame() {
 }
 
 // ───────── クラウド保存（合言葉を知っている本人だけが使える） ─────────
+
+/**
+ * この端末のセーブが、クラウドのどの版から進めたものか（rev）と、そのときの進み具合（progress）。
+ * 保存した時刻は操作のたびに新しくなるので、どちらが進んでいるかの比較には使わない
+ */
+export interface CloudBase {
+  rev: number;
+  progress: string;
+}
+
+/** 進み具合の目印：日付・記帳の数・正誤の記録の数がすべて同じなら、同じところまで進んでいる */
+export const progressOf = (s: GameState) => `${s.day}:${s.journal.length}:${s.practice.length}`;
+
+export function getCloudBase(): CloudBase {
+  try {
+    const base = JSON.parse(storageGet(CLOUD_BASE_KEY) ?? "null") as CloudBase | null;
+    return base && typeof base.rev === "number" ? base : { rev: 0, progress: "" };
+  } catch {
+    return { rev: 0, progress: "" };
+  }
+}
+
+/** クラウドとそろえたことを記録する。state を省くと「この端末のセーブで続ける」（次の保存でクラウドを上書きする） */
+export function setCloudBase(rev: number, state?: GameState) {
+  storageSet(CLOUD_BASE_KEY, JSON.stringify({ rev, progress: state ? progressOf(state) : "" }));
+}
+
+/**
+ * 端末とクラウドのセーブのどちらで続けるか。
+ * local：クラウドがこの端末の元の版のまま（または空）／remote：この端末はそろえたあと進めていない／ask：両方で進めて分かれた
+ */
+export function reconcile(local: GameState | null, remote: GameState | null, rev: number, base: CloudBase): "local" | "remote" | "ask" {
+  if (!remote) return "local";
+  if (!local) return "remote";
+  if (rev === base.rev) return "local";
+  const here = progressOf(local);
+  if (here === base.progress || here === progressOf(remote)) return "remote";
+  return "ask";
+}
 
 export const getPasscode = () => storageGet(PASSCODE_KEY) ?? "";
 export const setPasscode = (passcode: string) => storageSet(PASSCODE_KEY, passcode);
