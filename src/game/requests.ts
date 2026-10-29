@@ -1,6 +1,9 @@
 // 月の依頼書：毎月はじめにギルドから3つの目標が届き、翌月はじめに達成した数だけ報奨金と評判がもらえる
 
-import { LESSONS, LESSON_BY_ID } from "@/content/lessons";
+import { REWARD_LESSON } from "@/content/events";
+import { n } from "@/content/eventKit";
+import { LESSON_BY_ID } from "@/content/lessons";
+import { sumOf } from "@/engine/journal";
 import { TRUSTED } from "@/content/upgrades";
 import { DAYS_PER_MONTH, dayInMonth } from "@/content/world";
 import { masteryOf } from "./logic";
@@ -13,20 +16,16 @@ const CLEAN_MIN = 10;
 const REWARD_PER_GOAL = 3000;
 export const REWARD_REP = 4;
 
-/** 報奨金は雑益として記帳するので、雑益を習ってから振り込まれる（それまでは評判だけ） */
-export const REWARD_LESSON = LESSONS.find((l) => l.accounts.includes("雑益"))!.id;
+export { REWARD_LESSON };
 
 export const monthStartOf = (day: number) => day - dayInMonth(day) + 1;
+const inMonth = (start: number, day: number) => day >= start && day < start + DAYS_PER_MONTH;
 
 /** その月（start から5営業日）の売上（返品は差し引く。決算の損益振替は除く） */
 export function salesIn(state: GameState, start: number): number {
-  let total = 0;
-  for (const r of state.journal) {
-    if (r.day < start || r.day >= start + DAYS_PER_MONTH || r.templateId === "closing-transfer") continue;
-    for (const l of r.entry.credit) if (l.account === "売上") total += l.amount;
-    for (const l of r.entry.debit) if (l.account === "売上") total -= l.amount;
-  }
-  return total;
+  return state.journal
+    .filter((r) => inMonth(start, r.day) && r.templateId !== "closing-transfer")
+    .reduce((total, r) => total + sumOf(r.entry.credit, "売上") - sumOf(r.entry.debit, "売上"), 0);
 }
 
 /** 新しい月の依頼書：先月より1割多い売上・いちばん苦手な論点を★3に・正答率85% */
@@ -49,14 +48,14 @@ export function requestProgress(state: GameState, start: number, g: GuildRequest
   switch (g.kind) {
     case "sales": {
       const now = salesIn(state, start);
-      return { label: `今月の売上 ${g.target.toLocaleString()}円`, now: `${now.toLocaleString()}円`, done: now >= g.target };
+      return { label: `今月の売上 ${n(g.target)}円`, now: `${n(now)}円`, done: now >= g.target };
     }
     case "mastery": {
       const stars = masteryOf(state).get(g.lesson!)?.stars ?? 0;
       return { label: `「${LESSON_BY_ID[g.lesson!].title}」を習熟度★3に（苦手ドリルも使える）`, now: `★${stars}`, done: stars >= 3 };
     }
     case "clean": {
-      const recs = state.practice.filter((r) => r.day >= start && r.day < start + DAYS_PER_MONTH);
+      const recs = state.practice.filter((r) => inMonth(start, r.day));
       const rate = recs.length ? Math.round((recs.filter((r) => r.ok).length / recs.length) * 100) : 0;
       return { label: `今月の正答率 ${g.target}%以上（${CLEAN_MIN}問以上）`, now: `${rate}%（${recs.length}問）`, done: recs.length >= CLEAN_MIN && rate >= g.target };
     }

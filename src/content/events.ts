@@ -1,9 +1,9 @@
 import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
-import type { CharacterId, Choice, GameState, ItemId, Transaction } from "@/game/types";
+import type { CharacterId, Choice, Effect, GameState, ItemId, Transaction } from "@/game/types";
 import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale, pickSale, dueCredits } from "./eventKit";
 import { LESSONS } from "./lessons";
-import { isFestivalMonth, seasonOf } from "./seasons";
+import { seasonOf } from "./seasons";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
@@ -700,6 +700,25 @@ const receiveStaff: EventTemplate = {
   },
 };
 
+/** 手付金（前受金）を受け取っていた商品を引き渡す取引。手付金を差し引いた残りは掛け */
+function advanceSaleTx(price: number, deposit: number, story: string, note: string, effect: Effect): Transaction {
+  return {
+    story,
+    exam: `注文を受けていた商品${n(price)}円を引き渡し、代金のうち${n(deposit)}円は受け取っていた手付金と相殺し、残額は掛けとした。`,
+    answer: je(
+      [
+        ["前受金", deposit],
+        ["売掛金", price - deposit],
+      ],
+      [["売上", price]],
+    ),
+    idea: "商品を渡したので、ここで売上になる。先にもらった手付金（前受金）を取り崩そう。",
+    taxable: true,
+    note,
+    effect,
+  };
+}
+
 const deliverStaff: EventTemplate = {
   lesson: "advances",
   schedule: "daily",
@@ -712,21 +731,11 @@ const deliverStaff: EventTemplate = {
       choices: [
         {
           label: "杖を渡す",
-          tx: {
-            story: `ミーナに杖を渡した。残り${n(rest)}円は月末に受け取る。`,
-            exam: `注文を受けていた商品${n(STAFF.price)}円を引き渡し、代金のうち${n(STAFF.deposit)}円は受け取っていた手付金と相殺し、残額は掛けとした。`,
-            answer: je(
-              [
-                ["前受金", STAFF.deposit],
-                ["売掛金", rest],
-              ],
-              [["売上", STAFF.price]],
-            ),
-            idea: "商品を渡したので、ここで売上になる。先にもらった手付金（前受金）を取り崩そう。",
-            taxable: true,
-            note: "クエスト達成！ 前受金は商品を渡した時点で売上に変わる。",
-            effect: { quest: null, reputation: 8, addCredits: [{ kind: "売掛金", who: "mina", amount: rest }] },
-          },
+          tx: advanceSaleTx(STAFF.price, STAFF.deposit, `ミーナに杖を渡した。残り${n(rest)}円は月末に受け取る。`, "クエスト達成！ 前受金は商品を渡した時点で売上に変わる。", {
+            quest: null,
+            reputation: 8,
+            addCredits: [{ kind: "売掛金", who: "mina", amount: rest }],
+          }),
         },
       ],
     };
@@ -820,8 +829,7 @@ const cashdiffResolve: EventTemplate = {
   },
 };
 
-/** 荷馬車があると、毎月4日目に遠くの村から大口の配達注文が来る（掛け売り。発送費は店が払う） */
-const DELIVERY_DAY = 4;
+/** 荷馬車があると、毎月4日目（配達の日）に遠くの村から大口の配達注文が来る（掛け売り。発送費は店が払う） */
 const delivery: EventTemplate = {
   lesson: "credit",
   schedule: "daily",
@@ -854,11 +862,17 @@ const delivery: EventTemplate = {
   },
 };
 
+/** 配達の日：荷馬車の配達注文と、収穫祭の納品の始まる日 */
+const DELIVERY_DAY = 4;
+
 // ───────── 月の依頼書の報奨金・収穫祭 ─────────
+
+/** 報奨金は雑益として記帳するので、雑益を習ってから振り込まれる */
+export const REWARD_LESSON = LESSONS.find((l) => l.accounts.includes("雑益"))!.id;
 
 /** 月の依頼書の報奨金。本業の売上ではない、たまの収入なので雑益 */
 const guildReward: EventTemplate = {
-  lesson: LESSONS.find((l) => l.accounts.includes("雑益"))!.id,
+  lesson: REWARD_LESSON,
   schedule: "daily",
   build: ({ state }) => {
     const r = state.reward;
@@ -882,13 +896,12 @@ const guildReward: EventTemplate = {
   },
 };
 
-/** 収穫祭：月はじめに村の祭りの大口の予約が入り、手付金を受け取る。4日目以降に納品する */
-const FESTIVAL_DELIVERY_DAY = 4;
+/** 収穫祭：月はじめに村の祭りの大口の予約が入り、手付金を受け取る。配達の日（4日目）以降に納品する */
 const festivalOrder: EventTemplate = {
   lesson: "advances",
   schedule: "daily",
   build: ({ state, rand }) => {
-    if (!isFestivalMonth(state.day) || dayInMonth(state.day) !== 1 || state.festival) return null;
+    if (!seasonOf(state.day)?.festival || dayInMonth(state.day) !== 1 || state.festival) return null;
     const item = pick(rand, itemsForLevel(state.level));
     const it = ITEMS[item];
     const qty = orderQtys(item, state.level).at(-1)! * 3;
@@ -898,7 +911,7 @@ const festivalOrder: EventTemplate = {
       speaker: "lily",
       lines: [
         "収穫祭の実行係を任されました。",
-        `お祭りで配る${it.name}を${qty}${it.unit}、${FESTIVAL_DELIVERY_DAY}日目以降に納めてください。代金${n(price)}円のうち、手付金${n(deposit)}円を今お渡しします。残りは納品のときに掛けで。`,
+        `お祭りで配る${it.name}を${qty}${it.unit}、${DELIVERY_DAY}日目以降に納めてください。代金${n(price)}円のうち、手付金${n(deposit)}円を今お渡しします。残りは納品のときに掛けで。`,
         `（いまの在庫：${state.stock[item]}${it.unit}。納品までに仕入れておこう）`,
       ],
       choices: [
@@ -923,7 +936,7 @@ const festivalDeliver: EventTemplate = {
   schedule: "daily",
   build: ({ state }) => {
     const f = state.festival;
-    if (!f || (isFestivalMonth(state.day) && dayInMonth(state.day) < FESTIVAL_DELIVERY_DAY)) return null;
+    if (!f || (seasonOf(state.day)?.festival && dayInMonth(state.day) < DELIVERY_DAY)) return null;
     const it = ITEMS[f.item];
     const short = f.qty - state.stock[f.item];
     const rest = f.price - f.deposit;
@@ -933,21 +946,12 @@ const festivalDeliver: EventTemplate = {
       choices: [
         {
           label: "納品する",
-          tx: {
-            story: `収穫祭の${it.name}${f.qty}${it.unit}を納めた。残り${n(rest)}円は月末に受け取る。`,
-            exam: `注文を受けていた商品${n(f.price)}円を引き渡し、代金のうち${n(f.deposit)}円は受け取っていた手付金と相殺し、残額は掛けとした。`,
-            answer: je(
-              [
-                ["前受金", f.deposit],
-                ["売掛金", rest],
-              ],
-              [["売上", f.price]],
-            ),
-            idea: "商品を渡したので、ここで売上になる。先にもらった手付金（前受金）を取り崩そう。",
-            taxable: true,
-            note: "収穫祭の予約を果たした！ 前受金は商品を渡した時点で売上に変わる。",
-            effect: { stock: { [f.item]: -f.qty }, festival: null, reputation: 10, addCredits: [{ kind: "売掛金", who: "lily", amount: rest, item: f.item, qty: f.qty }] },
-          },
+          tx: advanceSaleTx(f.price, f.deposit, `収穫祭の${it.name}${f.qty}${it.unit}を納めた。残り${n(rest)}円は月末に受け取る。`, "収穫祭の予約を果たした！ 前受金は商品を渡した時点で売上に変わる。", {
+            stock: { [f.item]: -f.qty },
+            festival: null,
+            reputation: 10,
+            addCredits: [{ kind: "売掛金", who: "lily", amount: rest, item: f.item, qty: f.qty }],
+          }),
           disabled: short > 0 ? `在庫があと${short}${it.unit}足りない` : undefined,
         },
         ...(short > 0 ? [{ label: "明日まで待ってもらう", reply: "リリィ「では、また明日来ますね。お祭りに間に合わせてください！」", effect: { reputation: -1 } }] : []),

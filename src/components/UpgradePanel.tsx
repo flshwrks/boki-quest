@@ -1,7 +1,7 @@
 "use client";
 
 import { LESSON_BY_ID } from "@/content/lessons";
-import { UPGRADES, UPGRADE_IDS, type UpgradeId, type UpgradePay, hasUpgrade } from "@/content/upgrades";
+import { UPGRADES, UPGRADE_IDS, type UpgradeId, type UpgradePay, hasUpgrade, upgradeCost } from "@/content/upgrades";
 import { upgradePreview } from "@/game/logic";
 import type { GameState } from "@/game/types";
 import { Btn, fmt } from "./ui";
@@ -25,7 +25,7 @@ export function UpgradePanel({ state, onBuy }: { state: GameState; onBuy: (id: U
       <ul className="mt-2 flex flex-col gap-2">
         {UPGRADE_IDS.map((id) => {
           const u = UPGRADES[id];
-          const cost = u.price + (u.fee?.amount ?? 0);
+          const cost = upgradeCost(id);
           const owned = hasUpgrade(state, id);
           const learned = state.lessonsDone.includes(u.lesson);
           return (

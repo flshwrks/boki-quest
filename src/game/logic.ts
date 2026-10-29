@@ -287,14 +287,14 @@ function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
 
 /**
  * 選択肢の取引を仕上げる：消費税を習ったあとは商品の売買に消費税を加え、払うお金が残高より多ければ選べない理由をつける。
- * selfTax でなければ、消費税はノエルに任せられることがある（taxByNoel）
+ * noelTax なら、消費税の行はノエルが書き足す（省くと taxByNoel で決める）
  */
-function prepareTx(state: GameState, ctx: Ctx, tx: Transaction, selfTax = false): { tx: Transaction; disabled?: string } {
+function prepareTx(state: GameState, ctx: Ctx, tx: Transaction, noelTax?: boolean): { tx: Transaction; disabled?: string } {
   // 店の帳簿に記入しない練習は、店のお金とは関係がない
   if (tx.offBooks) return { tx };
   const taxed = tx.taxable && state.lessonsDone.includes("salestax") ? withSalesTax(tx) : tx;
   const disabled = moneyShortage(ctx, taxed);
-  if (taxed !== tx && !selfTax && taxByNoel(state)) return { tx: { ...tx, withTax: taxed }, disabled };
+  if (taxed !== tx && (noelTax ?? taxByNoel(state))) return { tx: { ...tx, withTax: taxed }, disabled };
   return { tx: taxed, disabled };
 }
 
@@ -302,15 +302,20 @@ function prepareTx(state: GameState, ctx: Ctx, tx: Transaction, selfTax = false)
 const SELF_TAX_PER_DAY = { mastered: 1, learning: 2 };
 
 /** 今日の残りの売買で、消費税の行をノエルに任せるか（ノエルに任せる設定がオンで、今日すでに自分で決まった数を書いたあと） */
-function taxByNoel(state: GameState): boolean {
+function taxByNoel(state: GameState, mastery = masteryOf(state)): boolean {
   if (!noelOn(state)) return false;
-  let self = 0;
-  for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) {
-    const r = state.journal[i];
-    if (!r.auto && !r.noelTax && [...r.entry.debit, ...r.entry.credit].some((l) => l.account === "仮払消費税" || l.account === "仮受消費税")) self++;
-  }
-  const limit = masteryOf(state).get("salestax")?.stars === 3 ? SELF_TAX_PER_DAY.mastered : SELF_TAX_PER_DAY.learning;
+  const self = todaysRecords(state).filter((r) => !r.auto && !r.noelTax && [...r.entry.debit, ...r.entry.credit].some((l) => TAX_ACCOUNTS.has(l.account))).length;
+  const limit = mastery.get("salestax")?.stars === 3 ? SELF_TAX_PER_DAY.mastered : SELF_TAX_PER_DAY.learning;
   return self >= limit;
+}
+
+const TAX_ACCOUNTS = new Set<AccountName>(["仮払消費税", "仮受消費税"]);
+
+/** 今日の仕訳（仕訳帳の後ろから今日の分だけ見る） */
+function todaysRecords(state: GameState): JournalRecord[] {
+  let i = state.journal.length;
+  while (i > 0 && state.journal[i - 1].day === state.day) i--;
+  return state.journal.slice(i);
 }
 
 /** 帳簿に載せる取引（消費税をノエルに任せたなら、税込のほう） */
@@ -384,14 +389,7 @@ export function autoOrder(state: GameState, pay: PurchasePay): boolean {
 }
 
 /** 今日、ノエルが代わりに記帳した取引（仕訳帳の後ろから今日の分だけ見る）。orders なら朝の仕入れだけ */
-export function autoPostedToday(state: GameState, orders = false): JournalRecord[] {
-  const today: JournalRecord[] = [];
-  for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) {
-    const r = state.journal[i];
-    if (r.auto && (!orders || r.templateId === ORDER)) today.unshift(r);
-  }
-  return today;
-}
+export const autoPostedToday = (state: GameState, orders = false) => todaysRecords(state).filter((r) => r.auto && (!orders || r.templateId === ORDER));
 
 /** 開店前に、ガンテツへ仕入れを注文する。記帳が終わったら朝の画面に戻る（ノエルに任せていれば、そのまま朝の画面） */
 export function startOrder(state: GameState, item: ItemId, qty: number, pay: PurchasePay): GameState {
@@ -473,9 +471,11 @@ export function advance(state: GameState, rand: Rand): GameState {
     if (!built) continue;
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
+    // 講義の練習・復習では消費税も自分で書く。消費税をノエルに任せるかは、この取引で一度だけ決める
+    const noelTax = !guided && !topic && !!mastery && choices.some((c) => c.tx?.taxable) && taxByNoel(cur, mastery);
     choices = choices.map((c) => {
       if (!c.tx) return c;
-      const { tx, disabled } = prepareTx(cur, ctx, c.tx, guided || !!topic);
+      const { tx, disabled } = prepareTx(cur, ctx, c.tx, noelTax);
       return { ...c, tx, disabled: c.disabled ?? disabled };
     });
     // 慣れた後始末はノエルが記帳して、次の取引へ進む（閉店時に一覧で見せる）。復習として出した取引は自分で記帳する
