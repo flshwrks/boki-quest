@@ -6,6 +6,7 @@ import { type Entry, isEmptyEntry } from "@/engine/journal";
 import { EXAM_PASS } from "@/game/logic";
 import { MOCK_QUESTIONS, mockFullParts, mockParts, mockScore, problemScore } from "@/game/training";
 import type { FillAnswer, FillBlank, FillCell, FillProblem, FillTable, MockSession } from "@/game/types";
+import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamPanel";
 import { QuestionText } from "./Question";
@@ -297,6 +298,7 @@ export function MockExamPanel({
   onFinish: () => void;
 }) {
   const [page, setPage] = useState(0);
+  const [calc, addCalc] = useCalcResults();
   if (mock.graded) return <Result mock={mock} onFinish={onFinish} />;
   if (mock.startedAt === null) return <Intro onBegin={() => onBegin(Date.now())} />;
 
@@ -316,11 +318,14 @@ export function MockExamPanel({
   return (
     <CbtFrame title="模擬試験" right={<Countdown startedAt={mock.startedAt} minutes={mock.minutes} onTimeUp={onGrade} />}>
       <QuestionNav count={pages} index={page} answered={answered} onSelect={setPage} label={label} />
+      <div className="mb-1">
+        <Calculator onResult={addCalc} />
+      </div>
       {page < n ? (
         <>
           <p className="mb-1 text-xs text-[#55607a]">第1問（{page + 1}）　次の取引について仕訳しなさい。（3点）</p>
           <QuestionText q={mock.questions[page]} className="mb-3 rounded border border-[#b8bfd3] bg-white p-2" />
-          <CbtEntryForm key={page} accounts={accounts} initial={mock.answers[page]} onChange={(entry) => onAnswer(page, entry)} />
+          <CbtEntryForm key={page} accounts={accounts} initial={mock.answers[page]} onChange={(entry) => onAnswer(page, entry)} chips={calc} />
         </>
       ) : (
         <FillSheet problem={mock.problems[page - n]} values={mock.fills[page - n]} onChange={(b, v) => onFill(page - n, b, v)} />

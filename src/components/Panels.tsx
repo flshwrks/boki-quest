@@ -93,7 +93,7 @@ export function DayStartPanel({
           <span>
             慣れた決済は、見習いのノエルに記帳してもらう
             <span className="block text-xs text-dim">
-              期日の決済やツケの回収など、習熟度が★3の論点の後始末と、朝の仕入れ（商品売買が★3のとき。掛けなら掛け取引も★3）だけ。ノエルが書いた仕訳は閉店のときに見せてくれる（正誤の記録には数えない）
+              期日の決済・ツケの回収・給料の支払いなど、習熟度が★3の論点の決まった取引と、朝の仕入れ（商品売買が★3のとき。掛けなら掛け取引も★3）。消費税は1日2件（消費税が★3なら1件）自分で書いたら、残りはノエルが書き足す。復習の取引は自分で記帳する。ノエルが書いた仕訳は閉店のときに見せてくれる（正誤の記録には数えない）
             </span>
           </span>
         </label>
@@ -204,6 +204,15 @@ export function ResultPanel({
         <div className="mt-2 flex gap-2 text-sm">
           <Portrait id="hoho" size={32} className="shrink-0" />
           <p>{tx.note}</p>
+        </div>
+      )}
+      {tx.withTax && (
+        <div className="mt-2 flex gap-2 text-sm">
+          <Portrait id="noel" size={32} className="shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p>ノエル「消費税の行は、ぼくが書き足しておきました！ 帳簿にはこう載ります」</p>
+            <EntryTable entry={tx.withTax.answer} />
+          </div>
         </div>
       )}
       <p className="mt-2 text-sm text-dim">

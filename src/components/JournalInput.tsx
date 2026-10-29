@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AccountName } from "@/engine/accounts";
 import { categoryHint, type Entry } from "@/engine/journal";
 import type { TxSession } from "@/game/types";
+import { Calculator, useCalcResults } from "./Calculator";
 import { CardEntryForm } from "./CardEntryForm";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { VoucherView } from "./VoucherView";
@@ -31,12 +32,16 @@ export function JournalInput({
   const [entry, setEntry] = useState<Entry>({ debit: [], credit: [] });
   // 答えは、一度は自分で記帳してみてから見られる
   const canReveal = session.attempts >= 1;
+  const [calc, addCalc] = useCalcResults();
 
   return (
     <div className="flex flex-col gap-3">
       <Win>
         {tx.offBooks && <p className="mb-1 inline-block rounded-full border border-white/40 px-2 text-xs text-dim">ギルドの帳簿相談（店の帳簿には記入しない）</p>}
         <p className="text-sm">{tx.story}</p>
+        {tx.withTax && (
+          <p className="mt-1 inline-block rounded-full border border-white/40 px-2 text-xs">🧾 消費税はノエルが書き足す：税抜の金額で仕訳しよう</p>
+        )}
         <div className="mt-2 rounded-lg border-2 border-gold/70 bg-gold/10 p-2">
           <div className="text-xs text-gold">試験ではこう出る</div>
           <p>{tx.exam}</p>
@@ -73,7 +78,8 @@ export function JournalInput({
 
       {/* 仕訳の入力欄 */}
       <Win>
-        <div className="mb-2 flex justify-end">
+        <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+          <Calculator onResult={addCalc} />
           <button
             type="button"
             onClick={() => {
@@ -87,9 +93,9 @@ export function JournalInput({
           </button>
         </div>
         {mode === "cbt" ? (
-          <CbtEntryForm key="cbt" accounts={accounts} onChange={setEntry} />
+          <CbtEntryForm key="cbt" accounts={accounts} onChange={setEntry} chips={calc} />
         ) : (
-          <CardEntryForm key="card" accounts={accounts} examText={tx.exam} onChange={setEntry} />
+          <CardEntryForm key="card" accounts={accounts} examText={tx.exam} onChange={setEntry} extraAmounts={calc} />
         )}
         <div className="mt-3 flex flex-wrap justify-end gap-2">
           <Btn variant="ghost" onClick={onHint} disabled={session.hints >= 3 || (session.hints >= 2 && !canReveal)}>

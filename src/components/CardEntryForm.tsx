@@ -35,7 +35,18 @@ function toEntry(rows: Row[]): Entry {
  * カードを借方・貸方の枠に置く入力（序盤向け）。
  * 枠をタップして置き場所を切り替え、カードをタップ（PCはドラッグでも可）して置く。
  */
-export function CardEntryForm({ accounts, examText, onChange }: { accounts: AccountName[]; examText: string; onChange: (entry: Entry) => void }) {
+export function CardEntryForm({
+  accounts,
+  examText,
+  onChange,
+  extraAmounts = [],
+}: {
+  accounts: AccountName[];
+  examText: string;
+  onChange: (entry: Entry) => void;
+  /** 電卓の計算結果（試験文の金額より前に並べる） */
+  extraAmounts?: number[];
+}) {
   const [rows, setRowsState] = useState<Row[]>([
     { id: 0, side: "debit", account: null, amount: "" },
     { id: 1, side: "credit", account: null, amount: "" },
@@ -109,7 +120,7 @@ export function CardEntryForm({ accounts, examText, onChange }: { accounts: Acco
     setActiveSide(side);
   };
 
-  const chips = amountsIn(examText);
+  const chips = [...new Set([...extraAmounts, ...amountsIn(examText)])];
 
   return (
     <>

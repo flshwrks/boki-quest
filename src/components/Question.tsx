@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AccountName } from "@/engine/accounts";
 import { type Entry, isEmptyEntry } from "@/engine/journal";
 import type { ExamQuestion } from "@/game/types";
+import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { VoucherView } from "./VoucherView";
 import { AnswerExplain, Btn, EntryTable } from "./ui";
@@ -59,13 +60,17 @@ export function QuizCard({
   children?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState<Entry | null>(null);
+  const [calc, addCalc] = useCalcResults();
   return (
     <>
       <QuestionText q={q} className="mb-3 rounded-lg border border-white/30 p-2" />
       {result === null ? (
         <>
           <div className="rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b]">
-            <CbtEntryForm accounts={accounts} initial={null} onChange={setDraft} />
+            <div className="mb-1">
+              <Calculator onResult={addCalc} />
+            </div>
+            <CbtEntryForm accounts={accounts} initial={null} onChange={setDraft} chips={calc} />
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Btn onClick={() => draft && onCheck(draft)} disabled={!draft || isEmptyEntry(draft)}>

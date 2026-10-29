@@ -7,6 +7,7 @@ import { LESSON_BY_ID } from "@/content/lessons";
 import { LEVELS } from "@/content/world";
 import { EXAM_PASS, examScore } from "@/game/logic";
 import type { ExamQuestion, ExamSession } from "@/game/types";
+import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { MissDetail, QuestionText } from "./Question";
 import { play } from "./sfx";
@@ -217,6 +218,7 @@ export function ExamPanel({
   onFinish: () => void;
 }) {
   const [index, setIndex] = useState(0);
+  const [calc, addCalc] = useCalcResults();
   if (exam.graded) return <Result exam={exam} onFinish={onFinish} />;
   if (exam.startedAt === null) return <Intro exam={exam} onBegin={() => onBegin(Date.now())} />;
 
@@ -232,7 +234,10 @@ export function ExamPanel({
       <QuestionNav count={exam.questions.length} index={index} answered={answered} onSelect={setIndex} />
       <p className="mb-1 text-xs text-[#55607a]">第{index + 1}問　次の取引について仕訳しなさい。</p>
       <QuestionText q={q} className="mb-3 rounded border border-[#b8bfd3] bg-white p-2" />
-      <CbtEntryForm key={index} accounts={accounts} initial={exam.answers[index]} onChange={(entry) => onAnswer(index, entry)} />
+      <div className="mb-1">
+        <Calculator onResult={addCalc} />
+      </div>
+      <CbtEntryForm key={index} accounts={accounts} initial={exam.answers[index]} onChange={(entry) => onAnswer(index, entry)} chips={calc} />
       <CbtFooter index={index} count={exam.questions.length} onSelect={setIndex} unanswered={unanswered} onGrade={onGrade} />
     </CbtFrame>
   );

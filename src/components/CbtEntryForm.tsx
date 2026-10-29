@@ -38,13 +38,17 @@ export function CbtEntryForm({
   accounts,
   initial,
   onChange,
+  chips = [],
 }: {
   accounts: AccountName[];
   initial?: Entry | null;
   onChange: (entry: Entry) => void;
+  /** 電卓の計算結果。押すと、最後に入力した金額欄（なければ金額の空いている行）に入る */
+  chips?: number[];
 }) {
   const [debit, setDebit] = useState(() => fromEntry(initial ?? null, "debit"));
   const [credit, setCredit] = useState(() => fromEntry(initial ?? null, "credit"));
+  const [lastAmount, setLastAmount] = useState<{ side: Side; i: number } | null>(null);
   const options = inMasterOrder(accounts);
 
   const edit = (side: Side, i: number, patch: Partial<Cell>) => {
@@ -56,6 +60,12 @@ export function CbtEntryForm({
   };
 
   const cells = { debit, credit };
+
+  const insert = (v: number) => {
+    const empty = (["debit", "credit"] as const).flatMap((side) => cells[side].map((c, i) => ({ side, i, c }))).find(({ c }) => c.account && !c.amount);
+    const target = lastAmount ?? empty ?? { side: "debit" as const, i: 0 };
+    edit(target.side, target.i, { amount: fmt(v) });
+  };
 
   /** ←→キーで、同じ行の左右の欄（借方科目・借方金額・貸方科目・貸方金額）へ移る。プルダウンでは←→で選択肢が変わらないようにする */
   const onKeyDown = (e: React.KeyboardEvent<HTMLTableElement>) => {
@@ -108,6 +118,7 @@ export function CbtEntryForm({
                       data-row={i}
                       data-col={s * 2 + 1}
                       value={cell.amount}
+                      onFocus={() => setLastAmount({ side, i })}
                       onChange={(e) => edit(side, i, { amount: e.target.value.replace(/[^\d,]/g, "") })}
                       aria-label={`${SIDE_LABEL[side]}金額 ${i + 1}行目`}
                       className="w-full rounded border border-[#b8bfd3] bg-white px-2 py-1 text-right tabular-nums"
@@ -119,6 +130,16 @@ export function CbtEntryForm({
           ))}
         </tbody>
       </table>
+      {chips.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-[#55607a]">電卓の答えを入れる（最後に入力した金額欄へ）：</span>
+          {chips.map((v) => (
+            <button key={v} type="button" onClick={() => insert(v)} className="rounded-full border border-[#8a93ad] bg-white px-2.5 py-0.5 tabular-nums hover:bg-[#dfe3ef]">
+              {fmt(v)}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -223,6 +223,43 @@ describe("見習いのノエルに任せる", () => {
   });
 });
 
+describe("消費税の行をノエルに任せる", () => {
+  /** 消費税を習い、ノエルに任せる設定がオン。今日、消費税の仕訳を自分で taxed 件書いた */
+  const taxDay = (taxed: number, autoPost = true): GameState => {
+    const base = newGame("テスト商店", seededRand(1));
+    const learned = LESSONS.filter((l) => l.level <= 5).map((l) => l.id);
+    const sale = { debit: [{ account: "現金" as const, amount: 1100 }], credit: [{ account: "売上" as const, amount: 1000 }, { account: "仮受消費税" as const, amount: 100 }] };
+    return {
+      ...base,
+      day: 40,
+      level: 5,
+      lessonsDone: learned,
+      autoPost,
+      journal: Array.from({ length: taxed }, () => ({ day: 40, templateId: "customer", exam: "", entry: sale })),
+      phase: { kind: "dayStart" },
+    };
+  };
+  const hasTax = (e: { debit: { account: string }[]; credit: { account: string }[] }) => [...e.debit, ...e.credit].some((l) => l.account.endsWith("消費税"));
+
+  it("1日2件を自分で書いたら、残りは税抜で答え、帳簿には税込で載る", () => {
+    const s = startOrder(taxDay(2), "potion", 10, "買掛金");
+    if (s.phase.kind !== "journal") throw new Error("記帳の画面にならない");
+    const { tx } = s.phase.session;
+    expect(hasTax(tx.answer)).toBe(false);
+    expect(tx.withTax && hasTax(tx.withTax.answer)).toBe(true);
+    const done = submitEntry(s, tx.answer);
+    expect(done.journal.at(-1)).toMatchObject({ noelTax: true });
+    expect(hasTax(done.journal.at(-1)!.entry)).toBe(true);
+  });
+
+  it("まだ2件書いていない・任せていないなら、消費税も自分で書く", () => {
+    for (const s of [startOrder(taxDay(1), "potion", 10, "買掛金"), startOrder(taxDay(2, false), "potion", 10, "買掛金")]) {
+      if (s.phase.kind !== "journal") throw new Error("記帳の画面にならない");
+      expect(hasTax(s.phase.session.tx.answer)).toBe(true);
+    }
+  });
+});
+
 describe("ギルドの帳簿相談", () => {
   it("正解しても店の帳簿（仕訳帳）には記入せず、正誤だけ記録する", () => {
     const rand = seededRand(3);

@@ -302,6 +302,7 @@ const noelAdvance: EventTemplate = {
 const payday: EventTemplate = {
   lesson: "payroll",
   schedule: "daily",
+  routine: true,
   once: "day",
   build: (ctx) => {
     const { state } = ctx;
@@ -355,6 +356,7 @@ const payIncomeTax = settleDue("所得税預り金", {
 const payInsurance: EventTemplate = {
   lesson: "payroll",
   schedule: "daily",
+  routine: true,
   build: (ctx) => {
     const due = dueCredits(ctx.state, "社会保険料預り金", 2);
     if (due.length === 0) return null;

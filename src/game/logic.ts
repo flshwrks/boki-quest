@@ -264,13 +264,36 @@ function moneyShortage(ctx: Ctx, tx: Transaction): string | undefined {
   return undefined;
 }
 
-/** 選択肢の取引を仕上げる：消費税を習ったあとは商品の売買に消費税を加え、払うお金が残高より多ければ選べない理由をつける */
-function prepareTx(state: GameState, ctx: Ctx, tx: Transaction): { tx: Transaction; disabled?: string } {
+/**
+ * 選択肢の取引を仕上げる：消費税を習ったあとは商品の売買に消費税を加え、払うお金が残高より多ければ選べない理由をつける。
+ * selfTax でなければ、消費税はノエルに任せられることがある（taxByNoel）
+ */
+function prepareTx(state: GameState, ctx: Ctx, tx: Transaction, selfTax = false): { tx: Transaction; disabled?: string } {
   // 店の帳簿に記入しない練習は、店のお金とは関係がない
   if (tx.offBooks) return { tx };
   const taxed = tx.taxable && state.lessonsDone.includes("salestax") ? withSalesTax(tx) : tx;
-  return { tx: taxed, disabled: moneyShortage(ctx, taxed) };
+  const disabled = moneyShortage(ctx, taxed);
+  if (taxed !== tx && !selfTax && taxByNoel(state)) return { tx: { ...tx, withTax: taxed }, disabled };
+  return { tx: taxed, disabled };
 }
+
+/** 消費税の仕訳を自分で書く数（1日あたり）。習熟度★3なら1件、それまでは2件。残りはノエルが書き足す */
+const SELF_TAX_PER_DAY = { mastered: 1, learning: 2 };
+
+/** 今日の残りの売買で、消費税の行をノエルに任せるか（ノエルに任せる設定がオンで、今日すでに自分で決まった数を書いたあと） */
+function taxByNoel(state: GameState): boolean {
+  if (!noelOn(state)) return false;
+  let self = 0;
+  for (let i = state.journal.length - 1; i >= 0 && state.journal[i].day === state.day; i--) {
+    const r = state.journal[i];
+    if (!r.auto && !r.noelTax && [...r.entry.debit, ...r.entry.credit].some((l) => l.account === "仮払消費税" || l.account === "仮受消費税")) self++;
+  }
+  const limit = masteryOf(state).get("salestax")?.stars === 3 ? SELF_TAX_PER_DAY.mastered : SELF_TAX_PER_DAY.learning;
+  return self >= limit;
+}
+
+/** 帳簿に載せる取引（消費税をノエルに任せたなら、税込のほう） */
+const booked = (tx: Transaction) => tx.withTax ?? tx;
 
 /** 朝の仕入れ注文の記録に使う templateId */
 const ORDER = "order";
@@ -350,7 +373,7 @@ export function startOrder(state: GameState, item: ItemId, qty: number, pay: Pur
   if (state.phase.kind !== "dayStart") return state;
   const { tx, disabled } = orderPreview(state, item, qty, pay);
   if (disabled) return state;
-  if (autoOrder(state, pay)) return postToBooks(state, ORDER, tx, true);
+  if (autoOrder(state, pay)) return postToBooks(state, ORDER, booked(tx), "auto");
   return { ...state, phase: { kind: "journal", session: txSession(tx, "gantetsu", ORDER) } };
 }
 
@@ -409,13 +432,13 @@ export function advance(state: GameState, rand: Rand): GameState {
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
     choices = choices.map((c) => {
       if (!c.tx) return c;
-      const { tx, disabled } = prepareTx(cur, ctx, c.tx);
+      const { tx, disabled } = prepareTx(cur, ctx, c.tx, guided || !!topic);
       return { ...c, tx, disabled: c.disabled ?? disabled };
     });
-    // 慣れた後始末はノエルが記帳して、次の取引へ進む（閉店時に一覧で見せる）
-    const auto = mastery && !guided ? autoPostTx(templateId, choices, mastery) : undefined;
+    // 慣れた後始末はノエルが記帳して、次の取引へ進む（閉店時に一覧で見せる）。復習として出した取引は自分で記帳する
+    const auto = mastery && !guided && !topic ? autoPostTx(templateId, choices, mastery) : undefined;
     if (auto) {
-      cur = postToBooks(cur, templateId, auto, true);
+      cur = postToBooks(cur, templateId, booked(auto), "auto");
       ctx = ctxOf(cur, rand, false);
       continue;
     }
@@ -559,7 +582,7 @@ export function submitEntry(state: GameState, input: Entry): GameState {
     },
   };
   // ギルドの帳簿相談などの練習は、店の帳簿には記入しない
-  if (!s.tx.offBooks) next = postToBooks(next, s.templateId, s.tx);
+  if (!s.tx.offBooks) next = postToBooks(next, s.templateId, booked(s.tx), s.tx.withTax && "noelTax");
   // 最初の答えで合っていたかを記録する（ヒントを使ったら「合っていた」には数えない）
   if (s.attempts === 0) next = logPractice(next, lessonOfTemplate(s.templateId), firstTry);
   const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, combo, comboMessage };
@@ -567,12 +590,12 @@ export function submitEntry(state: GameState, input: Entry): GameState {
 }
 
 /** 店の帳簿に記入する：仕訳帳に載せ、今日の売上・仕入に足し、在庫やツケなどの効果を反映する */
-function postToBooks(state: GameState, templateId: string, tx: Transaction, auto = false): GameState {
+function postToBooks(state: GameState, templateId: string, tx: Transaction, mark?: "auto" | "noelTax"): GameState {
   const sales = sumAmounts(tx.answer.credit.filter((l) => l.account === "売上"));
   const purchases = sumAmounts(tx.answer.debit.filter((l) => l.account === "仕入"));
   const posted: GameState = {
     ...state,
-    journal: [...state.journal, { day: state.day, templateId, exam: tx.exam, entry: tx.answer, ...(auto && { auto: true as const }) }],
+    journal: [...state.journal, { day: state.day, templateId, exam: tx.exam, entry: tx.answer, ...(mark && { [mark]: true as const }) }],
     today: { ...state.today, sales: state.today.sales + sales, purchases: state.today.purchases + purchases },
   };
   return applyEffect(posted, tx.effect);

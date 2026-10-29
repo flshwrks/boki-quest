@@ -146,6 +146,8 @@ export interface Transaction {
   doc?: Voucher;
   /** 店の帳簿には記入しない練習の仕訳（ギルドの帳簿相談） */
   offBooks?: boolean;
+  /** 消費税をノエルに任せるとき、帳簿に載せる税込の取引（プレイヤーは税抜の answer で答える） */
+  withTax?: Transaction;
   effect?: Effect;
 }
 
@@ -174,6 +176,8 @@ export interface JournalRecord {
   entry: Entry;
   /** 見習いのノエルが代わりに記帳した取引 */
   auto?: true;
+  /** 税抜で記帳し、消費税の行はノエルが書き足した取引 */
+  noelTax?: true;
 }
 
 export interface Mistake {
