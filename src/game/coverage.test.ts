@@ -13,7 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES } from "@/content/events";
-import { advance, choose, newGame, nextLesson, planDay, skipLesson, startOrder, submitEntry } from "./logic";
+import { advance, afterResult, choose, newGame, nextLesson, planDay, skipLesson, startOrder, startUpgrade, submitEntry, upgradePreview } from "./logic";
 import { seededRand } from "./random";
 import { makeMock, mockFullParts } from "./training";
 import type { FillCell, FillProblem, GameState } from "./types";
@@ -257,6 +257,24 @@ describe("消費税の行をノエルに任せる", () => {
       if (s.phase.kind !== "journal") throw new Error("記帳の画面にならない");
       expect(hasTax(s.phase.session.tx.answer)).toBe(true);
     }
+  });
+});
+
+describe("店の設備", () => {
+  it("朝の画面で買って記帳すると、設備が店に入り、朝の画面に戻る（付随費用は取得原価に）", () => {
+    const base = newGame("テスト商店", seededRand(1));
+    const learned = LESSONS.filter((l) => l.level <= 4).map((l) => l.id);
+    const deposit = { day: 31, templateId: "x", exam: "", entry: { debit: [{ account: "普通預金" as const, amount: 300000 }], credit: [{ account: "資本金" as const, amount: 300000 }] } };
+    const s: GameState = { ...base, level: 4, lessonsDone: learned, journal: [deposit], phase: { kind: "dayStart" } };
+    const j = startUpgrade(s, "wagon", "普通預金");
+    if (j.phase.kind !== "journal") throw new Error("記帳の画面にならない");
+    expect(j.phase.session.tx.answer.debit).toEqual([{ account: "車両運搬具", amount: 210000 }]);
+    const done = afterResult(submitEntry(j, j.phase.session.tx.answer), seededRand(2));
+    expect(done.phase.kind).toBe("dayStart");
+    expect(done.upgrades).toEqual(["wagon"]);
+    // 同じ設備は2度買えない。月末払いでも、払うあてがなければ買えない
+    expect(startUpgrade(done, "wagon", "普通預金")).toBe(done);
+    expect(upgradePreview({ ...s, journal: [] }, "shelf", "未払金").disabled).toBeTruthy();
   });
 });
 

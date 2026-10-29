@@ -162,14 +162,18 @@ describe("採点", () => {
     expect(next.phase.kind === "journal" && next.phase.session.attempts).toBe(0);
   });
 
-  it("間違えると信用−2、自力で直すと+1", () => {
+  it("信用は最近の記帳の正確さ：ノーヒント正解なら上がり、間違えてから直すと下がる。上限に張りつかない", () => {
     const s = atFirstJournal();
     if (s.phase.kind !== "journal") throw new Error();
     const { answer } = s.phase.session.tx;
     const miss = submitEntry(s, { debit: answer.credit, credit: answer.debit });
-    expect(miss.trust).toBe(s.trust - 2);
+    expect(miss.trust).toBe(s.trust);
     const fixed = submitEntry(miss, answer);
-    expect(fixed.trust).toBe(s.trust - 1);
+    expect(fixed.trust).toBeLessThan(s.trust);
+    if (fixed.phase.kind !== "result") throw new Error();
+    expect(fixed.phase.info.trustDelta).toBe(fixed.trust - s.trust);
+    expect(submitEntry({ ...s, trust: 99 }, answer).trust).toBe(99);
+    expect(submitEntry({ ...s, trust: 50 }, answer).trust).toBe(55);
   });
 });
 

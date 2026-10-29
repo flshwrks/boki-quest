@@ -5,6 +5,7 @@ import { sumAmounts } from "@/engine/journal";
 import type { GameState, Transaction } from "@/game/types";
 import { PAY_SOURCES, type EventTemplate, voiceOf, creditsOf, decline, dueCredits, interestOf, je, maturedCredit, n, needCash, needDeposit, payFrom, pct, pick, settleAll, settleDue, viaPhrase } from "./eventKit";
 import { DAYS_PER_MONTH, LEVELS, dayInMonth } from "./world";
+import { UPGRADES, hasUpgrade } from "./upgrades";
 
 /** 返済期日（借りた日から months か月後）が来た借入金・貸付金と、その利息 */
 function dueLoan(state: GameState, kind: "借入金" | "貸付金") {
@@ -204,12 +205,14 @@ const moveIn: EventTemplate = {
 const buyWagon: EventTemplate = {
   lesson: "fixedassets",
   once: "game",
-  build: () => {
+  build: (ctx) => {
+    // 朝の画面で荷馬車を買っていたら来ない（講義の練習は別）
+    if (!ctx.guided && hasUpgrade(ctx.state, "wagon")) return null;
     const price = 200000;
     const fee = 10000;
     return {
       speaker: "gantetsu",
-      lines: ["遠くの村まで商品を届けるなら、荷馬車がいるじゃろう。", `頑丈なのを${n(price)}円で譲るぞ。ギルドへの登録料${n(fee)}円込みで、代金は月末払いでよい。（評判 +10）`],
+      lines: ["遠くの村まで商品を届けるなら、荷馬車がいるじゃろう。", `頑丈なのを${n(price)}円で譲るぞ。ギルドへの登録料${n(fee)}円込みで、代金は月末払いでよい。（評判 +10、${UPGRADES.wagon.effect}）`],
       choices: [
         {
           label: "後払いで買う",
@@ -219,7 +222,7 @@ const buyWagon: EventTemplate = {
             answer: je([["車両運搬具", price + fee]], [["未払金", price + fee]]),
             idea: "何年も使う乗り物を買った。登録料のような付随費用はどこに含める？ 商品ではない物の後払いは何だったかな？",
             note: `付随費用は固定資産に含めるから、車両運搬具は ${n(price)} + ${n(fee)} = ${n(price + fee)}円じゃ。`,
-            effect: { reputation: 10, addCredits: [{ kind: "未払金", who: "gantetsu", amount: price + fee }] },
+            effect: { reputation: 10, upgrade: "wagon", addCredits: [{ kind: "未払金", who: "gantetsu", amount: price + fee }] },
           },
         },
         decline("今回は見送る", "ガンテツ「そうか。気が向いたら言うんじゃぞ」"),

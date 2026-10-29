@@ -2,6 +2,7 @@ import type { AccountName } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
+import { UPGRADES, type UpgradeId, type UpgradePay, hasUpgrade, repTier, upgradeTx } from "@/content/upgrades";
 import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
 import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
@@ -16,6 +17,21 @@ import type { CharacterId, Choice, DayStats, ItemId, PracticeRecord, Effect, Exa
 
 const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry: 0, bestCombo: 0 });
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
+
+/**
+ * 帳簿の信用は「最近の記帳の正確さ」：ノーヒント正解なら100、それ以外なら30に向かって少しずつ動く（直近20件くらいの平均）。
+ * 足し算でためると上限に張りついて意味がなくなるので、正確さが落ちれば下がるようにする
+ */
+const TRUST_RATE = 0.1;
+const trustAfter = (trust: number, clean: boolean) => clamp(Math.round(trust + ((clean ? 100 : 30) - trust) * TRUST_RATE));
+
+/**
+ * 評判は、何もしなければ毎日40に向かって戻る（よい商売を続けないと保てない）。看板があると戻りがゆるやか。
+ * 1日に評判が上がる量（売るたびに＋1〜3など）とつり合うところで落ち着くので、上限に張りつきにくい
+ */
+const REP_BASE = 40;
+const repAfterDay = (state: GameState) =>
+  clamp(state.reputation - Math.round((state.reputation - REP_BASE) * (hasUpgrade(state, "sign") ? 0.12 : 0.2)));
 
 export function entriesOf(state: GameState): Entry[] {
   return state.journal.map((r) => r.entry);
@@ -65,6 +81,7 @@ export function initialState(shopName: string): GameState {
     credits: [],
     creditSeq: 0,
     quest: null,
+    upgrades: [],
     cashDiff: null,
     mistakes: [],
     examRetryDay: 0,
@@ -227,8 +244,8 @@ export function planDay(state: GameState, rand: Rand): QueueItem[] {
   if (has("returns") && rand() < 0.3) q.push(ev("purchase-return"));
 
   const extras = reviewItems(state, rand, lesson?.id);
-  // 評判が上がるほど、店が大きくなるほど、お客さんが増える（1日が長くなりすぎないよう、上限つき。店が育った分は1回の取引の量がふえる）
-  const customers = Math.min(MAX_CUSTOMERS, 1 + state.level + Math.floor(state.reputation / 25));
+  // 店が大きくなるほど、評判が上がるほど、お客さんが増える（1日が長くなりすぎないよう、上限つき。店が育った分は1回の取引の量がふえる）
+  const customers = Math.max(1, Math.min(MAX_CUSTOMERS, 1 + state.level + repTier(state.reputation).customers));
   const walkIns = WALK_INS.filter(([id]) => has(TEMPLATES[id].lesson));
   const rest = shuffle([...Array.from({ length: customers }, () => walkIn(walkIns, rand)), ...extras], rand);
   const half = Math.ceil(rest.length / 2);
@@ -298,9 +315,13 @@ const booked = (tx: Transaction) => tx.withTax ?? tx;
 /** 朝の仕入れ注文の記録に使う templateId */
 const ORDER = "order";
 
-/** 取引の種類（templateId）から、その論点の講義を引く。朝の注文は商品売買 */
+/** 朝の画面で買う設備の templateId は "upgrade-設備" */
+const UPGRADE_PREFIX = "upgrade-";
+
+/** 取引の種類（templateId）から、その論点の講義を引く。朝の注文は商品売買、設備はそれを買えるようになる講義 */
 export function lessonOfTemplate(templateId: string): LessonId | undefined {
   if (templateId === ORDER) return "trade";
+  if (templateId.startsWith(UPGRADE_PREFIX)) return UPGRADES[templateId.slice(UPGRADE_PREFIX.length) as UpgradeId]?.lesson;
   // ギルドの帳簿相談は "guild-論点"
   if (templateId.startsWith(GUILD_PREFIX)) return templateId.slice(GUILD_PREFIX.length) as LessonId;
   return TEMPLATES[templateId]?.lesson;
@@ -377,9 +398,27 @@ export function startOrder(state: GameState, item: ItemId, qty: number, pay: Pur
   return { ...state, phase: { kind: "journal", session: txSession(tx, "gantetsu", ORDER) } };
 }
 
-/** 正解の画面の次へ。朝の注文なら朝の画面に戻り、それ以外は今日の予定を進める */
+/** 朝の画面で買える設備（その講義を受けたもの、まだ買っていないもの）と、買えない理由 */
+export function upgradePreview(state: GameState, id: UpgradeId, pay: UpgradePay): { tx: Transaction; disabled?: string } {
+  const ctx = ctxOf(state, Math.random, false);
+  const prepared = prepareTx(state, ctx, upgradeTx(id, pay));
+  // 月末払いでも、払うあてのない買い物はしない
+  if (pay === "未払金" && ctx.balance("普通預金") < sumAmounts(prepared.tx.answer.debit)) return { ...prepared, disabled: "月末に払う普通預金が足りない" };
+  return prepared;
+}
+
+/** 開店前に、店の設備を買う。記帳が終わったら朝の画面に戻る */
+export function startUpgrade(state: GameState, id: UpgradeId, pay: UpgradePay): GameState {
+  if (state.phase.kind !== "dayStart" || hasUpgrade(state, id) || !state.lessonsDone.includes(UPGRADES[id].lesson)) return state;
+  const { tx, disabled } = upgradePreview(state, id, pay);
+  if (disabled) return state;
+  return { ...state, phase: { kind: "journal", session: txSession(tx, "gantetsu", UPGRADE_PREFIX + id) } };
+}
+
+/** 正解の画面の次へ。朝の注文・設備なら朝の画面に戻り、それ以外は今日の予定を進める */
 export function afterResult(state: GameState, rand: Rand): GameState {
-  if (state.phase.kind === "result" && state.phase.info.templateId === ORDER) return { ...state, phase: { kind: "dayStart" } };
+  const morning = (id: string) => id === ORDER || id.startsWith(UPGRADE_PREFIX);
+  if (state.phase.kind === "result" && morning(state.phase.info.templateId)) return { ...state, phase: { kind: "dayStart" } };
   return advance(state, rand);
 }
 
@@ -510,6 +549,7 @@ function applyEffect(state: GameState, effect: Effect | undefined): GameState {
     next = { ...next, credits, creditSeq: seq };
   }
   if (effect.quest !== undefined) next.quest = effect.quest;
+  if (effect.upgrade && !next.upgrades.includes(effect.upgrade)) next.upgrades = [...next.upgrades, effect.upgrade];
   if (effect.cashDiff !== undefined) next.cashDiff = effect.cashDiff;
   return next;
 }
@@ -553,7 +593,6 @@ export function submitEntry(state: GameState, input: Entry): GameState {
     const logged = firstMiss ? logPractice(state, lessonOfTemplate(s.templateId), false) : state;
     return {
       ...logged,
-      trust: firstMiss && !s.guided ? clamp(state.trust - 2) : state.trust,
       combo: 0,
       mistakes: firstMiss ? [...state.mistakes, { day: state.day, templateId: s.templateId, exam: s.tx.exam }] : state.mistakes,
       phase: { kind: "journal", session: { ...s, attempts: s.attempts + 1, feedback: d.messages } },
@@ -562,15 +601,16 @@ export function submitEntry(state: GameState, input: Entry): GameState {
 
   const paidHints = s.guided ? Math.max(0, s.hints - 1) : s.hints;
   const firstTry = s.attempts === 0 && paidHints === 0;
-  // ヒントを使ったり、間違えてから自力で直したりしても少し報われる
-  const trustDelta = firstTry ? 2 : 1;
+  // 講義の練習は信用に数えない
+  const trust = s.guided ? state.trust : trustAfter(state.trust, firstTry);
+  const trustDelta = trust - state.trust;
   const combo = firstTry ? state.combo + 1 : 0;
   const comboMessage = COMBO_MESSAGES[combo];
   const comboRep = combo === 5 ? 3 : combo === 10 ? 5 : 0;
 
   let next: GameState = {
     ...state,
-    trust: clamp(state.trust + trustDelta),
+    trust,
     combo,
     bestCombo: Math.max(state.bestCombo, combo),
     reputation: clamp(state.reputation + comboRep),
@@ -630,7 +670,7 @@ export function canLevelUp(state: GameState): boolean {
 export function closeDay(state: GameState, rand: Rand = Math.random): GameState {
   // 決算日を終えたら新しい年度へ。初日はまず再振替仕訳から
   if (state.closingFrom !== null) {
-    const next = startDay({ ...state, closingFrom: null, day: state.day + 1, today: emptyDay() }, rand);
+    const next = startDay({ ...state, closingFrom: null, day: state.day + 1, today: emptyDay(), reputation: repAfterDay(state) }, rand);
     return { ...next, queue: [...OPENING_PLAN, ...next.queue] };
   }
   if (isMonthEnd(state)) return { ...state, phase: { kind: "monthEnd", answered: [null, null] } };
@@ -675,7 +715,7 @@ function startDay(state: GameState, rand: Rand): GameState {
 
 export function nextDay(state: GameState, rand: Rand = Math.random): GameState {
   if (isYearEnd(state.day) && state.closingFrom === null) return startClosing(state);
-  return startDay({ ...state, day: state.day + 1, today: emptyDay() }, rand);
+  return startDay({ ...state, day: state.day + 1, today: emptyDay(), reputation: repAfterDay(state) }, rand);
 }
 
 /** 間違えた審査・模試の問題を、苦手として記録する形にする */
@@ -764,7 +804,7 @@ export function answerQuiz(state: GameState, index: number, correct: boolean): G
   const p = state.phase;
   if ((p.kind !== "monthEnd" && p.kind !== "worksheet") || p.answered[index] !== null) return state;
   const answered = p.answered.map((a, i) => (i === index ? correct : a));
-  return { ...state, trust: clamp(state.trust + (correct ? 3 : 0)), phase: { ...p, answered } };
+  return { ...state, trust: trustAfter(state.trust, correct), phase: { ...p, answered } };
 }
 
 /** 慣れた決済をノエルに任せるかを切り替える */

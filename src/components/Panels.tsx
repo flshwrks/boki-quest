@@ -1,5 +1,6 @@
 "use client";
 
+import type { UpgradeId, UpgradePay } from "@/content/upgrades";
 import { useMemo, useState } from "react";
 import { sumAmounts } from "@/engine/journal";
 import { statements } from "@/engine/ledger";
@@ -11,6 +12,7 @@ import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
 import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
 import { OrderPanel } from "./OrderPanel";
+import { UpgradePanel } from "./UpgradePanel";
 import { TrialBalanceTable } from "./BookModal";
 import { type Quiz, QuizList, quizOptions } from "./Quiz";
 import { LedgerViz } from "./LedgerViz";
@@ -22,12 +24,14 @@ export function DayStartPanel({
   onOrder,
   onTraining,
   onToggleAutoPost,
+  onUpgrade,
 }: {
   state: GameState;
   onOpen: () => void;
   onOrder: (item: ItemId, qty: number, pay: PurchasePay) => void;
   onTraining: () => void;
   onToggleAutoPost: () => void;
+  onUpgrade: (id: UpgradeId, pay: UpgradePay) => void;
 }) {
   const lesson = todaysLesson(state);
   const lessons = lessonsForLevel(state.level);
@@ -87,6 +91,7 @@ export function DayStartPanel({
         </p>
       )}
       {state.lessonsDone.includes("trade") && <OrderPanel state={state} onOrder={onOrder} />}
+      <UpgradePanel state={state} onBuy={onUpgrade} />
       {canAutoPost(state) && (
         <label className="mb-3 flex cursor-pointer items-start gap-2 rounded-lg border border-white/30 p-2 text-sm">
           <input type="checkbox" checked={state.autoPost} onChange={onToggleAutoPost} className="mt-1" />
@@ -216,7 +221,7 @@ export function ResultPanel({
         </div>
       )}
       <p className="mt-2 text-sm text-dim">
-        帳簿の信用 {info.trustDelta > 0 ? <span className="text-ok">+{info.trustDelta}</span> : "±0"}
+        帳簿の信用 {info.trustDelta > 0 ? <span className="text-ok">+{info.trustDelta}</span> : info.trustDelta < 0 ? <span className="text-ng">{info.trustDelta}</span> : "±0"}
         {info.combo >= 2 && <span className="ml-3 text-gold">{info.combo}コンボ！</span>}
       </p>
       {info.comboMessage && <p className="pop mt-1 text-sm text-gold">{info.comboMessage}</p>}

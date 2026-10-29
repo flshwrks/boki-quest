@@ -1,3 +1,4 @@
+import type { UpgradeId } from "@/content/upgrades";
 import type { Entry } from "@/engine/journal";
 
 export type ItemId = "potion" | "herb" | "antidote" | "scroll" | "ether" | "elixir";
@@ -126,6 +127,8 @@ export interface Effect {
   addCredits?: Omit<Credit, "id" | "day">[];
   settleCredits?: { id: string; amount: number }[];
   quest?: Quest | null;
+  /** 店の設備を買った */
+  upgrade?: UpgradeId;
   /** 正なら現金不足、負なら現金過剰。null で解消 */
   cashDiff?: { amount: number; day: number } | null;
 }
@@ -358,6 +361,8 @@ export interface GameState {
   credits: Credit[];
   creditSeq: number;
   quest: Quest | null;
+  /** 買った店の設備 */
+  upgrades: UpgradeId[];
   cashDiff: { amount: number; day: number } | null;
   mistakes: Mistake[];
   /** 昇格審査に落ちたとき、次に受けられる日 */

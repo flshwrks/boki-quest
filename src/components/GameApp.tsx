@@ -26,6 +26,7 @@ import {
   submitEntry,
   turnLessonPage,
   skipLesson,
+  startUpgrade,
   toggleAutoPost,
   unlockedAccounts,
   takeHint,
@@ -63,6 +64,7 @@ import {
   startPrepLesson,
 } from "@/game/training";
 import type { CharacterId, GameState, LessonId, Phase } from "@/game/types";
+import { repTier } from "@/content/upgrades";
 import { ACHIEVEMENTS, type Achievement, withAchievements } from "@/content/achievements";
 import { BookModal, type Tab as BookTab } from "./BookModal";
 import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
@@ -540,6 +542,7 @@ export default function GameApp() {
           onOrder={(item, qty, pay) => update((s) => startOrder(s, item, qty, pay))}
           onTraining={() => update(openTraining)}
           onToggleAutoPost={() => update(toggleAutoPost)}
+          onUpgrade={(id, pay) => update((s) => startUpgrade(s, id, pay))}
         />
       );
       break;
@@ -739,13 +742,15 @@ export default function GameApp() {
             </dd>
           </div>
           <div className="flex gap-1">
-            <dt className="text-dim">信用</dt>
+            <dt className="text-dim" title="帳簿の信用：最近の記帳の正確さ（ノーヒント正解で上がり、ヒント・間違いで下がる）">
+              信用
+            </dt>
             <dd>{state.trust}</dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-dim">評判</dt>
-            <dd className="text-gold" aria-label={`評判${state.reputation}`}>
-              {stars}
+            <dd className="text-gold" aria-label={`評判${state.reputation}`} title={`評判${state.reputation}：${repTier(state.reputation).effect}（何もしないと毎日40に向かって戻る）`}>
+              {stars} <span className="text-xs">{repTier(state.reputation).name}</span>
             </dd>
           </div>
           {state.combo >= 2 && (

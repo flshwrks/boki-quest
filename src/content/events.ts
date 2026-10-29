@@ -7,6 +7,7 @@ import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
 import { LV5_TEMPLATES } from "./eventsLv5";
 import { COVERAGE_TEMPLATES } from "./eventsCoverage";
+import { TRUSTED, UPGRADES, bigOrderRate, hasUpgrade } from "./upgrades";
 import { DAYS_PER_MONTH, ITEMS, LEVELS, dayInMonth, itemsForLevel } from "./world";
 
 // ───────── 設立・銀行 ─────────
@@ -157,8 +158,9 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
       const item = rand() < 0.6 ? lowestStockItem(state) : pick(rand, items);
       const it = ITEMS[item];
       const qty = pick(rand, orderQtys(item, state.level));
-      // 店まで来てくれたときは、朝の注文より安い特価（10〜20%引き、10円単位）
-      const unit = Math.round((it.cost * pick(rand, [0.8, 0.85, 0.9])) / 10) * 10;
+      // 店まで来てくれたときは、朝の注文より安い特価（10〜20%引き、10円単位）。帳簿の信用が高い店・保管箱のある店にはさらに5%ずつ
+      const extra = (state.trust >= TRUSTED ? 0.05 : 0) + (hasUpgrade(state, "coolbox") ? 0.05 : 0);
+      const unit = Math.round((it.cost * (pick(rand, [0.8, 0.85, 0.9]) - extra)) / 10) * 10;
       const amount = unit * qty;
       const fee = mode === "freight" || (mode === "any" && ctx.has("charges") && rand() < 0.35) ? pick(rand, [500, 1000]) : 0;
       const canCredit = ctx.has("credit");
@@ -188,6 +190,7 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
         lines: [
           pick(rand, ["ガハハ！ ドワーフ商会のガンテツじゃ。", "おう、今日もいい品が入ったぞ。", "坑道の奥で仕入れた逸品じゃ。"]),
           `${it.name}を${qty}${it.unit}、特価の1${it.unit}${n(unit)}円（いつもは${n(it.cost)}円）で卸せるぞ。全部で${n(amount)}円じゃ。`,
+          ...(extra > 0 ? ["（帳簿のしっかりした店・品物を傷めない店には、おまけしとるぞ）"] : []),
           `（いまの在庫：${state.stock[item]}${it.unit}／店での売値：1${it.unit}${n(it.price)}円）`,
           ...(fee > 0 ? [`運び賃の${n(fee)}円は、そっち持ちで頼むぞ。`] : []),
         ],
@@ -248,7 +251,9 @@ function customer(mode: "any" | "credit"): EventTemplate {
         if (state.stock[item] === 0) item = stocked[0];
       }
       const it = ITEMS[item];
-      let qty = pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level);
+      // 評判の高い店には、大口の注文が来る（ショーケースがあれば3倍）
+      const big = !ctx.guided && mode === "any" && rand() < bigOrderRate(state);
+      let qty = pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level) * (big ? (hasUpgrade(state, "showcase") ? 3 : 2) : 1);
       if (ctx.guided) qty = Math.min(qty, state.stock[item]);
       const amount = it.price * qty;
       const wantsCredit = mode === "credit" || (ctx.has("credit") && rand() < pref.creditRate);
@@ -259,6 +264,7 @@ function customer(mode: "any" | "credit"): EventTemplate {
 
       const v = voiceOf(who);
       const lines = [pref.greet, `「${v.want(`${it.name}${qty}${it.unit}`)}」（売値 ${n(amount)}円／在庫 ${stock}${it.unit}）`];
+      if (big) lines.splice(1, 0, "（評判を聞きつけて、大口の注文だ！）");
       if (wantsCredit) lines.push(v.askCredit);
       if (fee > 0) lines.push(v.askShipping(n(fee)));
       if (discount) lines.push(v.askDiscount);
@@ -809,6 +815,40 @@ const cashdiffResolve: EventTemplate = {
   },
 };
 
+/** 荷馬車があると、毎月4日目に遠くの村から大口の配達注文が来る（掛け売り。発送費は店が払う） */
+const DELIVERY_DAY = 4;
+const delivery: EventTemplate = {
+  lesson: "credit",
+  schedule: "daily",
+  build: (ctx) => {
+    const { state, rand } = ctx;
+    if (!hasUpgrade(state, "wagon") || dayInMonth(state.day) !== DELIVERY_DAY) return null;
+    const item = pick(rand, itemsForLevel(state.level));
+    const it = ITEMS[item];
+    const want = orderQtys(item, state.level).at(-1)! * 2;
+    const qty = Math.min(want, state.stock[item]);
+    const fee = ctx.has("charges") ? 2000 : 0;
+    const lines = [
+      `（${UPGRADES.wagon.name}で配達する注文が、遠くの村から届いた）`,
+      `「${it.name}を${want}${it.unit}、村まで届けてほしい。代金は月末にまとめて払うよ」（在庫 ${state.stock[item]}${it.unit}）`,
+    ];
+    if (qty === 0) return { speaker: "gord", lines, choices: [decline("在庫がなくてお断りする", "（品切れは評判が下がる）", -3)] };
+    const amount = it.price * qty;
+    return {
+      speaker: "gord",
+      lines: fee > 0 ? [...lines, `荷馬車の運び賃${n(fee)}円は、店が払う約束だ。`] : lines,
+      choices: [
+        {
+          label: qty < want ? `在庫の${qty}${it.unit}を届ける` : "荷馬車で届ける",
+          tx: { ...saleTx("gord", item, qty, amount, "売掛金", fee), story: `遠くの村へ${it.name}を${qty}${it.unit}、荷馬車で届けた（代金は月末に受け取る）${fee > 0 ? `。運び賃${n(fee)}円は店が払った` : ""}。` },
+          disabled: needCash(ctx, fee),
+        },
+        decline("今回はお断りする", "（大口の注文を断ると、評判が下がる）", -2),
+      ],
+    };
+  },
+};
+
 export const TEMPLATES: Record<string, EventTemplate> = {
   founding,
   withdraw,
@@ -818,6 +858,7 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   "wholesale-freight": { ...wholesale("freight"), review: 0.3 },
   // いつもの現金・ツケのお客さん（来店の重みは2。習った払い方のお客さんは1ずつ）
   customer: { ...customer("any"), walkIn: 2 },
+  delivery,
   "customer-credit": { ...customer("credit"), review: 0.4 },
   "customer-split": customerSplit,
   supplies,

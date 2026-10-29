@@ -19,6 +19,7 @@ import {
   settleDue,
   voiceOf,
 } from "./eventKit";
+import { UPGRADES, hasUpgrade } from "./upgrades";
 import { ITEMS, dayInMonth } from "./world";
 
 const saleStory = (who: CharacterId, item: ItemId, qty: number) => `${name(who)}に${ITEMS[item].name}を${qty}${ITEMS[item].unit}売った`;
@@ -327,21 +328,23 @@ const giftcertRedeem = settleDue("受取商品券", {
 
 // ───────── 備品と未払金 ─────────
 
-const FIXTURES = [
-  { thing: "陳列棚", exam: "店舗用の陳列棚", price: 40000 },
-  { thing: "魔導看板", exam: "店舗用の看板", price: 30000 },
-  { thing: "ガラスのショーケース", exam: "店舗用のショーケース", price: 60000 },
-] as const;
+/** ガンテツが売り込みに来る設備（朝の画面の「店の設備」と同じもの。まだない設備だけ） */
+const FIXTURES = ["shelf", "sign", "showcase"] as const;
 
 const buyFixture: EventTemplate = {
   lesson: "payables",
   review: 0.1,
   build: (ctx) => {
     if (!ctx.guided && creditsOf(ctx.state, "未払金").length > 0) return null;
-    const f = pick(ctx.rand, FIXTURES);
+    const left = FIXTURES.filter((id) => !hasUpgrade(ctx.state, id));
+    // 講義の練習では、もう持っている設備でも売り込みの形で練習する
+    if (left.length === 0 && !ctx.guided) return null;
+    const id = pick(ctx.rand, left.length > 0 ? left : FIXTURES);
+    const u = UPGRADES[id];
+    const f = { thing: u.name, exam: u.exam, price: u.price };
     return {
       speaker: "gantetsu",
-      lines: [`特製の${f.thing}を作ってみたんじゃが、店に置かんか？ ${n(f.price)}円じゃ。（評判 +8）`, "代金は月末払いでいいぞ。"],
+      lines: [`特製の${f.thing}を作ってみたんじゃが、店に置かんか？ ${n(f.price)}円じゃ。（評判 +8、${u.effect}）`, "代金は月末払いでいいぞ。"],
       choices: [
         {
           label: "後払いで買う",
@@ -351,7 +354,7 @@ const buyFixture: EventTemplate = {
             answer: je([["備品", f.price]], [["未払金", f.price]]),
             idea: "長く使う物を買った。商品ではない物の代金をあとで払う義務は、買掛金とは別の科目だよ。",
             note: "商品の仕入れなら買掛金、商品以外の後払いなら未払金。ここが試験のひっかけどころじゃ。",
-            effect: { reputation: 8, addCredits: [{ kind: "未払金", who: "gantetsu", amount: f.price }] },
+            effect: { reputation: 8, upgrade: id, addCredits: [{ kind: "未払金", who: "gantetsu", amount: f.price }] },
           },
         },
         decline("今回は見送る", "ガンテツ「そうか、気が変わったら言うんじゃぞ」"),
