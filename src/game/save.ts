@@ -139,12 +139,15 @@ export interface CloudBase {
 /** 進み具合の目印：日付・記帳の数・正誤の記録の数がすべて同じなら、同じところまで進んでいる */
 export const progressOf = (s: GameState) => `${s.day}:${s.journal.length}:${s.practice.length}`;
 
+/** クラウドとそろえた記録がない */
+export const EMPTY_BASE: CloudBase = { rev: 0, progress: "" };
+
 export function getCloudBase(): CloudBase {
   try {
     const base = JSON.parse(storageGet(CLOUD_BASE_KEY) ?? "null") as CloudBase | null;
-    return base && typeof base.rev === "number" ? base : { rev: 0, progress: "" };
+    return base && typeof base.rev === "number" ? base : EMPTY_BASE;
   } catch {
-    return { rev: 0, progress: "" };
+    return EMPTY_BASE;
   }
 }
 

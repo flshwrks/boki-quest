@@ -229,12 +229,15 @@ function ForkPanel({ fork, onPick }: { fork: Fork; onPick: (which: "local" | "re
     <div className="mb-4 text-sm">
       <p className="mb-2">ほかの端末と進み具合が分かれておるぞ。どちらで続けるかの？ 選ばなかったほうは消えて、両方の端末がそろう。</p>
       <div className="flex flex-col gap-2">
-        {options.map(({ which, label, state, other }) => (
-          <Btn key={which} variant={ahead(state, other) ? undefined : "ghost"} className="w-full text-left" onClick={() => onPick(which)}>
-            {label}：{summary(state)}
-            {ahead(state, other) && "（こちらが先まで進んでいる）"}
-          </Btn>
-        ))}
+        {options.map(({ which, label, state, other }) => {
+          const front = ahead(state, other);
+          return (
+            <Btn key={which} variant={front ? undefined : "ghost"} className="w-full text-left" onClick={() => onPick(which)}>
+              {label}：{summary(state)}
+              {front && "（こちらが先まで進んでいる）"}
+            </Btn>
+          );
+        })}
       </div>
     </div>
   );
@@ -344,20 +347,23 @@ export default function GameApp() {
 
   /** クラウドにつなぎ、端末よりクラウドのセーブが新しければ「つづきから」をそちらにする */
   /** クラウドのセーブと、この端末のセーブ（local）をそろえる。両方で進めて分かれていたら、タイトルで選んでもらう */
-  const syncCloud = async (passcode: string, local: GameState | null) => {
-    const res = await fetchCloud(passcode);
+  /** そのセーブで続けることにして、クラウドとそろえた版を記録する（state を省くと、次の保存でクラウドを上書きする） */
+  const adopt = (chosen: GameState, rev: number, followCloud: boolean) => {
+    setCloudBase(rev, followCloud ? chosen : undefined);
+    setSaved({ state: chosen, savedAt: saveGame(chosen) });
+  };
+
+  const syncCloud = async (local: GameState | null = loadGame()?.state ?? null) => {
+    const res = await fetchCloud(passcodeRef.current);
     if (res.status !== "ok") {
       setCloud(res.status);
       return;
     }
-    passcodeRef.current = passcode;
-    setPasscode(passcode);
     setCloud("ok");
     const remote = res.save?.state ?? null;
     const way = reconcile(local, remote, res.savedAt, getCloudBase());
     if (way === "remote" && remote) {
-      setCloudBase(res.savedAt, remote);
-      setSaved({ state: remote, savedAt: saveGame(remote) });
+      adopt(remote, res.savedAt, true);
       // 遊んでいる途中なら、ほかの端末で進めたところへ移る
       setState((s) => s && remote);
     } else if (way === "ask" && local && remote) {
@@ -367,23 +373,23 @@ export default function GameApp() {
   };
 
   const connectCloud = (passcode: string) => {
+    passcodeRef.current = passcode;
+    setPasscode(passcode);
     setCloud("checking");
-    void syncCloud(passcode, loadGame()?.state ?? null);
+    void syncCloud();
   };
 
   const pick = (which: "local" | "remote") => {
     if (!fork) return;
     const chosen = which === "local" ? fork.local : fork.remote;
-    // この端末のセーブを選んだら、次の保存でクラウドを上書きする
-    setCloudBase(fork.rev, which === "remote" ? chosen : undefined);
-    setSaved({ state: chosen, savedAt: saveGame(chosen) });
+    adopt(chosen, fork.rev, which === "remote");
     setFork(null);
     if (which === "local") void pushToCloud(chosen);
   };
 
   // ほかの端末で遊んで戻ってきたときも、クラウドを確かめる（開いたままのタブが古いまま進まないように）
   const onVisible = useEffectEvent(() => {
-    if (document.visibilityState === "visible" && passcodeRef.current && !fork) void syncCloud(passcodeRef.current, loadGame()?.state ?? null);
+    if (document.visibilityState === "visible" && passcodeRef.current && !fork) void syncCloud();
   });
   useEffect(() => {
     document.addEventListener("visibilitychange", onVisible);
@@ -418,7 +424,7 @@ export default function GameApp() {
     const res = await pushCloud(passcodeRef.current, s, getCloudBase().rev);
     if (res.status === "ok" && res.savedAt) setCloudBase(res.savedAt, s);
     // ほかの端末が先に保存していたら、どちらで続けるかをそろえ直す
-    else if (res.status === "conflict") void syncCloud(passcodeRef.current, s);
+    else if (res.status === "conflict") void syncCloud(s);
     else setCloud(res.status);
   };
 

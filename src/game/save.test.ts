@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { newGame } from "./logic";
 import { seededRand } from "./random";
-import { fetchCloud, progressOf, pushCloud, reconcile } from "./save";
+import { EMPTY_BASE, fetchCloud, progressOf, pushCloud, reconcile } from "./save";
 
 /** 保存APIと同じふるまいをする、メモリ上のサーバー */
 function fakeServer() {
@@ -87,7 +87,6 @@ describe("最初の年度を短くする前のセーブ", () => {
   });
 });
 
-
 describe("ほかの端末とのそろえ方", () => {
   const at = (day: number) => ({ ...newGame("テスト商店", seededRand(1)), day });
   const pc = at(50);
@@ -104,11 +103,11 @@ describe("ほかの端末とのそろえ方", () => {
   it("両方で進めて分かれたら、どちらで続けるかを選んでもらう（保存した時刻では決めない）", () => {
     expect(reconcile(pc, phone, 9, { rev: 7, progress: progressOf(at(45)) })).toBe("ask");
     // そろえた記録のない古い端末も、進み具合が違えば選んでもらう
-    expect(reconcile(pc, phone, 9, { rev: 0, progress: "" })).toBe("ask");
+    expect(reconcile(pc, phone, 9, EMPTY_BASE)).toBe("ask");
   });
 
   it("どちらかが空なら、ある方を使う", () => {
-    expect(reconcile(pc, null, 0, { rev: 0, progress: "" })).toBe("local");
-    expect(reconcile(null, phone, 9, { rev: 0, progress: "" })).toBe("remote");
+    expect(reconcile(pc, null, 0, EMPTY_BASE)).toBe("local");
+    expect(reconcile(null, phone, 9, EMPTY_BASE)).toBe("remote");
   });
 });
