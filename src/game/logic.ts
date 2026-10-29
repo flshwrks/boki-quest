@@ -2,6 +2,7 @@ import type { AccountName } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
+import { rollRequests } from "./requests";
 import { UPGRADES, type UpgradeId, type UpgradePay, hasUpgrade, repTier, upgradeTx } from "@/content/upgrades";
 import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
@@ -82,6 +83,9 @@ export function initialState(shopName: string): GameState {
     creditSeq: 0,
     quest: null,
     upgrades: [],
+    requests: null,
+    reward: null,
+    festival: null,
     cashDiff: null,
     mistakes: [],
     examRetryDay: 0,
@@ -97,7 +101,7 @@ export function initialState(shopName: string): GameState {
 }
 
 export function newGame(shopName: string, rand: Rand): GameState {
-  const state = initialState(shopName);
+  const state = rollRequests(initialState(shopName));
   return { ...state, queue: planDay(state, rand) };
 }
 
@@ -550,6 +554,8 @@ function applyEffect(state: GameState, effect: Effect | undefined): GameState {
   }
   if (effect.quest !== undefined) next.quest = effect.quest;
   if (effect.upgrade && !next.upgrades.includes(effect.upgrade)) next.upgrades = [...next.upgrades, effect.upgrade];
+  if (effect.reward !== undefined) next.reward = effect.reward;
+  if (effect.festival !== undefined) next.festival = effect.festival;
   if (effect.cashDiff !== undefined) next.cashDiff = effect.cashDiff;
   return next;
 }
@@ -708,7 +714,9 @@ export function finishReport(state: GameState, rand: Rand): GameState {
 
 /** その日の予定を立て、昇格の条件がそろっていれば朝いちばんに審査を行う */
 function startDay(state: GameState, rand: Rand): GameState {
-  const planned = { ...state, queue: planDay(state, rand) };
+  // 月が変わったら、月の依頼書を判定して新しく出す
+  const rolled = rollRequests(state);
+  const planned = { ...rolled, queue: planDay(rolled, rand) };
   if (canLevelUp(planned) && planned.day >= planned.examRetryDay) return { ...planned, phase: { kind: "exam", exam: makeExam(planned, rand) } };
   return { ...planned, phase: { kind: "dayStart" } };
 }

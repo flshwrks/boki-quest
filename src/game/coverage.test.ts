@@ -15,6 +15,7 @@ import {
 import { TEMPLATES } from "@/content/events";
 import { advance, afterResult, choose, newGame, nextLesson, planDay, skipLesson, startOrder, startUpgrade, submitEntry, upgradePreview } from "./logic";
 import { seededRand } from "./random";
+import { rollRequests } from "./requests";
 import { makeMock, mockFullParts } from "./training";
 import type { FillCell, FillProblem, GameState } from "./types";
 
@@ -275,6 +276,45 @@ describe("店の設備", () => {
     // 同じ設備は2度買えない。月末払いでも、払うあてがなければ買えない
     expect(startUpgrade(done, "wagon", "普通預金")).toBe(done);
     expect(upgradePreview({ ...s, journal: [] }, "shelf", "未払金").disabled).toBeTruthy();
+  });
+});
+
+describe("月の依頼書と収穫祭", () => {
+  const learnedAll = (): GameState => {
+    const base = newGame("テスト商店", seededRand(1));
+    return { ...base, level: 5, lessonsDone: LESSONS.filter((l) => l.level <= 5).map((l) => l.id), phase: { kind: "dayStart" } };
+  };
+
+  it("月が変わると先月の依頼書を判定し、達成した数だけ評判と報奨金（雑益）。新しい依頼書が出る", () => {
+    const sale = { day: 32, templateId: "customer", exam: "", entry: { debit: [{ account: "現金" as const, amount: 400000 }], credit: [{ account: "売上" as const, amount: 400000 }] } };
+    const s: GameState = { ...learnedAll(), day: 36, reputation: 50, trust: 50, journal: [sale], requests: { start: 31, goals: [{ kind: "sales", target: 300000 }, { kind: "clean", target: 85 }] } };
+    const next = rollRequests(s);
+    expect(next.reputation).toBe(54);
+    expect(next.reward).toEqual({ amount: 15000, count: 1 });
+    expect(next.requests?.start).toBe(36);
+    // 先月の売上の1割増しが、今月の売上の目標
+    expect(next.requests?.goals[0]).toEqual({ kind: "sales", target: 440000 });
+  });
+
+  it("収穫祭：月はじめに予約と手付金（前受金）、4日目以降に納品して前受金を取り崩す", () => {
+    const rand = seededRand(3);
+    let s: GameState = { ...learnedAll(), day: 31, queue: [{ kind: "event", id: "festival-order" }] };
+    s = advance(s, rand);
+    expect(s.phase.kind).toBe("event");
+    s = choose(s, 0, rand);
+    if (s.phase.kind !== "journal") throw new Error("記帳の画面にならない");
+    s = submitEntry(s, s.phase.session.tx.answer);
+    const f = s.festival!;
+    expect(s.journal.at(-1)?.entry.credit).toEqual([{ account: "前受金", amount: f.deposit }]);
+    // 3日目はまだ納品しない。4日目、在庫があれば納品できる
+    expect(advance({ ...s, day: 33, queue: [{ kind: "event", id: "festival-deliver" }] }, rand).phase.kind).toBe("dayEnd");
+    s = advance({ ...s, day: 34, stock: { ...s.stock, [f.item]: f.qty }, queue: [{ kind: "event", id: "festival-deliver" }] }, rand);
+    s = choose(s, 0, rand);
+    if (s.phase.kind !== "journal") throw new Error("記帳の画面にならない");
+    expect(s.phase.session.tx.answer.debit.find((l) => l.account === "前受金")?.amount).toBe(f.deposit);
+    s = submitEntry(s, s.phase.session.tx.answer);
+    expect(s.festival).toBeNull();
+    expect(s.stock[f.item]).toBe(0);
   });
 });
 

@@ -11,6 +11,7 @@ import { LEVEL_UP, autoPostedToday, balance, businessDays, canAutoPost, entriesO
 import type { PurchasePay } from "@/content/events";
 import type { AccountName } from "@/engine/accounts";
 import type { GameEvent, GameState, ItemId, LessonId, ResultInfo } from "@/game/types";
+import { RequestList, SeasonNote } from "./GuildPanel";
 import { OrderPanel } from "./OrderPanel";
 import { UpgradePanel } from "./UpgradePanel";
 import { TrialBalanceTable } from "./BookModal";
@@ -90,6 +91,8 @@ export function DayStartPanel({
             : `Lv${state.level}の講義はすべて修了！ 次の成長は、次のアップデートで解禁予定じゃ。それまで店を回して腕を磨こう。`}
         </p>
       )}
+      <SeasonNote state={state} />
+      <RequestList state={state} />
       {state.lessonsDone.includes("trade") && <OrderPanel state={state} onOrder={onOrder} />}
       <UpgradePanel state={state} onBuy={onUpgrade} />
       {canAutoPost(state) && (
@@ -372,6 +375,7 @@ export function MonthEndPanel({
         <TrialBalanceTable state={state} />
       </div>
       <QuizList quizzes={quizzes} answered={answered} onAnswer={onAnswer} />
+      <RequestList state={state} closing />
       <Btn onClick={onNext} disabled={answered.some((a) => a === null)}>
         翌月へ
       </Btn>

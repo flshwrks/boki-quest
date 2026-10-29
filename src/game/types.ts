@@ -119,6 +119,21 @@ export interface Quest {
   day: number;
 }
 
+/** 月の依頼書の目標：今月の売上・苦手な論点を★3に・今月の正答率 */
+export interface GuildRequest {
+  kind: "sales" | "mastery" | "clean";
+  target: number;
+  lesson?: LessonId;
+}
+
+/** 収穫祭の予約注文（月はじめに手付金を受け取り、4日目以降に納品する） */
+export interface Festival {
+  item: ItemId;
+  qty: number;
+  price: number;
+  deposit: number;
+}
+
 export interface Effect {
   stock?: Partial<Record<ItemId, number>>;
   /** 在庫の増減にともなう原価（仕入なら運び賃を含む仕入値、仕入の返品なら返品額）。省くと平均単価で計算する */
@@ -129,6 +144,10 @@ export interface Effect {
   quest?: Quest | null;
   /** 店の設備を買った */
   upgrade?: UpgradeId;
+  /** 月の依頼書の報奨金を受け取った（null） */
+  reward?: null;
+  /** 収穫祭の予約を受けた／納品した（null） */
+  festival?: Festival | null;
   /** 正なら現金不足、負なら現金過剰。null で解消 */
   cashDiff?: { amount: number; day: number } | null;
 }
@@ -363,6 +382,12 @@ export interface GameState {
   quest: Quest | null;
   /** 買った店の設備 */
   upgrades: UpgradeId[];
+  /** 今月の依頼書（start は月の初日） */
+  requests: { start: number; goals: GuildRequest[] } | null;
+  /** 先月の依頼書の報奨金（翌月はじめに振り込まれる） */
+  reward: { amount: number; count: number } | null;
+  /** 収穫祭の予約 */
+  festival: Festival | null;
   cashDiff: { amount: number; day: number } | null;
   mistakes: Mistake[];
   /** 昇格審査に落ちたとき、次に受けられる日 */

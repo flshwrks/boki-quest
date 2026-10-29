@@ -36,12 +36,12 @@ import { CREDIT_KINDS, type GameState, type LessonId } from "./types";
 function checkInvariants(s: GameState) {
   for (const id of ITEM_IDS) {
     expect(s.stock[id]).toBeGreaterThanOrEqual(0);
-    // 在庫の原価：在庫がなければ0。平均の仕入値は、特価（2割引）といつもの値段＋運び賃の間におさまる
+    // 在庫の原価：在庫がなければ0。平均の仕入値は、特価（信用・設備・季節のおまけを含めて最大3割引）といつもの値段＋運び賃の間におさまる
     // （運び賃は仕入原価に含めるので、少ない数量で仕入れると1個あたりが高くなる）
     if (s.stock[id] === 0) expect(s.stockValue[id]).toBe(0);
     else {
       const average = s.stockValue[id] / s.stock[id];
-      expect(average, id).toBeGreaterThanOrEqual(ITEMS[id].cost * 0.75);
+      expect(average, id).toBeGreaterThanOrEqual(ITEMS[id].cost * 0.68);
       expect(average, id).toBeLessThanOrEqual(ITEMS[id].cost * 1.5);
     }
   }

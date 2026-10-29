@@ -4,6 +4,7 @@
 import type { AccountName } from "@/engine/accounts";
 import type { GameState, LessonId, Transaction } from "@/game/types";
 import { je, n } from "./eventKit";
+import { seasonOf } from "./seasons";
 
 export type UpgradeId = "shelf" | "sign" | "showcase" | "coolbox" | "wagon";
 
@@ -90,7 +91,7 @@ export const REP_TIERS = [
 export const repTier = (reputation: number) => REP_TIERS.find((t) => reputation >= t.min)!;
 
 /** 大口の注文が起きる確率（陳列棚があると上がる） */
-export const bigOrderRate = (state: GameState) => repTier(state.reputation).bigOrder + (hasUpgrade(state, "shelf") ? 0.1 : 0);
+export const bigOrderRate = (state: GameState) => repTier(state.reputation).bigOrder + (hasUpgrade(state, "shelf") ? 0.1 : 0) + (seasonOf(state.day)?.bigOrder ?? 0);
 
 /** 帳簿の信用がこれ以上なら、ガンテツの特価がさらに安くなる */
 export const TRUSTED = 80;

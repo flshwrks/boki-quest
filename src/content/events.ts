@@ -2,6 +2,8 @@ import type { AccountName } from "@/engine/accounts";
 import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, GameState, ItemId, Transaction } from "@/game/types";
 import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale, pickSale, dueCredits } from "./eventKit";
+import { LESSONS } from "./lessons";
+import { isFestivalMonth, seasonOf } from "./seasons";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
 import { LV4_TEMPLATES } from "./eventsLv4";
@@ -159,8 +161,9 @@ function wholesale(mode: "any" | "credit" | "freight"): EventTemplate {
       const it = ITEMS[item];
       const qty = pick(rand, orderQtys(item, state.level));
       // 店まで来てくれたときは、朝の注文より安い特価（10〜20%引き、10円単位）。帳簿の信用が高い店・保管箱のある店にはさらに5%ずつ
-      const extra = (state.trust >= TRUSTED ? 0.05 : 0) + (hasUpgrade(state, "coolbox") ? 0.05 : 0);
-      const unit = Math.round((it.cost * (pick(rand, [0.8, 0.85, 0.9]) - extra)) / 10) * 10;
+      const extra = (state.trust >= TRUSTED ? 0.05 : 0) + (hasUpgrade(state, "coolbox") ? 0.05 : 0) + (seasonOf(state.day)?.wholesale ?? 0);
+      // 値引きは合わせて3割まで
+      const unit = Math.round((it.cost * Math.max(0.7, pick(rand, [0.8, 0.85, 0.9]) - extra)) / 10) * 10;
       const amount = unit * qty;
       const fee = mode === "freight" || (mode === "any" && ctx.has("charges") && rand() < 0.35) ? pick(rand, [500, 1000]) : 0;
       const canCredit = ctx.has("credit");
@@ -253,7 +256,9 @@ function customer(mode: "any" | "credit"): EventTemplate {
       const it = ITEMS[item];
       // 評判の高い店には、大口の注文が来る（ショーケースがあれば3倍）
       const big = !ctx.guided && mode === "any" && rand() < bigOrderRate(state);
-      let qty = pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level) * (big ? (hasUpgrade(state, "showcase") ? 3 : 2) : 1);
+      // 季節によって、注文の数がふえる
+      const season = ctx.guided ? 1 : (seasonOf(state.day)?.qty ?? 1);
+      let qty = Math.round(pick(rand, pref.qty[item] ?? [5, 10]) * tradeScale(state.level) * (big ? (hasUpgrade(state, "showcase") ? 3 : 2) : 1) * season);
       if (ctx.guided) qty = Math.min(qty, state.stock[item]);
       const amount = it.price * qty;
       const wantsCredit = mode === "credit" || (ctx.has("credit") && rand() < pref.creditRate);
@@ -849,6 +854,108 @@ const delivery: EventTemplate = {
   },
 };
 
+// ───────── 月の依頼書の報奨金・収穫祭 ─────────
+
+/** 月の依頼書の報奨金。本業の売上ではない、たまの収入なので雑益 */
+const guildReward: EventTemplate = {
+  lesson: LESSONS.find((l) => l.accounts.includes("雑益"))!.id,
+  schedule: "daily",
+  build: ({ state }) => {
+    const r = state.reward;
+    if (!r) return null;
+    return {
+      speaker: "luke",
+      lines: [`商人ギルドから、先月の依頼書の報奨金${n(r.amount)}円（達成${r.count}件分）が普通預金に振り込まれました。`],
+      choices: [
+        {
+          label: "記帳する",
+          tx: {
+            story: `商人ギルドから、依頼書の報奨金${n(r.amount)}円が普通預金に振り込まれた。`,
+            exam: `商工会から報奨金${n(r.amount)}円を受け取り、普通預金口座に入金された。この収入は本業の営業とは関係のない少額のものである。`,
+            answer: je([["普通預金", r.amount]], [["雑益", r.amount]]),
+            idea: "商品を売ったわけでも、手数料をもらったわけでもない、たまの収入。少額の雑多な収益はどの科目？",
+            effect: { reward: null },
+          },
+        },
+      ],
+    };
+  },
+};
+
+/** 収穫祭：月はじめに村の祭りの大口の予約が入り、手付金を受け取る。4日目以降に納品する */
+const FESTIVAL_DELIVERY_DAY = 4;
+const festivalOrder: EventTemplate = {
+  lesson: "advances",
+  schedule: "daily",
+  build: ({ state, rand }) => {
+    if (!isFestivalMonth(state.day) || dayInMonth(state.day) !== 1 || state.festival) return null;
+    const item = pick(rand, itemsForLevel(state.level));
+    const it = ITEMS[item];
+    const qty = orderQtys(item, state.level).at(-1)! * 3;
+    const price = it.price * qty;
+    const deposit = Math.round(price * 0.2);
+    return {
+      speaker: "lily",
+      lines: [
+        "収穫祭の実行係を任されました。",
+        `お祭りで配る${it.name}を${qty}${it.unit}、${FESTIVAL_DELIVERY_DAY}日目以降に納めてください。代金${n(price)}円のうち、手付金${n(deposit)}円を今お渡しします。残りは納品のときに掛けで。`,
+        `（いまの在庫：${state.stock[item]}${it.unit}。納品までに仕入れておこう）`,
+      ],
+      choices: [
+        {
+          label: "予約を受ける",
+          tx: {
+            story: `収穫祭の予約を受け、手付金${n(deposit)}円を現金で受け取った。${it.name}${qty}${it.unit}を納品する約束。`,
+            exam: `得意先から商品${n(price)}円の注文を受け、手付金として${n(deposit)}円を現金で受け取った。`,
+            answer: je([["現金", deposit]], [["前受金", deposit]]),
+            idea: "お金はもらったけど、商品はまだ渡していない。商品を渡す義務はどの科目？",
+            effect: { festival: { item, qty, price, deposit }, reputation: 3 },
+          },
+        },
+        decline("今年はお断りする", "リリィ「残念です…また来年お願いしますね」", -3),
+      ],
+    };
+  },
+};
+
+const festivalDeliver: EventTemplate = {
+  lesson: "advances",
+  schedule: "daily",
+  build: ({ state }) => {
+    const f = state.festival;
+    if (!f || (isFestivalMonth(state.day) && dayInMonth(state.day) < FESTIVAL_DELIVERY_DAY)) return null;
+    const it = ITEMS[f.item];
+    const short = f.qty - state.stock[f.item];
+    const rest = f.price - f.deposit;
+    return {
+      speaker: "lily",
+      lines: [`収穫祭の${it.name}${f.qty}${it.unit}、受け取りに来ました！`, `手付金を引いた残りの${n(rest)}円は、月末にお支払いしますね。`],
+      choices: [
+        {
+          label: "納品する",
+          tx: {
+            story: `収穫祭の${it.name}${f.qty}${it.unit}を納めた。残り${n(rest)}円は月末に受け取る。`,
+            exam: `注文を受けていた商品${n(f.price)}円を引き渡し、代金のうち${n(f.deposit)}円は受け取っていた手付金と相殺し、残額は掛けとした。`,
+            answer: je(
+              [
+                ["前受金", f.deposit],
+                ["売掛金", rest],
+              ],
+              [["売上", f.price]],
+            ),
+            idea: "商品を渡したので、ここで売上になる。先にもらった手付金（前受金）を取り崩そう。",
+            taxable: true,
+            note: "収穫祭の予約を果たした！ 前受金は商品を渡した時点で売上に変わる。",
+            effect: { stock: { [f.item]: -f.qty }, festival: null, reputation: 10, addCredits: [{ kind: "売掛金", who: "lily", amount: rest, item: f.item, qty: f.qty }] },
+          },
+          disabled: short > 0 ? `在庫があと${short}${it.unit}足りない` : undefined,
+        },
+        ...(short > 0 ? [{ label: "明日まで待ってもらう", reply: "リリィ「では、また明日来ますね。お祭りに間に合わせてください！」", effect: { reputation: -1 } }] : []),
+      ],
+    };
+  },
+};
+
 export const TEMPLATES: Record<string, EventTemplate> = {
   founding,
   withdraw,
@@ -859,6 +966,9 @@ export const TEMPLATES: Record<string, EventTemplate> = {
   // いつもの現金・ツケのお客さん（来店の重みは2。習った払い方のお客さんは1ずつ）
   customer: { ...customer("any"), walkIn: 2 },
   delivery,
+  "guild-reward": guildReward,
+  "festival-order": festivalOrder,
+  "festival-deliver": festivalDeliver,
   "customer-credit": { ...customer("credit"), review: 0.4 },
   "customer-split": customerSplit,
   supplies,
