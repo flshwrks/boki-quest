@@ -2,7 +2,7 @@
 
 import type { UpgradeId, UpgradePay } from "@/content/upgrades";
 import { useMemo, useState } from "react";
-import { sumAmounts } from "@/engine/journal";
+import { type Entry, sumAmounts } from "@/engine/journal";
 import { statements } from "@/engine/ledger";
 import { LESSONS, LESSON_BY_ID, isMakeUp, lessonsForLevel } from "@/content/lessons";
 import { ACCOUNT_INFO } from "@/content/accountInfo";
@@ -175,10 +175,15 @@ export function EventPanel({ event, onChoose }: { event: GameEvent; onChoose: (i
   );
 }
 
-export function ReplyPanel({ text, onNext }: { text: string; onNext: () => void }) {
+export function ReplyPanel({ text, entry, onNext }: { text: string; entry?: Entry; onNext: () => void }) {
   return (
     <Win>
       <Dialogue text={text}>
+        {entry && (
+          <div className="mt-2">
+            <EntryTable entry={entry} />
+          </div>
+        )}
         <div className="mt-3">
           <Btn onClick={onNext}>つぎへ</Btn>
         </div>

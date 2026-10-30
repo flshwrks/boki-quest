@@ -55,8 +55,7 @@ export function afterLesson(state: GameState, rand: Rand): GameState {
 // ───────── 習熟度 ─────────
 
 /** 苦手な順に並べた、習った論点（ドリルで練習できる論点だけ） */
-export function weakLessons(state: GameState, mastery = masteryOf(state)): LessonId[] {
-  const memory = memoryOf(state.practice);
+export function weakLessons(state: GameState, mastery = masteryOf(state), memory = memoryOf(state.practice)): LessonId[] {
   const score = (id: LessonId) => {
     const x = mastery.get(id);
     // まだ練習していない論点は、苦手と得意の間に置く。忘れかけている（記憶の残りが少ない）論点ほど先に

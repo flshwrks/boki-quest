@@ -564,7 +564,7 @@ export default function GameApp() {
       panel = <EventPanel key={state.journal.length + p.event.templateId} event={p.event} onChoose={(i) => update((s) => choose(s, i, rand))} />;
       break;
     case "reply":
-      panel = <ReplyPanel text={p.text} onNext={() => update((s) => advance(s, rand))} />;
+      panel = <ReplyPanel text={p.text} entry={p.entry} onNext={() => update((s) => advance(s, rand))} />;
       break;
     case "journal":
       panel = (

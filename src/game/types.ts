@@ -244,7 +244,7 @@ export type Phase =
   | { kind: "lesson"; lesson: LessonId; page: number; returnTo?: "training" }
   | { kind: "lessonDone"; lesson: LessonId; returnTo?: "training" }
   | { kind: "event"; event: GameEvent }
-  | { kind: "reply"; speaker: CharacterId; text: string }
+  | { kind: "reply"; speaker: CharacterId; text: string; /** ノエルが記帳した仕訳（見せるだけ） */ entry?: Entry }
   | { kind: "journal"; session: TxSession }
   | { kind: "result"; info: ResultInfo; speaker: CharacterId }
   | { kind: "dayEnd" }

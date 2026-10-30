@@ -187,7 +187,7 @@ const guildId = (topic: LessonId | undefined) => `${GUILD_PREFIX}${topic}`;
 /**
  * 復習の時期がまだ来ていない得意な論点（★3）か。こうした論点の取引は、意思決定（選択肢）だけ選べば、記帳はノエルに任せられる
  */
-export function settled(lesson: LessonId | undefined, day: number, memory: Map<LessonId, Memory>, mastery: Map<LessonId, Mastery>): boolean {
+function settled(lesson: LessonId | undefined, day: number, memory: Map<LessonId, Memory>, mastery: Map<LessonId, Mastery>): boolean {
   return !!lesson && mastery.get(lesson)?.stars === 3 && overdue(memory.get(lesson), day) < 1;
 }
 
@@ -206,11 +206,11 @@ function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[
   const mastery = masteryOf(state);
   const candidates = state.lessonsDone.filter((id) => id !== today && !EVERYDAY.has(id) && (REVIEW_TEMPLATES.has(id) || BANK_BY_LESSON.has(id)));
   const count = Math.min(MAX_REVIEWS, state.level);
-  const urgency = (id: LessonId) => overdue(memory.get(id), state.day) + (mastery.get(id)?.stars === 1 ? 0.5 : 0) + rand() * 0.1;
   // 復習の時期が来た論点の上位（選ぶ数の3倍）について、今日、店の取引として起こせるかを確かめる
   const shortlist = candidates
-    .filter((id) => overdue(memory.get(id), state.day) >= 1)
-    .map((id) => ({ id, score: urgency(id) }))
+    .map((id) => ({ id, od: overdue(memory.get(id), state.day) }))
+    .filter(({ od }) => od >= 1)
+    .map(({ id, od }) => ({ id, score: od + (mastery.get(id)?.stars === 1 ? 0.5 : 0) + rand() * 0.1 }))
     .sort((a, b) => b.score - a.score)
     .slice(0, count * 3);
   // 試しに組み立てるだけなので、ゲームの乱数は使わない
@@ -580,7 +580,7 @@ export function choose(state: GameState, index: number, rand: Rand): GameState {
   if (choice.tx && event.noel && !choice.tx.offBooks) {
     const tx = booked(choice.tx);
     const posted = postToBooks(state, event.templateId, tx, "auto");
-    return { ...posted, phase: { kind: "reply", speaker: "noel", text: `ノエル「記帳しておきました！」\n${entryText(tx.answer)}` } };
+    return { ...posted, phase: { kind: "reply", speaker: "noel", text: "ノエル「記帳しておきました！」", entry: tx.answer } };
   }
   if (choice.tx) {
     return { ...state, phase: { kind: "journal", session: txSession(choice.tx, event.speaker, event.templateId, !!event.guided) } };
@@ -589,10 +589,6 @@ export function choose(state: GameState, index: number, rand: Rand): GameState {
   if (choice.reply) return { ...next, phase: { kind: "reply", speaker: event.speaker, text: choice.reply } };
   return advance(next, rand);
 }
-
-/** 仕訳を1行の文字にする（「（借）現金 1,000 ／（貸）売上 1,000」） */
-const entryText = (e: Entry) =>
-  `（借）${e.debit.map((l) => `${l.account} ${fmt(l.amount)}`).join("・")} ／（貸）${e.credit.map((l) => `${l.account} ${fmt(l.amount)}`).join("・")}`;
 
 export function takeHint(state: GameState): GameState {
   if (state.phase.kind !== "journal") return state;

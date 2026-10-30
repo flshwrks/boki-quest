@@ -30,7 +30,7 @@ const stars = (m?: Mastery) => "★".repeat(m?.stars ?? 0).padEnd(3, "☆");
 function memoryLabel(mem: Memory | undefined, day: number): string {
   if (!mem) return "";
   const left = mem.due - day;
-  return left <= 0 ? `記憶${Math.round(retention(mem, day) * 100)}%・復習どき` : `記憶${Math.round(retention(mem, day) * 100)}%・あと${left}日`;
+  return `記憶${Math.round(retention(mem, day) * 100)}%・${left <= 0 ? "復習どき" : `あと${left}日`}`;
 }
 
 function Tile({ lesson, learned, m, mem, day, onClick }: { lesson: Lesson; learned: boolean; m?: Mastery; mem?: Memory; day: number; onClick?: () => void }) {
@@ -68,7 +68,7 @@ export function TrainingHub({
   const memory = memoryOf(state.practice);
   const learned = (id: LessonId) => state.lessonsDone.includes(id);
   const open = state.mistakes.filter((m) => !m.resolved).length;
-  const weakest = weakLessons(state, mastery)[0];
+  const weakest = weakLessons(state, mastery, memory)[0];
   const left = lessonsLeft(state);
   const best = state.mocks.reduce((a, m) => Math.max(a, m.score), 0);
   const advice =
