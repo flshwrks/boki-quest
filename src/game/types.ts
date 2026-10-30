@@ -189,6 +189,8 @@ export interface GameEvent {
   lines: string[];
   choices: Choice[];
   guided?: boolean;
+  /** 得意な論点なので、選んだ取引はノエルが記帳する */
+  noel?: true;
 }
 
 export interface JournalRecord {

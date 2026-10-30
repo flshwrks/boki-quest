@@ -1,5 +1,6 @@
 // 試験対策：習熟度マップ・苦手ドリル・模擬試験。朝の画面から入り、終わったら朝に戻る
 
+import { memoryOf, retention } from "./memory";
 import { type Entry, sameEntry } from "@/engine/journal";
 import { parseAmount } from "@/engine/format";
 import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
@@ -55,10 +56,11 @@ export function afterLesson(state: GameState, rand: Rand): GameState {
 
 /** 苦手な順に並べた、習った論点（ドリルで練習できる論点だけ） */
 export function weakLessons(state: GameState, mastery = masteryOf(state)): LessonId[] {
+  const memory = memoryOf(state.practice);
   const score = (id: LessonId) => {
     const x = mastery.get(id);
-    // まだ練習していない論点は、苦手と得意の間に置く
-    return x ? x.correct / x.tries : 0.75;
+    // まだ練習していない論点は、苦手と得意の間に置く。忘れかけている（記憶の残りが少ない）論点ほど先に
+    return (x ? x.correct / x.tries : 0.75) * (0.5 + 0.5 * retention(memory.get(id), state.day));
   };
   return state.lessonsDone.filter((id) => LESSONS_WITH_QUESTIONS.has(id)).sort((a, b) => score(a) - score(b));
 }

@@ -2,6 +2,7 @@ import type { AccountName } from "@/engine/accounts";
 import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
+import { type Memory, memoryOf, overdue } from "./memory";
 import { rollRequests } from "./requests";
 import { UPGRADES, type UpgradeId, type UpgradePay, hasUpgrade, repTier, upgradeTx } from "@/content/upgrades";
 import { withSalesTax } from "@/content/salesTax";
@@ -183,28 +184,33 @@ function buildable(state: GameState, ctx: Ctx, id: string) {
 const GUILD_PREFIX = "guild-";
 const guildId = (topic: LessonId | undefined) => `${GUILD_PREFIX}${topic}`;
 
+/**
+ * 復習の時期がまだ来ていない得意な論点（★3）か。こうした論点の取引は、意思決定（選択肢）だけ選べば、記帳はノエルに任せられる
+ */
+export function settled(lesson: LessonId | undefined, day: number, memory: Map<LessonId, Memory>, mastery: Map<LessonId, Mastery>): boolean {
+  return !!lesson && mastery.get(lesson)?.stars === 3 && overdue(memory.get(lesson), day) < 1;
+}
+
 /** 今日の予定に入っている、復習の論点 */
 export const reviewTopics = (state: GameState): LessonId[] => [
   ...new Set(state.queue.flatMap((q) => (q.kind === "event" && q.topic && !q.guided ? [q.topic] : []))),
 ];
 
 /**
- * 復習の予定：習った論点から「しばらく練習していない」「苦手」なものを優先して選び、
- * その論点の取引（なければギルドの帳簿相談）を入れる。講義で習ったことが、その後の営業でも必ず回ってくる
+ * 復習の予定（忘却曲線にもとづく間隔反復）：習った論点のうち、復習の時期が来たもの（思い出せるうちに）を、
+ * 急ぎの順（間隔に対して時間がたったもの・苦手なもの）に選び、その論点の取引（なければギルドの帳簿相談）を入れる。
+ * 時期の来ていない論点は出さないので、よく覚えている論点ほど間があき、忘れかけの論点に時間を使える
  */
 function reviewItems(state: GameState, rand: Rand, today?: LessonId): QueueItem[] {
-  const last = new Map<LessonId, number>();
-  for (const r of state.practice) last.set(r.lesson, r.day);
+  const memory = memoryOf(state.practice);
   const mastery = masteryOf(state);
   const candidates = state.lessonsDone.filter((id) => id !== today && !EVERYDAY.has(id) && (REVIEW_TEMPLATES.has(id) || BANK_BY_LESSON.has(id)));
   const count = Math.min(MAX_REVIEWS, state.level);
-  const due = (id: LessonId, pace: number) => {
-    const weak = mastery.get(id)?.stars === 1;
-    return (state.day - (last.get(id) ?? 0)) * pace + (weak ? 4 : 0) + rand() * 2;
-  };
-  // 間があいている論点の上位（選ぶ数の3倍）について、今日、店の取引として起こせるかを確かめる
+  const urgency = (id: LessonId) => overdue(memory.get(id), state.day) + (mastery.get(id)?.stars === 1 ? 0.5 : 0) + rand() * 0.1;
+  // 復習の時期が来た論点の上位（選ぶ数の3倍）について、今日、店の取引として起こせるかを確かめる
   const shortlist = candidates
-    .map((id) => ({ id, score: due(id, 1) }))
+    .filter((id) => overdue(memory.get(id), state.day) >= 1)
+    .map((id) => ({ id, score: urgency(id) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, count * 3);
   // 試しに組み立てるだけなので、ゲームの乱数は使わない
@@ -445,6 +451,7 @@ export function advance(state: GameState, rand: Rand): GameState {
   let ctx = ctxOf(cur, rand, false);
   // ノエルに任せているときだけ、習熟度を調べる
   const mastery = noelOn(cur) ? masteryOf(cur) : undefined;
+  let memory: Map<LessonId, Memory> | undefined;
   while (queue.length > 0) {
     const head = queue.shift()!;
     if (head.kind === "lesson") {
@@ -472,7 +479,11 @@ export function advance(state: GameState, rand: Rand): GameState {
     // 講義の練習では、仕訳をしない選択肢（断るなど）を出さない
     let choices = guided ? built.choices.filter((c) => c.tx) : [...built.choices];
     // 講義の練習・復習では消費税も自分で書く。消費税をノエルに任せるかは、この取引で一度だけ決める
-    const noelTax = !guided && !topic && !!mastery && choices.some((c) => c.tx?.taxable) && taxByNoel(cur, mastery);
+    const taxed = cur.lessonsDone.includes("salestax") && choices.some((c) => c.tx?.taxable);
+    const noelTax = !guided && !topic && !!mastery && taxed && taxByNoel(cur, mastery);
+    // 復習の時期が来ていない得意な論点は、選択肢を選ぶだけで、記帳はノエルに任せる（消費税を自分で書く分が残っていれば自分で）
+    const noel =
+      !guided && !topic && !!mastery && settled(lessonOfTemplate(templateId), cur.day, memory ??= memoryOf(cur.practice), mastery) && (noelTax || !taxed);
     choices = choices.map((c) => {
       if (!c.tx) return c;
       const { tx, disabled } = prepareTx(cur, ctx, c.tx, noelTax);
@@ -492,7 +503,7 @@ export function advance(state: GameState, rand: Rand): GameState {
         effect: { reputation: -1 },
       });
     }
-    return { ...cur, queue, phase: { kind: "event", event: { ...built, choices, templateId, guided } } };
+    return { ...cur, queue, phase: { kind: "event", event: { ...built, choices, templateId, guided, ...(noel && { noel }) } } };
   }
   return { ...cur, queue, phase: { kind: "dayEnd" } };
 }
@@ -565,6 +576,12 @@ export function choose(state: GameState, index: number, rand: Rand): GameState {
   const event = state.phase.event;
   const choice: Choice | undefined = event.choices[index];
   if (!choice || choice.disabled) return state;
+  // 得意な論点は、選んだ取引をノエルが記帳する（仕訳は見せる）
+  if (choice.tx && event.noel && !choice.tx.offBooks) {
+    const tx = booked(choice.tx);
+    const posted = postToBooks(state, event.templateId, tx, "auto");
+    return { ...posted, phase: { kind: "reply", speaker: "noel", text: `ノエル「記帳しておきました！」\n${entryText(tx.answer)}` } };
+  }
   if (choice.tx) {
     return { ...state, phase: { kind: "journal", session: txSession(choice.tx, event.speaker, event.templateId, !!event.guided) } };
   }
@@ -572,6 +589,10 @@ export function choose(state: GameState, index: number, rand: Rand): GameState {
   if (choice.reply) return { ...next, phase: { kind: "reply", speaker: event.speaker, text: choice.reply } };
   return advance(next, rand);
 }
+
+/** 仕訳を1行の文字にする（「（借）現金 1,000 ／（貸）売上 1,000」） */
+const entryText = (e: Entry) =>
+  `（借）${e.debit.map((l) => `${l.account} ${fmt(l.amount)}`).join("・")} ／（貸）${e.credit.map((l) => `${l.account} ${fmt(l.amount)}`).join("・")}`;
 
 export function takeHint(state: GameState): GameState {
   if (state.phase.kind !== "journal") return state;

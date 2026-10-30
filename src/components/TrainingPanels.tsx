@@ -5,6 +5,7 @@ import type { Entry } from "@/engine/journal";
 import { LESSONS, LESSON_BY_ID, PREP_LEVEL, type Lesson } from "@/content/lessons";
 import { LEVELS } from "@/content/world";
 import { EXAM_PASS } from "@/game/logic";
+import { type Memory, memoryOf, retention } from "@/game/memory";
 import { DRILL_SIZE, LESSONS_WITH_QUESTIONS, type Mastery, lessonsLeft, masteryOf, weakLessons } from "@/game/training";
 import type { DrillSession, GameState, LessonId } from "@/game/types";
 import { QuizCard } from "./Question";
@@ -25,7 +26,14 @@ const STAR_STYLE: Record<Mastery["stars"], string> = {
 /** まだ練習していない論点は ☆☆☆ */
 const stars = (m?: Mastery) => "★".repeat(m?.stars ?? 0).padEnd(3, "☆");
 
-function Tile({ lesson, learned, m, onClick }: { lesson: Lesson; learned: boolean; m?: Mastery; onClick?: () => void }) {
+/** 記憶の残りぐあいと、次の復習まで（復習の時期が来ていれば「復習どき」） */
+function memoryLabel(mem: Memory | undefined, day: number): string {
+  if (!mem) return "";
+  const left = mem.due - day;
+  return left <= 0 ? `記憶${Math.round(retention(mem, day) * 100)}%・復習どき` : `記憶${Math.round(retention(mem, day) * 100)}%・あと${left}日`;
+}
+
+function Tile({ lesson, learned, m, mem, day, onClick }: { lesson: Lesson; learned: boolean; m?: Mastery; mem?: Memory; day: number; onClick?: () => void }) {
   return (
     <button
       type="button"
@@ -38,6 +46,7 @@ function Tile({ lesson, learned, m, onClick }: { lesson: Lesson; learned: boolea
         <span className="text-gold">{learned ? stars(m) : "未習得"}</span>
         {m && <span className="text-dim">{m.tries}回</span>}
       </span>
+      {learned && mem && <span className={`text-[10px] ${mem.due <= day ? "text-gold" : "text-dim"}`}>{memoryLabel(mem, day)}</span>}
     </button>
   );
 }
@@ -56,6 +65,7 @@ export function TrainingHub({
   onLesson: (lesson: LessonId) => void;
 }) {
   const mastery = masteryOf(state);
+  const memory = memoryOf(state.practice);
   const learned = (id: LessonId) => state.lessonsDone.includes(id);
   const open = state.mistakes.filter((m) => !m.resolved).length;
   const weakest = weakLessons(state, mastery)[0];
@@ -88,7 +98,9 @@ export function TrainingHub({
 
       <section className="mb-4">
         <h3 className="mb-1 text-gold">習熟度マップ</h3>
-        <p className="mb-2 text-xs text-dim">直近10回の正答率。★3 は5回以上で9割正解。マスを押すと、その論点だけのドリルになる。</p>
+        <p className="mb-2 text-xs text-dim">
+          直近10回の正答率。★3 は5回以上で9割正解。「記憶」は忘却曲線で見積もった覚えている度合いで、間をおいて正解するほど次の復習までの間隔がのびる（1→2→4→8→15日）。マスを押すと、その論点だけのドリルになる。
+        </p>
         {GROUPS.map(([name, test]) => {
           const ls = LESSONS.filter((l) => test(l) && LESSONS_WITH_QUESTIONS.has(l.id));
           return (
@@ -101,6 +113,8 @@ export function TrainingHub({
                     lesson={l}
                     learned={learned(l.id)}
                     m={mastery.get(l.id)}
+                    mem={memory.get(l.id)}
+                    day={state.day}
                     onClick={learned(l.id) ? () => onDrill(l.id) : undefined}
                   />
                 ))}
@@ -115,7 +129,7 @@ export function TrainingHub({
         <p className="mb-2 text-xs text-dim">模擬試験の第2問で出る内容。店の営業では出てこないので、ここで学ぶ。</p>
         <div className="grid grid-cols-2 gap-1.5">
           {LESSONS.filter((l) => l.level === PREP_LEVEL).map((l) => (
-            <Tile key={l.id} lesson={l} learned={learned(l.id)} m={mastery.get(l.id)} onClick={() => onLesson(l.id)} />
+            <Tile key={l.id} lesson={l} learned={learned(l.id)} m={mastery.get(l.id)} day={state.day} onClick={() => onLesson(l.id)} />
           ))}
         </div>
       </section>

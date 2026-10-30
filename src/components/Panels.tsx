@@ -161,6 +161,7 @@ export function EventPanel({ event, onChoose }: { event: GameEvent; onChoose: (i
       <Speaker id={event.speaker} />
       <Dialogue text={event.lines.join("\n")}>
         {event.guided && <p className="mt-2 text-xs text-gold">✦ 講義の練習：ヒントを1つ無料で見られる</p>}
+        {event.noel && <p className="mt-2 text-xs text-dim">🖋 得意な論点（復習はまだ先）：どうするかを選べば、記帳はノエルがする</p>}
         <div className="rise mt-3 flex flex-col gap-1.5 border-t border-white/20 pt-3">
           {event.choices.map((c, i) => (
             <Btn key={c.label} variant="choice" disabled={!!c.disabled} onClick={() => onChoose(i)}>

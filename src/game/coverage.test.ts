@@ -349,6 +349,34 @@ describe("お店のお金を守る", () => {
   });
 });
 
+describe("得意な論点は、選ぶだけでノエルが記帳する", () => {
+  const spaced = [31, 32, 34, 38, 46].map((day) => ({ day, lesson: "trade" as const, ok: true }));
+  const shop = (autoPost: boolean, practice = spaced): GameState => {
+    const base = newGame("テスト商店", seededRand(1));
+    // ノエルを雇うのは給料の講義（Lv4）
+    const learned = LESSONS.filter((l) => l.level <= 4).map((l) => l.id);
+    return { ...base, day: 48, level: 4, lessonsDone: learned, autoPost, practice, stock: { ...base.stock, potion: 500, herb: 500, antidote: 500 }, queue: [{ kind: "event", id: "customer" }], phase: { kind: "dayStart" } };
+  };
+
+  it("復習の時期が来ていない★3の論点：選ぶと、ノエルが記帳して仕訳を見せる", () => {
+    const rand = seededRand(4);
+    const s = advance(shop(true), rand);
+    if (s.phase.kind !== "event") throw new Error("お客さんが来ない");
+    expect(s.phase.event.noel).toBe(true);
+    const sell = s.phase.event.choices.findIndex((c) => c.tx && !c.disabled);
+    const done = choose(s, sell, rand);
+    expect(done.phase.kind).toBe("reply");
+    expect(done.journal.at(-1)).toMatchObject({ templateId: "customer", auto: true });
+  });
+
+  it("復習の時期が来ていたり、任せていなかったりすれば、自分で記帳する", () => {
+    for (const s of [advance(shop(true, spaced.slice(0, 4)), seededRand(4)), advance(shop(false), seededRand(4))]) {
+      if (s.phase.kind !== "event") throw new Error("お客さんが来ない");
+      expect(s.phase.event.noel).toBeUndefined();
+    }
+  });
+});
+
 describe("ギルドの帳簿相談", () => {
   it("正解しても店の帳簿（仕訳帳）には記入せず、正誤だけ記録する", () => {
     const rand = seededRand(3);
