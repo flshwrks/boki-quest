@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { AccountName } from "@/engine/accounts";
-import { categoryHint, type Entry } from "@/engine/journal";
+import { accountsHint, type Entry, sidesHint } from "@/engine/journal";
 import type { TxSession } from "@/game/types";
 import { Calculator, useCalcResults } from "./Calculator";
 import { CardEntryForm } from "./CardEntryForm";
@@ -63,8 +63,17 @@ export function JournalInput({
                   ))}
                 </ul>
               )}
-              {session.hints >= 1 && <p>💡 {tx.idea}</p>}
-              {session.hints >= 2 && <p className="mt-1">💡 {categoryHint(tx.answer)}</p>}
+              {session.hints >= 1 && (
+                <p>
+                  💡 {tx.idea} {accountsHint(tx.answer)}
+                </p>
+              )}
+              {session.hints >= 2 && (
+                <p className="mt-1">
+                  💡 {sidesHint(tx.answer)}
+                  {tx.note && <span className="block">🧮 {tx.note}</span>}
+                </p>
+              )}
               {session.hints >= 3 && (
                 <div className="mt-2">
                   <p className="mb-1">正解はこうじゃ。同じように入力してみよう。</p>

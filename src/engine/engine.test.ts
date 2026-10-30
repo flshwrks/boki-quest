@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryHint, diagnose, explainLine, isBalanced, sameEntry, type Entry } from "./journal";
+import { accountsHint, categoryHint, diagnose, explainLine, isBalanced, sameEntry, sidesHint, type Entry } from "./journal";
 import { balanceOf, statements, trialBalance, worksheet } from "./ledger";
 
 const credit_purchase: Entry = {
@@ -50,6 +50,9 @@ describe("journal", () => {
     expect(explainLine({ account: "現金", amount: 1 }, "credit")).toBe("現金（資産）が減った → 貸方");
     expect(explainLine({ account: "仕入", amount: 1 }, "debit")).toBe("仕入（費用）が増えた → 借方");
     expect(categoryHint(credit_purchase)).toBe("借方には「費用」、貸方には「負債」の科目が入るよ。");
+    // 問題に即したヒント：使う科目（借方・貸方は伏せる）→ 振り分けと合計の金額
+    expect(accountsHint(credit_purchase)).toBe("この取引で使う科目は「買掛金・仕入」の2つ。");
+    expect(sidesHint(credit_purchase)).toMatch(/^借方は「仕入」、貸方は「買掛金」。合計は左右とも[\d,]+円になる。$/);
   });
 });
 

@@ -28,6 +28,7 @@ import {
   setExamAnswer,
   submitEntry,
   setDecor,
+  takeHint,
   turnLessonPage,
   unlockedAccounts,
 } from "./logic";
@@ -179,11 +180,14 @@ describe("採点", () => {
       return fixed.trust;
     };
     const bump = (e: typeof answer) => ({ debit: e.debit.map((l) => ({ ...l, amount: l.amount + 1000 })), credit: e.credit.map((l) => ({ ...l, amount: l.amount + 1000 })) });
-    // 金額のうっかりミスは軽く、借方貸方の逆はそれより重い
+    // 一度でも間違えたら下がる。金額のうっかりミスは軽く、借方貸方の逆はそれより重い
     const amount = fixAfter(bump(answer));
     const reversed = fixAfter({ debit: answer.credit, credit: answer.debit });
-    expect(amount).toBe(90);
-    expect(reversed).toBe(88);
+    expect(amount).toBe(89);
+    expect(reversed).toBe(87);
+    // ヒントは軽め（1つで−1、2つで−2）
+    expect(submitEntry(takeHint(s), answer, () => 0.99).trust).toBe(89);
+    expect(submitEntry(takeHint(takeHint(s)), answer, () => 0.99).trust).toBe(88);
     expect(submitEntry({ ...s, trust: 99 }, answer, () => 0.99).trust).toBe(99);
     expect(submitEntry({ ...s, trust: 50 }, answer, () => 0.99).trust).toBe(55);
   });

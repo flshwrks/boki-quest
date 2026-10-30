@@ -5,6 +5,7 @@ import {
   SIDE_LABEL,
   categoryOf,
   homeSide,
+  inMasterOrder,
 } from "./accounts";
 import { fmt } from "./format";
 
@@ -128,6 +129,18 @@ export function explainLine(line: Line, side: Side): string {
 }
 
 /** 科目名を伏せて「どの区分が左右に何個あるか」だけを伝えるヒント */
+/** ヒント1：この取引で使う科目（借方・貸方は伏せて、科目の並び順で見せる） */
+export function accountsHint(answer: Entry): string {
+  const accounts = inMasterOrder([...new Set([...answer.debit, ...answer.credit].map((l) => l.account))]);
+  return `この取引で使う科目は「${accounts.join("・")}」の${accounts.length}つ。`;
+}
+
+/** ヒント2：借方・貸方への振り分けと、合計の金額（行ごとの金額は伏せる） */
+export function sidesHint(answer: Entry): string {
+  const names = (lines: Line[]) => lines.map((l) => l.account).join("・");
+  return `借方は「${names(answer.debit)}」、貸方は「${names(answer.credit)}」。合計は左右とも${fmt(sumAmounts(answer.debit))}円になる。`;
+}
+
 export function categoryHint(answer: Entry): string {
   const describe = (lines: Line[]) => {
     const counts = new Map<string, number>();

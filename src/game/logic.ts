@@ -32,19 +32,25 @@ const trustAfter = (trust: number, score: number) => clamp(Math.round(trust + (s
 const SEVERITY: Record<MistakeKind, number> = { incomplete: 0, amount: 1, unbalanced: 1, reversed: 2, account: 3 };
 const heavier = (a: MistakeKind | undefined, b: MistakeKind) => (!a || SEVERITY[b] > SEVERITY[a] ? b : a);
 
-/** 1回の記帳の出来：ノーヒント一発正解が100、軽いミスを1回で直したら少し下、ヒントや答えを見たら低い */
-function entryScore(s: TxSession, hints: number): { score: number; note: string } {
-  if (hints >= 3) return { score: 30, note: "答えを見て記帳した" };
-  if (hints > 0 || s.attempts >= 2) return { score: 45, note: hints > 0 ? "ヒントを使って記帳した" : "何度か間違えてから記帳した" };
-  if (s.attempts === 0) return { score: 100, note: "ノーヒントで正解" };
-  switch (s.worst) {
-    case "account":
-      return { score: 55, note: "科目の間違いを1回で直した" };
-    case "reversed":
-      return { score: 70, note: "借方・貸方の逆を1回で直した" };
-    default:
-      return { score: 85, note: "金額のミスを1回で直した（軽いミス）" };
-  }
+/**
+ * 1回の記帳の出来（信用が向かう値）。ヒントは軽め（わからない問題は素直にヒントを使ってよい。使った論点は復習が早まる）、
+ * ミスは重さに応じて（金額のうっかり＜借方貸方の逆＜科目の間違い＜何度も間違える）
+ */
+function entryScore(s: TxSession, hints: number): { score: number; note: string; missed: boolean } {
+  const hint = hints >= 3 ? { score: 30, note: "答えを見た" } : hints === 2 ? { score: 70, note: "ヒントを2つ使った" } : hints === 1 ? { score: 80, note: "ヒントを1つ使った" } : null;
+  const miss =
+    s.attempts >= 2
+      ? { score: 40, note: "何度か間違えた" }
+      : s.attempts === 0
+        ? null
+        : s.worst === "account"
+          ? { score: 50, note: "科目の間違いを1回で直した" }
+          : s.worst === "reversed"
+            ? { score: 60, note: "借方・貸方の逆を1回で直した" }
+            : { score: 75, note: "金額のミスを1回で直した" };
+  if (!hint && !miss) return { score: 100, note: "ノーヒントで正解", missed: false };
+  const parts = [miss, hint].filter((x) => x !== null);
+  return { score: Math.min(...parts.map((x) => x.score)), note: parts.map((x) => x.note).join("・"), missed: !!miss };
 }
 
 /**
@@ -648,7 +654,8 @@ export function submitEntry(state: GameState, input: Entry, rand: Rand = Math.ra
   const firstTry = s.attempts === 0 && paidHints === 0;
   // 講義の練習は信用に数えない
   const graded = entryScore(s, paidHints);
-  const trust = s.guided ? state.trust : trustAfter(state.trust, graded.score);
+  // 一度でも間違えたら、信用は少なくとも1下がる
+  const trust = s.guided ? state.trust : Math.min(trustAfter(state.trust, graded.score), graded.missed ? state.trust - 1 : 100);
   const trustDelta = trust - state.trust;
   const combo = firstTry ? state.combo + 1 : 0;
   const comboMessage = COMBO_MESSAGES[combo];
