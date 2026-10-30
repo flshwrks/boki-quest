@@ -1,3 +1,4 @@
+import type { AccountName } from "@/engine/accounts";
 import type { UpgradeId } from "@/content/upgrades";
 import type { Entry } from "@/engine/journal";
 
@@ -168,6 +169,11 @@ export interface Transaction {
   doc?: Voucher;
   /** 店の帳簿には記入しない練習の仕訳（ギルドの帳簿相談） */
   offBooks?: boolean;
+  /**
+   * 代金を複数の方法で受け払いするとき、消費税を上乗せする科目（問題文で「残額」とする側）。
+   * 省くと、現金・掛けなどの決まった順で最初に見つかった科目
+   */
+  taxTo?: AccountName;
   /** 消費税をノエルに任せるとき、帳簿に載せる税込の取引（プレイヤーは税抜の answer で答える） */
   withTax?: Transaction;
   effect?: Effect;

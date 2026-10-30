@@ -13,6 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES } from "@/content/events";
+import { withSalesTax } from "@/content/salesTax";
 import { advance, afterResult, choose, newGame, nextLesson, planDay, skipLesson, startOrder, startUpgrade, submitEntry, upgradePreview } from "./logic";
 import { seededRand } from "./random";
 import { rollRequests } from "./requests";
@@ -374,6 +375,25 @@ describe("得意な論点は、選ぶだけでノエルが記帳する", () => {
       if (s.phase.kind !== "event") throw new Error("お客さんが来ない");
       expect(s.phase.event.noel).toBeUndefined();
     }
+  });
+});
+
+describe("消費税は「残額」の側に含める", () => {
+  const sale = (taxTo?: "売掛金") =>
+    withSalesTax({
+      story: "",
+      exam: "商品10,000円を売り上げ、代金のうち4,000円は現金で受け取り、残額は掛けとした。",
+      answer: { debit: [{ account: "現金", amount: 4000 }, { account: "売掛金", amount: 6000 }], credit: [{ account: "売上", amount: 10000 }] },
+      idea: "",
+      taxable: true,
+      taxTo,
+    });
+
+  it("一部を現金で受け取り、残額を掛けにした売上：現金は問題文の金額のまま、消費税は売掛金に含める", () => {
+    expect(sale("売掛金").answer.debit).toEqual([
+      { account: "現金", amount: 4000 },
+      { account: "売掛金", amount: 7000 },
+    ]);
   });
 });
 

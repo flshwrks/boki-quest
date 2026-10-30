@@ -22,7 +22,8 @@ export function withSalesTax(tx: Transaction): Transaction {
   const isSale = tx.answer[taxSide].some((l) => l.account === "売上");
   const isReturn = (taxSide === "debit") === isSale;
   const paySide = opposite(taxSide);
-  const payLine = (isSale ? SALE_PAY : BUY_PAY).map((a) => tx.answer[paySide].find((l) => l.account === a)).find((l) => l !== undefined);
+  // 消費税は代金に含まれるので、問題文で金額の決まっていない「残額」の科目に上乗せする
+  const payLine = (tx.taxTo ? [tx.taxTo] : isSale ? SALE_PAY : BUY_PAY).map((a) => tx.answer[paySide].find((l) => l.account === a)).find((l) => l !== undefined);
   if (!payLine) return tx;
   const tax = Math.floor(sumOf(tx.answer[taxSide], isSale ? "売上" : "仕入") * SALES_TAX_RATE);
   const answer = {

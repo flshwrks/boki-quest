@@ -348,6 +348,8 @@ const customerSplit: EventTemplate = {
             answer: je([["現金", cash], ["売掛金", rest]], [["売上", amount]]),
             idea: "受け取った現金と、あとで受け取る権利の2つに分かれるよ。売上は全額じゃ。",
             taxable: true,
+            // 現金は問題文で金額が決まっているので、消費税は残額（掛け）の側に含まれる
+            taxTo: "売掛金",
             effect: { stock: { [item]: -qty }, reputation: 2, addCredits: [{ kind: "売掛金", who, amount: rest, item, qty }] },
           },
         },
