@@ -166,18 +166,26 @@ describe("採点", () => {
     expect(next.phase.kind === "journal" && next.phase.session.attempts).toBe(0);
   });
 
-  it("信用は最近の記帳の正確さ：ノーヒント正解なら上がり、間違えてから直すと下がる。上限に張りつかない", () => {
-    const s = atFirstJournal();
+  it("信用は最近の記帳の正確さ：ノーヒント正解なら上がり、ミスのあとは重さに応じて下がる。上限に張りつかない", () => {
+    const s = { ...atFirstJournal(), trust: 90 } as GameState;
     if (s.phase.kind !== "journal") throw new Error();
     const { answer } = s.phase.session.tx;
-    const miss = submitEntry(s, { debit: answer.credit, credit: answer.debit });
-    expect(miss.trust).toBe(s.trust);
-    const fixed = submitEntry(miss, answer);
-    expect(fixed.trust).toBeLessThan(s.trust);
-    if (fixed.phase.kind !== "result") throw new Error();
-    expect(fixed.phase.info.trustDelta).toBe(fixed.trust - s.trust);
-    expect(submitEntry({ ...s, trust: 99 }, answer).trust).toBe(99);
-    expect(submitEntry({ ...s, trust: 50 }, answer).trust).toBe(55);
+    const fixAfter = (wrong: typeof answer) => {
+      const miss = submitEntry(s, wrong, () => 0.99);
+      expect(miss.trust).toBe(s.trust);
+      const fixed = submitEntry(miss, answer, () => 0.99);
+      if (fixed.phase.kind !== "result") throw new Error();
+      expect(fixed.phase.info.trustDelta).toBe(fixed.trust - s.trust);
+      return fixed.trust;
+    };
+    const bump = (e: typeof answer) => ({ debit: e.debit.map((l) => ({ ...l, amount: l.amount + 1000 })), credit: e.credit.map((l) => ({ ...l, amount: l.amount + 1000 })) });
+    // 金額のうっかりミスは軽く、借方貸方の逆はそれより重い
+    const amount = fixAfter(bump(answer));
+    const reversed = fixAfter({ debit: answer.credit, credit: answer.debit });
+    expect(amount).toBe(90);
+    expect(reversed).toBe(88);
+    expect(submitEntry({ ...s, trust: 99 }, answer, () => 0.99).trust).toBe(99);
+    expect(submitEntry({ ...s, trust: 50 }, answer, () => 0.99).trust).toBe(55);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { AccountName } from "@/engine/accounts";
 import type { DecorId } from "@/content/treasures";
 import type { UpgradeId } from "@/content/upgrades";
-import type { Entry } from "@/engine/journal";
+import type { Entry, MistakeKind } from "@/engine/journal";
 
 export type ItemId = "potion" | "herb" | "antidote" | "scroll" | "ether" | "elixir";
 
@@ -239,6 +239,8 @@ export interface TxSession {
   attempts: number;
   hints: number;
   feedback: string[] | null;
+  /** これまでのいちばん重いミス（信用の下がり方を決める） */
+  worst?: MistakeKind;
 }
 
 export interface ResultInfo {
@@ -246,6 +248,8 @@ export interface ResultInfo {
   templateId: string;
   firstTry: boolean;
   trustDelta: number;
+  /** 信用がどう評価されたか（「金額のミスを1回で直した」など） */
+  trustNote: string;
   combo: number;
   comboMessage?: string;
   /** この記帳で見つけたレアアイテム */

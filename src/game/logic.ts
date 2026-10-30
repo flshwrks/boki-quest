@@ -1,5 +1,5 @@
 import type { AccountName } from "@/engine/accounts";
-import { diagnose, sameEntry, sumAmounts, sumOf, type Entry } from "@/engine/journal";
+import { diagnose, sameEntry, sumAmounts, sumOf, type Entry, type MistakeKind } from "@/engine/journal";
 import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
 import { type Memory, memoryOf, overdue } from "./memory";
@@ -22,11 +22,30 @@ const emptyDay = (): DayStats => ({ sales: 0, purchases: 0, correct: 0, firstTry
 const clamp = (v: number) => Math.max(0, Math.min(100, v));
 
 /**
- * 帳簿の信用は「最近の記帳の正確さ」：ノーヒント正解なら100、それ以外なら30に向かって少しずつ動く（直近20件くらいの平均）。
+ * 帳簿の信用は「最近の記帳の正確さ」：1件ごとに、その記帳の出来（0〜100）に向かって1割ずつ動く（直近20件くらいの平均）。
  * 足し算でためると上限に張りついて意味がなくなるので、正確さが落ちれば下がるようにする
  */
 const TRUST_RATE = 0.1;
-const trustAfter = (trust: number, clean: boolean) => clamp(Math.round(trust + ((clean ? 100 : 30) - trust) * TRUST_RATE));
+const trustAfter = (trust: number, score: number) => clamp(Math.round(trust + (score - trust) * TRUST_RATE));
+
+/** ミスの重さ。金額・合計のミスは計算や転記のうっかり、借方貸方の逆や科目の間違いは取引の理解に関わる */
+const SEVERITY: Record<MistakeKind, number> = { incomplete: 0, amount: 1, unbalanced: 1, reversed: 2, account: 3 };
+const heavier = (a: MistakeKind | undefined, b: MistakeKind) => (!a || SEVERITY[b] > SEVERITY[a] ? b : a);
+
+/** 1回の記帳の出来：ノーヒント一発正解が100、軽いミスを1回で直したら少し下、ヒントや答えを見たら低い */
+function entryScore(s: TxSession, hints: number): { score: number; note: string } {
+  if (hints >= 3) return { score: 30, note: "答えを見て記帳した" };
+  if (hints > 0 || s.attempts >= 2) return { score: 45, note: hints > 0 ? "ヒントを使って記帳した" : "何度か間違えてから記帳した" };
+  if (s.attempts === 0) return { score: 100, note: "ノーヒントで正解" };
+  switch (s.worst) {
+    case "account":
+      return { score: 55, note: "科目の間違いを1回で直した" };
+    case "reversed":
+      return { score: 70, note: "借方・貸方の逆を1回で直した" };
+    default:
+      return { score: 85, note: "金額のミスを1回で直した（軽いミス）" };
+  }
+}
 
 /**
  * 評判は、何もしなければ毎日40に向かって戻る（よい商売を続けないと保てない）。看板があると戻りがゆるやか。
@@ -621,14 +640,15 @@ export function submitEntry(state: GameState, input: Entry, rand: Rand = Math.ra
       ...logged,
       combo: 0,
       mistakes: firstMiss ? [...state.mistakes, { day: state.day, templateId: s.templateId, exam: s.tx.exam }] : state.mistakes,
-      phase: { kind: "journal", session: { ...s, attempts: s.attempts + 1, feedback: d.messages } },
+      phase: { kind: "journal", session: { ...s, attempts: s.attempts + 1, feedback: d.messages, worst: heavier(s.worst, d.kind) } },
     };
   }
 
   const paidHints = s.guided ? Math.max(0, s.hints - 1) : s.hints;
   const firstTry = s.attempts === 0 && paidHints === 0;
   // 講義の練習は信用に数えない
-  const trust = s.guided ? state.trust : trustAfter(state.trust, firstTry);
+  const graded = entryScore(s, paidHints);
+  const trust = s.guided ? state.trust : trustAfter(state.trust, graded.score);
   const trustDelta = trust - state.trust;
   const combo = firstTry ? state.combo + 1 : 0;
   const comboMessage = COMBO_MESSAGES[combo];
@@ -654,7 +674,7 @@ export function submitEntry(state: GameState, input: Entry, rand: Rand = Math.ra
   // ノーヒント正解のとき、ときどきレアアイテムが見つかる（連続正解が多いほど見つかりやすい）
   const found = firstTry && !s.guided && rand() < dropRate(combo) ? pickTreasure(rand).id : undefined;
   if (found) next = { ...next, treasures: { ...next.treasures, [found]: (next.treasures[found] ?? 0) + 1 } };
-  const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, combo, comboMessage, ...(found && { treasure: found }) };
+  const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, trustNote: s.guided ? "講義の練習（信用には数えない）" : graded.note, combo, comboMessage, ...(found && { treasure: found }) };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
 }
 
@@ -835,7 +855,7 @@ export function answerQuiz(state: GameState, index: number, correct: boolean): G
   const p = state.phase;
   if ((p.kind !== "monthEnd" && p.kind !== "worksheet") || p.answered[index] !== null) return state;
   const answered = p.answered.map((a, i) => (i === index ? correct : a));
-  return { ...state, trust: trustAfter(state.trust, correct), phase: { ...p, answered } };
+  return { ...state, trust: trustAfter(state.trust, correct ? 100 : 30), phase: { ...p, answered } };
 }
 
 /** 店の内装を変える（解禁したものだけ） */

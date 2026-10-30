@@ -247,6 +247,7 @@ export function ResultPanel({
       )}
       <p className="mt-2 text-sm text-dim">
         帳簿の信用 {info.trustDelta > 0 ? <span className="text-ok">+{info.trustDelta}</span> : info.trustDelta < 0 ? <span className="text-ng">{info.trustDelta}</span> : "±0"}
+        <span className="ml-1 text-xs">（{info.trustNote}）</span>
         {info.combo >= 2 && <span className="ml-3 text-gold">{info.combo}コンボ！</span>}
       </p>
       {info.comboMessage && <p className="pop mt-1 text-sm text-gold">{info.comboMessage}</p>}
