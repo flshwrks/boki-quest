@@ -37,7 +37,7 @@ export function JournalInput({
   return (
     <div className="flex flex-col gap-3">
       <Win>
-        {tx.offBooks && <p className="mb-1 inline-block rounded-full border border-white/40 px-2 text-xs text-dim">ギルドの帳簿相談（店の帳簿には記入しない）</p>}
+        {tx.offBooks && <p className="mb-1 inline-block rounded-full border border-white/40 px-2 text-xs text-dim">練習・ギルドの帳簿相談（店の帳簿には記入しない）</p>}
         <p className="text-sm">{tx.story}</p>
         {tx.withTax && (
           <p className="mt-1 inline-block rounded-full border border-white/40 px-2 text-xs">🧾 消費税はノエルが書き足す：税抜の金額で仕訳しよう</p>

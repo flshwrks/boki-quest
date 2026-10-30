@@ -77,7 +77,13 @@ export const PAY_SOURCES: AccountName[] = ["普通預金", "当座預金", "現�
 
 /** 「○○から払う」の選択肢を支払元ごとに作る。残高が足りない支払元は選べない */
 export function payFrom(ctx: Ctx, amount: number, vias: readonly AccountName[], tx: (via: AccountName) => Transaction, verb = "支払う"): Choice[] {
-  return vias.map((via) => ({ label: `${via}${via === "現金" ? "で" : "から"}${verb}`, disabled: need(ctx, via, amount), tx: tx(via) }));
+  return vias.map((via) => ({ label: `${via}${via === "現金" ? "で" : "から"}${verb}`, disabled: payable(ctx, via, amount), tx: tx(via) }));
+}
+
+/** その口座から払えるか。当座預金は、期日の来る手形・電子記録債務の決済に取っておく分を除いて使う */
+function payable(ctx: Ctx, via: AccountName, amount: number): string | undefined {
+  if (via === "当座預金" && amount > 0 && checkingRoom(ctx) < amount) return "当座預金は手形・電子記録の決済用に残す";
+  return need(ctx, via, amount);
 }
 
 /** 利息 ＝ 元本 × 年利 × 月数 ÷ 12（円未満は四捨五入） */

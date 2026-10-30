@@ -48,7 +48,9 @@ const interimTax: EventTemplate = {
   once: "year",
   build: (ctx) => {
     const { state } = ctx;
-    if (!ctx.guided && monthOfYear(state.day) !== 8) return null;
+    // 講義の練習が納付の時期（11月）でなければ、店の帳簿には記入しない練習にする（本物のお金を動かさない）
+    const practice = monthOfYear(state.day) !== 8;
+    if (!ctx.guided && practice) return null;
     const start = yearStartDay(state.day);
     const lastTax = state.journal
       .filter((r) => r.templateId === "close-tax" && r.day < start && r.day >= start - DAYS_PER_YEAR)
@@ -57,7 +59,9 @@ const interimTax: EventTemplate = {
     if (amt <= 0) return null;
     return {
       speaker: "hoho",
-      lines: [`去年の法人税等は${n(lastTax)}円じゃった。その半分の${n(amt)}円を、今年分の前払いとして納める時期じゃ。`],
+      lines: practice
+        ? [`去年の法人税等は${n(lastTax)}円じゃった。11月になったら、その半分の${n(amt)}円を今年分の前払いとして納める。今日はその練習じゃ（店の帳簿には書かない）。`]
+        : [`去年の法人税等は${n(lastTax)}円じゃった。その半分の${n(amt)}円を、今年分の前払いとして納める時期じゃ。`],
       choices: payFrom(
         ctx,
         amt,
@@ -67,6 +71,7 @@ const interimTax: EventTemplate = {
           exam: `法人税等の中間申告を行い、${n(amt)}円を${viaPhrase(via)}納付した。`,
           answer: je([["仮払法人税等", amt]], [[via, amt]]),
           idea: "今年の税額はまだ決まっていない。前払いした分は、とりあえず資産にしておくよ。",
+          offBooks: practice || undefined,
         }),
         "納付する",
       ),
@@ -82,14 +87,18 @@ const dividendDecide: EventTemplate = {
   schedule: "daily",
   once: "year",
   build: (ctx) => {
-    if (!ctx.guided && monthOfYear(ctx.state.day) !== 3) return null;
+    // 講義の練習が株主総会の時期（6月）でなければ、店の帳簿には記入しない練習にする
+    const practice = monthOfYear(ctx.state.day) !== 3;
+    if (!ctx.guided && practice) return null;
     const retained = ctx.balance("繰越利益剰余金");
     const dividend = Math.floor((retained * DIVIDEND_RATE) / 1000) * 1000;
     if (dividend <= 0) return null;
     const reserve = dividend / 10;
     return {
       speaker: "cecil",
-      lines: ["株主総会が開かれました！", `これまでの利益（繰越利益剰余金${n(retained)}円）から、配当金${n(dividend)}円を出すことに決まりました。利益準備金も積み立ててくださいね。`],
+      lines: practice
+        ? ["6月の株主総会では、たまった利益から配当を決めます。今日はその練習です（店の帳簿には書きません）。", `もし繰越利益剰余金${n(retained)}円から、配当金${n(dividend)}円を出すと決まったら？ 利益準備金も積み立てます。`]
+        : ["株主総会が開かれました！", `これまでの利益（繰越利益剰余金${n(retained)}円）から、配当金${n(dividend)}円を出すことに決まりました。利益準備金も積み立ててくださいね。`],
       choices: [
         {
           label: "配当の決議を記帳する",
@@ -105,7 +114,8 @@ const dividendDecide: EventTemplate = {
             ),
             idea: "たまった利益から配当する。まだ払っていない配当金は負債、積み立てる準備金は純資産だよ。",
             note: `利益準備金は配当額の10分の1で ${n(reserve)}円。繰越利益剰余金は、配当と積立ての合計 ${n(dividend + reserve)}円を減らすのじゃ。`,
-            effect: { reputation: 5 },
+            offBooks: practice || undefined,
+            effect: practice ? undefined : { reputation: 5 },
           },
         },
       ],

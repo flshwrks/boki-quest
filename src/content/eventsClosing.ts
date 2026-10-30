@@ -76,6 +76,8 @@ const allowance: EventTemplate = {
 const badDebt: EventTemplate = {
   lesson: "allowance",
   review: 0.06,
+  // 本当にツケを失うのは年に1度まで（それ以外の復習はギルドの帳簿相談になる）
+  once: "year",
   build: (ctx) => {
     const { state, rand } = ctx;
     const ar = creditsOf(state, "売掛金").filter((c) => c.amount >= 2000);

@@ -318,6 +318,37 @@ describe("月の依頼書と収穫祭", () => {
   });
 });
 
+describe("お店のお金を守る", () => {
+  const lv5 = (day: number, journal: GameState["journal"]): GameState => {
+    const base = newGame("テスト商店", seededRand(1));
+    return { ...base, day, level: 5, lessonsDone: LESSONS.filter((l) => l.level <= 5).map((l) => l.id), journal, phase: { kind: "dayStart" } };
+  };
+  const rec = (day: number, templateId: string, debit: [string, number][], credit: [string, number][]) =>
+    ({ day, templateId, exam: "", entry: { debit: debit.map(([account, amount]) => ({ account, amount })), credit: credit.map(([account, amount]) => ({ account, amount })) } }) as GameState["journal"][number];
+
+  it("中間納付の講義の練習が11月でなければ、店の帳簿には記入しない", () => {
+    const books = [rec(1, "x", [["普通預金", 500000]], [["資本金", 500000]]), rec(60, "close-tax", [["法人税、住民税及び事業税", 100000]], [["未払法人税等", 100000]])];
+    let s = advance({ ...lv5(64, books), queue: [{ kind: "event", id: "interim-tax", guided: true }] }, seededRand(2));
+    s = choose(s, 0, seededRand(2));
+    if (s.phase.kind !== "journal") throw new Error("記帳の画面にならない");
+    expect(s.phase.session.tx.offBooks).toBe(true);
+    const done = submitEntry(s, s.phase.session.tx.answer);
+    expect(done.journal.length).toBe(books.length);
+  });
+
+  it("当座預金は、期日の来る電子記録債務の決済に取っておく（ほかの支払いには使わない）", () => {
+    const books = [
+      rec(1, "x", [["当座預金", 300000], ["普通預金", 300000]], [["資本金", 600000]]),
+      rec(60, "close-tax", [["法人税、住民税及び事業税", 400000]], [["未払法人税等", 400000]]),
+    ];
+    const s: GameState = { ...lv5(68, books), credits: [{ id: "e1", kind: "電子記録債務", who: "gantetsu", amount: 250000, day: 66 }] };
+    const ev = advance({ ...s, queue: [{ kind: "event", id: "pay-corp-tax" }] }, seededRand(2));
+    if (ev.phase.kind !== "event") throw new Error("納付のイベントにならない");
+    const checking = ev.phase.event.choices.find((c) => c.label.startsWith("当座預金"));
+    expect(checking?.disabled).toBeTruthy();
+  });
+});
+
 describe("ギルドの帳簿相談", () => {
   it("正解しても店の帳簿（仕訳帳）には記入せず、正誤だけ記録する", () => {
     const rand = seededRand(3);

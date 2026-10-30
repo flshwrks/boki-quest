@@ -65,8 +65,11 @@ const openChecking: EventTemplate = {
   schedule: "daily",
   build: (ctx) => {
     // 練習以外では、当座預金が心細いときだけ声をかけてくる
-    if (!ctx.guided && checkingRoom(ctx) >= 20000) return null;
-    const amounts = [50000, 100000].filter((a) => a <= ctx.balance("普通預金"));
+    const room = checkingRoom(ctx);
+    if (!ctx.guided && room >= 20000) return null;
+    // 期日の来る決済に足りない分（1万円単位）も選べるようにする
+    const short = Math.ceil((20000 - room) / 10000) * 10000;
+    const amounts = [...new Set([50000, 100000, short])].filter((a) => a > 0 && a <= ctx.balance("普通預金")).sort((a, b) => a - b);
     if (amounts.length === 0) return null;
     return {
       speaker: "luke",
