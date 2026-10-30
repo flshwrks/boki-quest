@@ -12,7 +12,7 @@ import {
   trialAfterProblem,
   worksheetProblem,
 } from "@/content/mockExam";
-import { TEMPLATES } from "@/content/events";
+import { TEMPLATES, purchaseTx } from "@/content/events";
 import { withSalesTax } from "@/content/salesTax";
 import { advance, afterResult, choose, newGame, nextLesson, planDay, skipLesson, startOrder, startUpgrade, submitEntry, upgradePreview } from "./logic";
 import { seededRand } from "./random";
@@ -375,6 +375,27 @@ describe("得意な論点は、選ぶだけでノエルが記帳する", () => {
       if (s.phase.kind !== "event") throw new Error("お客さんが来ない");
       expect(s.phase.event.noel).toBeUndefined();
     }
+  });
+});
+
+describe("消費税は商品の代金にだけかける（試験と同じ）", () => {
+  it("引取運賃は仕入に含めるが、消費税は商品代金にだけかかる。売るときの発送費にもかけない", () => {
+    const buy = withSalesTax(purchaseTx("potion", 10, "現金", { fee: 500, unit: 400 }));
+    expect(buy.answer.debit).toEqual([
+      { account: "仕入", amount: 4500 },
+      { account: "仮払消費税", amount: 400 },
+    ]);
+    expect(buy.answer.credit).toEqual([{ account: "現金", amount: 4900 }]);
+    expect(buy.exam).toContain("商品代金4,000円に対する消費税（税率10%、400円）");
+  });
+
+  it("掛けで仕入れ、引取運賃を現金で払うとき：消費税は掛け代金に含め、そのことを問題文に書く", () => {
+    const buy = withSalesTax(purchaseTx("potion", 10, "買掛金", { fee: 500, unit: 400 }));
+    expect(buy.answer.credit).toEqual([
+      { account: "買掛金", amount: 4400 },
+      { account: "現金", amount: 500 },
+    ]);
+    expect(buy.exam).toContain("なお、消費税は掛け代金に含める。");
   });
 });
 

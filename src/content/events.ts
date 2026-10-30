@@ -131,6 +131,8 @@ export function purchaseTx(item: ItemId, qty: number, pay: PurchasePay, { fee = 
           : "商品を買ったら何の科目？ 支払ったお金は増えた？減った？",
     note: fee > 0 ? `引取運賃は仕入に含める。だから仕入は ${n(amount)} + ${n(fee)} = ${n(amount + fee)}円じゃ。` : undefined,
     taxable: true,
+    // 消費税は商品の代金にだけかける（引取運賃にはかけない）
+    taxBase: fee > 0 ? amount : undefined,
     effect: {
       stock: { [item]: qty },
       // 運び賃も商品を手に入れるための費用なので、在庫の原価に含める

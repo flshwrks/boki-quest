@@ -25,7 +25,8 @@ export function withSalesTax(tx: Transaction): Transaction {
   // 消費税は代金に含まれるので、問題文で金額の決まっていない「残額」の科目に上乗せする
   const payLine = (tx.taxTo ? [tx.taxTo] : isSale ? SALE_PAY : BUY_PAY).map((a) => tx.answer[paySide].find((l) => l.account === a)).find((l) => l !== undefined);
   if (!payLine) return tx;
-  const tax = Math.floor(sumOf(tx.answer[taxSide], isSale ? "売上" : "仕入") * SALES_TAX_RATE);
+  const base = tx.taxBase ?? sumOf(tx.answer[taxSide], isSale ? "売上" : "仕入");
+  const tax = Math.floor(base * SALES_TAX_RATE);
   const answer = {
     ...tx.answer,
     [taxSide]: [...tx.answer[taxSide], { account: isSale ? "仮受消費税" : "仮払消費税", amount: tax }],
@@ -38,11 +39,14 @@ export function withSalesTax(tx: Transaction): Transaction {
     addCredits: tx.effect.addCredits?.map((a, i) => (i === first ? { ...a, amount: a.amount + tax, taxed: true } : a)),
     settleCredits: isReturn ? tx.effect.settleCredits?.map((s, i) => (i === 0 ? { ...s, amount: s.amount + tax } : s)) : tx.effect.settleCredits,
   };
+  // 代金を2つ以上の方法で受け払いするときは、本番と同じく、消費税をどちらに含めるかを問題文に書く
+  const pays = tx.answer[paySide].filter((l) => (isSale ? SALE_PAY : BUY_PAY).includes(l.account));
+  const where = pays.length > 1 ? `なお、消費税は${payLine.account === "売掛金" || payLine.account === "買掛金" ? "掛け代金" : `${payLine.account}の金額`}に含める。` : "";
   return {
     ...tx,
     answer,
     effect,
-    exam: `${tx.exam}消費税（税率${pct(SALES_TAX_RATE)}、${n(tax)}円）は税抜方式で処理する。`,
+    exam: `${tx.exam}${tx.taxBase !== undefined ? `商品代金${n(base)}円に対する` : ""}消費税（税率${pct(SALES_TAX_RATE)}、${n(tax)}円）は税抜方式で処理する。${where}`,
     idea: `${tx.idea} 消費税は、仕入なら仮払消費税、売上なら仮受消費税として別に記録するよ。`,
   };
 }

@@ -175,6 +175,11 @@ export interface Transaction {
    * 省くと、現金・掛けなどの決まった順で最初に見つかった科目
    */
   taxTo?: AccountName;
+  /**
+   * 消費税をかける商品代金（試験と同じく、消費税は商品の代金にだけかける）。
+   * 仕入に引取運賃を含めるときは、運賃を除いた商品代金を渡す。省くと売上・仕入の金額
+   */
+  taxBase?: number;
   /** 消費税をノエルに任せるとき、帳簿に載せる税込の取引（プレイヤーは税抜の answer で答える） */
   withTax?: Transaction;
   effect?: Effect;
