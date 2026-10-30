@@ -4,6 +4,7 @@ import { balanceIn, balanceOf, netBalances, statements } from "@/engine/ledger";
 import { type PurchasePay, TEMPLATES, purchaseTx } from "@/content/events";
 import { type Memory, memoryOf, overdue } from "./memory";
 import { rollRequests } from "./requests";
+import { DECORS, type DecorId, dropRate, pickTreasure } from "@/content/treasures";
 import { UPGRADES, type UpgradeId, type UpgradePay, hasUpgrade, repTier, upgradeTx } from "@/content/upgrades";
 import { withSalesTax } from "@/content/salesTax";
 import { type Ctx, need } from "@/content/eventKit";
@@ -87,6 +88,8 @@ export function initialState(shopName: string): GameState {
     requests: null,
     reward: null,
     festival: null,
+    treasures: {},
+    decor: "wood",
     cashDiff: null,
     mistakes: [],
     examRetryDay: 0,
@@ -603,7 +606,7 @@ const COMBO_MESSAGES: Record<number, string> = {
   10: "10連続！ 王都の会計士たちがこの店の帳簿を見に来た。（評判 +5）",
 };
 
-export function submitEntry(state: GameState, input: Entry): GameState {
+export function submitEntry(state: GameState, input: Entry, rand: Rand = Math.random): GameState {
   if (state.phase.kind !== "journal") return state;
   const s = state.phase.session;
   const d = diagnose(input, s.tx.answer);
@@ -648,7 +651,10 @@ export function submitEntry(state: GameState, input: Entry): GameState {
   if (!s.tx.offBooks) next = postToBooks(next, s.templateId, booked(s.tx), s.tx.withTax && "noelTax");
   // 最初の答えで合っていたかを記録する（ヒントを使ったら「合っていた」には数えない）
   if (s.attempts === 0) next = logPractice(next, lessonOfTemplate(s.templateId), firstTry);
-  const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, combo, comboMessage };
+  // ノーヒント正解のとき、ときどきレアアイテムが見つかる（連続正解が多いほど見つかりやすい）
+  const found = firstTry && !s.guided && rand() < dropRate(combo) ? pickTreasure(rand).id : undefined;
+  if (found) next = { ...next, treasures: { ...next.treasures, [found]: (next.treasures[found] ?? 0) + 1 } };
+  const info: ResultInfo = { tx: s.tx, templateId: s.templateId, firstTry, trustDelta, combo, comboMessage, ...(found && { treasure: found }) };
   return { ...next, phase: { kind: "result", info, speaker: s.speaker } };
 }
 
@@ -831,6 +837,9 @@ export function answerQuiz(state: GameState, index: number, correct: boolean): G
   const answered = p.answered.map((a, i) => (i === index ? correct : a));
   return { ...state, trust: trustAfter(state.trust, correct), phase: { ...p, answered } };
 }
+
+/** 店の内装を変える（解禁したものだけ） */
+export const setDecor = (state: GameState, id: DecorId): GameState => (DECORS[id].unlocked(state) ? { ...state, decor: id } : state);
 
 /** 慣れた決済をノエルに任せるかを切り替える */
 export const toggleAutoPost = (state: GameState): GameState => ({ ...state, autoPost: !state.autoPost });

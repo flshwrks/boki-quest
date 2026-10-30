@@ -1,5 +1,6 @@
 "use client";
 
+import { DECORS, RARITY, TREASURES } from "@/content/treasures";
 import { ITEMS, LEVELS, itemsForLevel } from "@/content/world";
 import type { CharacterId, GameState } from "@/game/types";
 import { useEffect, useRef, useState } from "react";
@@ -108,14 +109,35 @@ function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx })
 export function Scene({ state, speaker, time, fx = {} }: { state: GameState; speaker?: CharacterId; time: TimeOfDay; fx?: SceneFx }) {
   const indoor = state.level >= 2;
   const items = itemsForLevel(state.level);
+  const decor = DECORS[state.decor] ?? DECORS.wood;
+  // カウンターに飾るレアアイテム（レア度の高い順に8つまで）
+  const shown = TREASURES.filter((t) => state.treasures[t.id])
+    .sort((a, b) => RARITY[b.rarity].rank - RARITY[a.rarity].rank)
+    .slice(0, 8);
   return (
     <div
       className="relative h-44 overflow-hidden rounded-[14px] border-2 border-white/85 shadow-[0_10px_24px_rgb(0_0_0/0.45)] sm:h-52"
       style={{
-        background: indoor ? "repeating-linear-gradient(90deg,#6b4a2e 0 30px,#5e4027 30px 32px)" : SKY[time],
+        background: indoor ? decor.wall : SKY[time],
         transition: "background 0.8s",
       }}
     >
+      {/* 内装の飾り */}
+      {indoor && decor.ornament && (
+        <div className="pointer-events-none absolute inset-0 text-xs opacity-40" aria-hidden>
+          {[
+            [12, 40],
+            [30, 70],
+            [55, 30],
+            [75, 55],
+          ].map(([x, y]) => (
+            <span key={`${x}-${y}`} className="twinkle absolute" style={{ left: `${x}%`, top: `${y}%` }}>
+              {decor.ornament}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* 店内は時間帯を色味で表す */}
       {indoor && <div className="pointer-events-none absolute inset-0 transition-colors duration-700" style={{ background: TINT[time] }} />}
 
@@ -183,7 +205,16 @@ export function Scene({ state, speaker, time, fx = {} }: { state: GameState; spe
       )}
 
       {/* カウンター */}
-      <div className="absolute inset-x-0 bottom-0 h-7 border-t-4 border-[#2a180a] bg-[#7a4e28]">
+      <div className="absolute inset-x-0 bottom-0 h-7 border-t-4 border-[#2a180a]" style={{ background: decor.counter }}>
+        {shown.length > 0 && (
+          <span className="absolute bottom-0.5 left-2 flex gap-0.5 text-sm" title="集めたレアアイテム">
+            {shown.map((t) => (
+              <span key={t.id} title={t.name}>
+                {t.icon}
+              </span>
+            ))}
+          </span>
+        )}
         <span className="absolute right-2 bottom-1 text-[10px] text-parch/80 sm:text-xs">
           {LEVELS[state.level].name}「{state.shopName}」
         </span>

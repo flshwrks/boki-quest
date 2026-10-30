@@ -4,6 +4,7 @@ import { EXAM_PASS, examScore, totalSales, unlockedAccounts } from "@/game/logic
 import type { GameState } from "@/game/types";
 import { ALL_CARDS } from "./accountInfo";
 import { LESSONS } from "./lessons";
+import { TREASURES } from "./treasures";
 import { LEVELS, itemsForLevel } from "./world";
 
 export interface Achievement {
@@ -43,6 +44,8 @@ export const ACHIEVEMENTS: Achievement[] = [
       [5, "👑", "王都の名店"],
     ] as const
   ).map(growth),
+  { id: "treasure", icon: "🎒", title: "お宝発見", hint: "レアアイテムを見つける", test: (s) => Object.keys(s.treasures ?? {}).length > 0 },
+  { id: "legend", icon: "🐉", title: "伝説の目撃者", hint: "伝説のレアアイテムを見つける", test: (s) => TREASURES.some((t) => t.rarity === "legendary" && s.treasures?.[t.id]) },
   { id: "perfect", icon: "💯", title: "審査満点", hint: "昇格審査で100点をとる", test: (s) => s.phase.kind === "exam" && !!s.phase.exam.graded && examScore(s.phase.exam) === 100 },
   { id: "closing", icon: "📘", title: "はじめての決算", hint: "決算日を乗り切る", test: (s) => s.lessonsDone.includes("closing") },
   {

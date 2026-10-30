@@ -5,6 +5,7 @@ import { type AccountName, CATEGORY_LABEL, categoryOf, homeSide, sideWithPos } f
 import { trialBalance, trialBalanceTotals } from "@/engine/ledger";
 import { ACCOUNT_INFO, ALL_CARDS } from "@/content/accountInfo";
 import { ACHIEVEMENTS } from "@/content/achievements";
+import { DECORS, DECOR_IDS, type DecorId, RARITY, TREASURES, kindsOf } from "@/content/treasures";
 import { LESSONS, LESSON_BY_ID } from "@/content/lessons";
 import { dateLabel } from "@/content/world";
 import { entriesOf, unlockedAccounts } from "@/game/logic";
@@ -12,9 +13,10 @@ import type { GameState, LessonId } from "@/game/types";
 import { LessonView } from "./LessonView";
 import { AccountChip, Btn, CATEGORY_BG, EntryTable, Modal, fmt } from "./ui";
 
-export type Tab = "cards" | "notes" | "journal" | "tb" | "achievements";
+export type Tab = "cards" | "notes" | "journal" | "tb" | "achievements" | "treasures";
 const TABS: [Tab, string][] = [
   ["achievements", "実績"],
+  ["treasures", "宝物と内装"],
   ["cards", "勘定科目"],
   ["notes", "講義ノート"],
   ["journal", "仕訳帳"],
@@ -206,7 +208,58 @@ function Achievements({ state }: { state: GameState }) {
   );
 }
 
-export function BookModal({ state, onClose, initialTab }: { state: GameState; onClose: () => void; initialTab: Tab }) {
+/** レアアイテムの図鑑と、店の内装の切り替え */
+function Treasures({ state, onDecor }: { state: GameState; onDecor: (id: DecorId) => void }) {
+  return (
+    <div>
+      <p className="mb-2 text-sm text-dim">
+        集めたレアアイテム {kindsOf(state)} / {TREASURES.length}。ノーヒントで正解すると、ときどき見つかる（連続正解が多いほど見つかりやすい）。集めたものは店のカウンターに飾られる。
+      </p>
+      <ul className="mb-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {TREASURES.map((t) => {
+          const count = state.treasures[t.id] ?? 0;
+          return (
+            <li key={t.id} className={`rounded-lg border p-2 text-xs ${count ? RARITY[t.rarity].style : "border-dashed border-white/20 text-dim"}`}>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-xl ${count ? "" : "opacity-30 grayscale"}`}>{count ? t.icon : "？"}</span>
+                <span className={count ? "text-gold" : ""}>{count ? t.name : "？？？"}</span>
+                {count > 1 && <span className="ml-auto text-dim">×{count}</span>}
+              </div>
+              <div className="mt-0.5 text-dim">{count ? t.text : RARITY[t.rarity].label}</div>
+            </li>
+          );
+        })}
+      </ul>
+      <h3 className="mb-1 text-gold">店の内装（Lv2で店舗を構えてから）</h3>
+      <ul className="grid gap-1.5 sm:grid-cols-2">
+        {DECOR_IDS.map((id) => {
+          const d = DECORS[id];
+          const open = d.unlocked(state);
+          const current = state.decor === id;
+          return (
+            <li key={id}>
+              <button
+                type="button"
+                disabled={!open}
+                onClick={() => onDecor(id)}
+                className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left text-sm ${current ? "border-gold bg-gold/10" : open ? "border-white/40 hover:bg-white/10" : "border-dashed border-white/20 text-dim"}`}
+              >
+                <span className="h-8 w-12 shrink-0 rounded border border-white/30" style={{ background: open ? d.wall : undefined }} />
+                <span>
+                  {open ? d.name : "？？？"}
+                  {current && <span className="ml-1 text-xs text-gold">（使用中）</span>}
+                  <span className="block text-xs text-dim">{open ? "選ぶと店の見た目が変わる" : `解禁：${d.hint}`}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+export function BookModal({ state, onClose, initialTab, onDecor }: { state: GameState; onClose: () => void; initialTab: Tab; onDecor: (id: DecorId) => void }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   return (
     <Modal title="簿記の書" onClose={onClose}>
@@ -229,6 +282,7 @@ export function BookModal({ state, onClose, initialTab }: { state: GameState; on
       {tab === "journal" && <Journal state={state} />}
       {tab === "tb" && <TrialBalanceTable state={state} />}
       {tab === "achievements" && <Achievements state={state} />}
+      {tab === "treasures" && <Treasures state={state} onDecor={onDecor} />}
     </Modal>
   );
 }

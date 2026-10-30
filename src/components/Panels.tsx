@@ -1,5 +1,6 @@
 "use client";
 
+import { RARITY, treasureOf } from "@/content/treasures";
 import type { UpgradeId, UpgradePay } from "@/content/upgrades";
 import { useMemo, useState } from "react";
 import { type Entry, sumAmounts } from "@/engine/journal";
@@ -175,6 +176,21 @@ export function EventPanel({ event, onChoose }: { event: GameEvent; onChoose: (i
   );
 }
 
+/** レアアイテムを見つけた知らせ */
+function TreasureFound({ id }: { id: string }) {
+  const t = treasureOf(id);
+  if (!t) return null;
+  return (
+    <div className={`pop mt-2 flex items-center gap-2 rounded-lg border p-2 text-sm ${RARITY[t.rarity].style}`}>
+      <span className="twinkle text-2xl">{t.icon}</span>
+      <span>
+        ✨ レアアイテム「<span className="text-gold">{t.name}</span>」を見つけた！（{RARITY[t.rarity].label}）
+        <span className="block text-xs text-dim">{t.text}</span>
+      </span>
+    </div>
+  );
+}
+
 export function ReplyPanel({ text, entry, onNext }: { text: string; entry?: Entry; onNext: () => void }) {
   return (
     <Win>
@@ -234,6 +250,7 @@ export function ResultPanel({
         {info.combo >= 2 && <span className="ml-3 text-gold">{info.combo}コンボ！</span>}
       </p>
       {info.comboMessage && <p className="pop mt-1 text-sm text-gold">{info.comboMessage}</p>}
+      {info.treasure && <TreasureFound id={info.treasure} />}
       <div className="mt-3 lg:hidden">
         <button type="button" className="text-sm text-dim underline" onClick={() => setShowViz((v) => !v)}>
           {showViz ? "帳簿の変化をとじる" : "帳簿の変化を見る"}

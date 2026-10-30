@@ -26,6 +26,7 @@ import {
   submitEntry,
   turnLessonPage,
   skipLesson,
+  setDecor,
   startUpgrade,
   toggleAutoPost,
   unlockedAccounts,
@@ -576,7 +577,7 @@ export default function GameApp() {
           onToggleMode={toggleInputMode}
           onHint={() => update(takeHint)}
           onSubmit={(entry) => {
-            const next = submitEntry(state, entry);
+            const next = submitEntry(state, entry, rand);
             if (next.phase.kind === "journal") play("wrong");
             commit(next);
           }}
@@ -775,7 +776,7 @@ export default function GameApp() {
         </aside>
       </div>
 
-      {book && <BookModal state={state} initialTab={book} onClose={() => setBook(null)} />}
+      {book && <BookModal state={state} initialTab={book} onClose={() => setBook(null)} onDecor={(id) => update((s) => setDecor(s, id))} />}
       {toast.length > 0 && (
         <div role="status" className="pointer-events-none fixed inset-x-0 top-20 z-50 flex flex-col items-center gap-2 px-4">
           {toast.slice(0, 4).map((a) => (

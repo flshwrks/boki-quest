@@ -27,6 +27,7 @@ import {
   nextDay,
   setExamAnswer,
   submitEntry,
+  setDecor,
   turnLessonPage,
   unlockedAccounts,
 } from "./logic";
@@ -143,16 +144,19 @@ function play(seed: number, days: number, mistakeRate = 0) {
   return { s, seenTemplates, topicDays };
 }
 
-describe("採点", () => {
-  function atFirstJournal() {
-    const rand = seededRand(1);
-    let s = newGame("テスト商店", rand);
-    while (s.phase.kind !== "journal") {
-      s = s.phase.kind === "lesson" ? turnLessonPage(s, 1) : s.phase.kind === "event" ? choose(s, 0, rand) : advance(s, rand);
-    }
-    // 練習扱いを外して、通常の取引として採点する
-    return { ...s, phase: { ...s.phase, session: { ...s.phase.session, guided: false, hints: 0 } } } as GameState;
+/** 最初の記帳の画面（練習扱いを外す） */
+function atFirstJournalOf() {
+  const rand = seededRand(1);
+  let s = newGame("テスト商店", rand);
+  while (s.phase.kind !== "journal") {
+    s = s.phase.kind === "lesson" ? turnLessonPage(s, 1) : s.phase.kind === "event" ? choose(s, 0, rand) : advance(s, rand);
   }
+  // 練習扱いを外して、通常の取引として採点する
+  return { ...s, phase: { ...s.phase, session: { ...s.phase.session, guided: false, hints: 0 } } } as GameState;
+}
+
+describe("採点", () => {
+  const atFirstJournal = atFirstJournalOf;
 
   it("空欄のまま記帳しても減点しない", () => {
     const s = atFirstJournal();
@@ -174,6 +178,27 @@ describe("採点", () => {
     expect(fixed.phase.info.trustDelta).toBe(fixed.trust - s.trust);
     expect(submitEntry({ ...s, trust: 99 }, answer).trust).toBe(99);
     expect(submitEntry({ ...s, trust: 50 }, answer).trust).toBe(55);
+  });
+});
+
+describe("レアアイテムと内装", () => {
+  it("ノーヒント正解のとき、ときどきレアアイテムが見つかる（ヒントや間違いのあとは見つからない）", () => {
+    const s = atFirstJournalOf();
+    if (s.phase.kind !== "journal") throw new Error();
+    const { answer } = s.phase.session.tx;
+    const lucky = submitEntry(s, answer, () => 0);
+    if (lucky.phase.kind !== "result") throw new Error();
+    expect(lucky.phase.info.treasure).toBeDefined();
+    expect(lucky.treasures[lucky.phase.info.treasure!]).toBe(1);
+    expect(submitEntry(s, answer, () => 0.99).treasures).toEqual({});
+    const miss = submitEntry(s, { debit: answer.credit, credit: answer.debit }, () => 0);
+    expect(submitEntry(miss, answer, () => 0).treasures).toEqual({});
+  });
+
+  it("内装は解禁したものだけ選べる", () => {
+    const s = atFirstJournalOf();
+    expect(setDecor(s, "dragon").decor).toBe("wood");
+    expect(setDecor({ ...s, achievements: ["a", "b", "c", "d", "e"] }, "stone").decor).toBe("stone");
   });
 });
 

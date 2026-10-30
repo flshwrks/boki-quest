@@ -1,4 +1,5 @@
 import type { AccountName } from "@/engine/accounts";
+import type { DecorId } from "@/content/treasures";
 import type { UpgradeId } from "@/content/upgrades";
 import type { Entry } from "@/engine/journal";
 
@@ -242,6 +243,8 @@ export interface ResultInfo {
   trustDelta: number;
   combo: number;
   comboMessage?: string;
+  /** この記帳で見つけたレアアイテム */
+  treasure?: string;
 }
 
 export type Phase =
@@ -396,6 +399,10 @@ export interface GameState {
   reward: { amount: number; count: number } | null;
   /** 収穫祭の予約 */
   festival: Festival | null;
+  /** 集めたレアアイテム（id → 見つけた数） */
+  treasures: Record<string, number>;
+  /** 店の内装 */
+  decor: DecorId;
   cashDiff: { amount: number; day: number } | null;
   mistakes: Mistake[];
   /** 昇格審査に落ちたとき、次に受けられる日 */
