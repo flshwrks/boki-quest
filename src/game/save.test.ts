@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { newGame } from "./logic";
+import { initialState, newGame } from "./logic";
 import { seededRand } from "./random";
-import { EMPTY_BASE, fetchCloud, progressOf, pushCloud, reconcile } from "./save";
+import { EMPTY_BASE, fetchCloud, parseSave, progressOf, pushCloud, reconcile } from "./save";
 
 /** 保存APIと同じふるまいをする、メモリ上のサーバー */
 function fakeServer() {
@@ -109,5 +109,29 @@ describe("ほかの端末とのそろえ方", () => {
   it("どちらかが空なら、ある方を使う", () => {
     expect(reconcile(pc, null, 0, EMPTY_BASE)).toBe("local");
     expect(reconcile(null, phone, 9, EMPTY_BASE)).toBe("remote");
+  });
+});
+
+describe("消費税の注記がなかったころのミス", () => {
+  it("読み込むとミスの記録から外れる（注記の要らないミスは残る）", () => {
+    const exam = "商品24,000円を売り上げ、代金のうち9,000円は現金で受け取り、残額は掛けとした。消費税（税率10%、2,400円）は税抜方式で処理する。";
+    const entry = {
+      debit: [
+        { account: "現金" as const, amount: 11400 },
+        { account: "売掛金" as const, amount: 15000 },
+      ],
+      credit: [
+        { account: "売上" as const, amount: 24000 },
+        { account: "仮受消費税" as const, amount: 2400 },
+      ],
+    };
+    const base = initialState("テスト");
+    const other = { day: 1, templateId: "x", exam: "ほかの問題。" };
+    const state = {
+      ...base,
+      journal: [...base.journal, { day: 1, templateId: "customerSplit", exam, entry }],
+      mistakes: [{ day: 1, templateId: "customerSplit", exam }, other],
+    };
+    expect(parseSave(JSON.stringify(state))?.mistakes).toEqual([other]);
   });
 });

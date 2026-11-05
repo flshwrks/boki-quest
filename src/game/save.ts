@@ -1,5 +1,6 @@
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, OPEN_DAY, perItem } from "@/content/world";
 import { UPGRADES, UPGRADE_IDS, type UpgradeId } from "@/content/upgrades";
+import { withLegacyTaxNote } from "@/content/salesTax";
 import { initialState, practiceFromHistory } from "./logic";
 import { rollRequests } from "./requests";
 import type { GameState, LessonId, QueueItem } from "./types";
@@ -34,11 +35,21 @@ function migrate(raw: Saved): GameState | null {
   const stockValue = shifted.stockValue ?? perItem((id) => stock[id] * ITEMS[id].cost);
   // 店の設備は後から増えた項目。古いセーブでは、ガンテツの売り込みで買った設備を拾う
   const upgrades = shifted.upgrades ?? upgradesFromHistory(shifted);
-  const merged = { ...base, ...shifted, stock, stockValue, upgrades };
+  const merged = { ...base, ...shifted, stock, stockValue, upgrades, mistakes: (shifted.mistakes ?? base.mistakes).filter((m) => !unfairTaxMistake(shifted, m)) };
   // 正誤の記録は後から増えた項目。古いセーブでは、これまでの記帳から作り直す
   const withPractice = shifted.practice ? merged : { ...merged, practice: practiceFromHistory(merged) };
   // 月の依頼書も後から増えた項目。読み込んだ月の分をすぐ出す
   return withPractice.requests ? withPractice : rollRequests(withPractice);
+}
+
+/**
+ * 2026-10-30 より前の、代金を分けて受け払いする取引の問題文には「消費税をどちらに含めるか」がなく、答えが決まらなかった。
+ * そこでのミスは本人のせいではないので、ミスの記録から外す（苦手ドリルに出さない）。
+ * 正誤の記録（practice）は問題文を持たず特定できないうえ、件数が同期の目印（progressOf）なので残す
+ */
+function unfairTaxMistake(saved: GameState, m: GameState["mistakes"][number]): boolean {
+  const record = saved.journal.find((r) => r.templateId === m.templateId && r.exam === m.exam);
+  return !!record && withLegacyTaxNote(m.exam, record.entry) !== m.exam;
 }
 
 function upgradesFromHistory(saved: GameState): UpgradeId[] {
@@ -110,7 +121,7 @@ export interface LocalSave {
   savedAt: number;
 }
 
-function parse(raw: string | null): GameState | null {
+export function parseSave(raw: string | null): GameState | null {
   try {
     return raw ? migrate(JSON.parse(raw)) : null;
   } catch {
@@ -119,7 +130,7 @@ function parse(raw: string | null): GameState | null {
 }
 
 export function loadGame(): LocalSave | null {
-  const state = parse(storageGet(KEY));
+  const state = parseSave(storageGet(KEY));
   return state ? { state, savedAt: Number(storageGet(SAVED_AT_KEY)) || 0 } : null;
 }
 
@@ -195,7 +206,7 @@ async function pack(state: GameState): Promise<string> {
 async function unpack(data: string): Promise<GameState | null> {
   const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return parse(await new Response(stream).text());
+  return parseSave(await new Response(stream).text());
 }
 
 export type CloudSyncStatus = "ok" | "conflict" | "unauthorized" | "offline";

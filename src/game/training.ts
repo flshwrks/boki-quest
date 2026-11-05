@@ -6,7 +6,6 @@ import { parseAmount } from "@/engine/format";
 import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
 import { pick } from "@/content/eventKit";
-import { withLegacyTaxNote } from "@/content/salesTax";
 import {
   closingProblem,
   inventoryProblem,
@@ -77,7 +76,7 @@ function mistakeQuestion(state: GameState, m: Mistake): ExamQuestion | undefined
   if (banked) return banked;
   const lesson = lessonOfTemplate(m.templateId);
   const record = state.journal.find((r) => r.templateId === m.templateId && r.exam === m.exam);
-  return lesson && record ? { lesson, text: withLegacyTaxNote(m.exam, record.entry), answer: record.entry } : undefined;
+  return lesson && record ? { lesson, text: m.exam, answer: record.entry } : undefined;
 }
 
 export function drillQuestions(state: GameState, lesson: LessonId | null, rand: Rand): ExamQuestion[] {
@@ -120,7 +119,7 @@ export function checkDrill(state: GameState, answer: Entry): GameState {
   const q = d.questions[d.index];
   const ok = sameEntry(answer, q.answer);
   const logged = logPractice(state, q.lesson, ok);
-  const mistakes = ok ? state.mistakes.map((m) => (m.exam === q.text || withLegacyTaxNote(m.exam, q.answer) === q.text ? { ...m, resolved: true } : m)) : state.mistakes;
+  const mistakes = ok ? state.mistakes.map((m) => (m.exam === q.text ? { ...m, resolved: true } : m)) : state.mistakes;
   const results = d.results.map((r, i) => (i === d.index ? ok : r));
   return { ...logged, mistakes, phase: { kind: "drill", drill: { ...d, results, answer } } };
 }

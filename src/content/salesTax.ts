@@ -19,7 +19,7 @@ function whereNote(payLines: Entry["debit"], taxed: AccountName, isSale: boolean
 
 /**
  * 2026-10-30 より前に記帳した、代金を分けて受け払いする取引の問題文には「消費税をどちらに含めるか」がない。
- * そのころは科目の並び（SALE_PAY・BUY_PAY）の先頭の代金に含めていたので、それを問題文に書き足す（苦手ドリルの出し直し用）
+ * そのころは科目の並び（SALE_PAY・BUY_PAY）の先頭の代金に含めていた。その注記を足した問題文を返す（足すものがなければそのまま）
  */
 export function withLegacyTaxNote(exam: string, entry: Entry): string {
   if (!exam.endsWith("税抜方式で処理する。")) return exam;
