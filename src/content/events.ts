@@ -117,7 +117,7 @@ export function purchaseTx(item: ItemId, qty: number, pay: PurchasePay, { fee = 
         ? `商品${n(amount)}円を仕入れ、代金は引取運賃${n(fee)}円とともに${payText}。`
         : `商品${n(amount)}円を仕入れ、代金は${payText}。`
       : fee > 0
-        ? `商品${n(amount)}円を掛けで仕入れ、引取運賃${n(fee)}円は現金で支払った。`
+        ? `商品${n(amount)}円を仕入れ、代金は掛けとした。また、引取運賃${n(fee)}円は現金で支払った。`
         : `商品${n(amount)}円を仕入れ、代金は掛けとした。`;
   return {
     story: `${it.name}を${qty}${it.unit}仕入れた${pay === "買掛金" ? "（代金は月末払い）" : ""}${fee > 0 ? `。運び賃${n(fee)}円は店が払った` : ""}。`,
@@ -222,8 +222,8 @@ function saleTx(who: CharacterId, item: ItemId, qty: number, amount: number, mod
       mode === "現金"
         ? `商品${n(amount)}円を売り上げ、代金は現金で受け取った。`
         : fee > 0
-          ? `商品${n(amount)}円を掛けで売り上げ、発送費${n(fee)}円は現金で支払った。`
-          : `商品${n(amount)}円を掛けで売り上げた。`,
+          ? `商品${n(amount)}円を売り上げ、代金は掛けとした。また、発送費${n(fee)}円は現金で支払った。`
+          : `商品${n(amount)}円を売り上げ、代金は掛けとした。`,
     answer: je(debit, credit),
     idea:
       fee > 0

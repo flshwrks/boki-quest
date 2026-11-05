@@ -13,7 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES, purchaseTx } from "@/content/events";
-import { withLegacyTaxNote, withSalesTax } from "@/content/salesTax";
+import { isLegacyTaxSplit, withSalesTax } from "@/content/salesTax";
 import { advance, afterResult, choose, newGame, nextLesson, planDay, skipLesson, startOrder, startUpgrade, submitEntry, upgradePreview } from "./logic";
 import { seededRand } from "./random";
 import { rollRequests } from "./requests";
@@ -386,16 +386,16 @@ describe("消費税は商品の代金にだけかける（試験と同じ）", (
       { account: "仮払消費税", amount: 400 },
     ]);
     expect(buy.answer.credit).toEqual([{ account: "現金", amount: 4900 }]);
-    expect(buy.exam).toContain("商品代金4,000円に対する消費税（税率10%、400円）");
+    expect(buy.exam).toBe("商品4,000円を仕入れ、代金は消費税400円および引取運賃500円とともに現金で支払った。なお、消費税は商品代金4,000円に対してかかり、税抜方式で処理する。");
   });
 
-  it("掛けで仕入れ、引取運賃を現金で払うとき：消費税は掛け代金に含め、そのことを問題文に書く", () => {
+  it("掛けで仕入れ、引取運賃を現金で払うとき：消費税は掛け代金に含める（本番と同じく「代金は消費税〇円とともに掛け」と書く）", () => {
     const buy = withSalesTax(purchaseTx("potion", 10, "買掛金", { fee: 500, unit: 400 }));
     expect(buy.answer.credit).toEqual([
       { account: "買掛金", amount: 4400 },
       { account: "現金", amount: 500 },
     ]);
-    expect(buy.exam).toContain("なお、消費税は掛け代金に含める。");
+    expect(buy.exam).toBe("商品4,000円を仕入れ、代金は消費税400円とともに掛けとした。また、引取運賃500円は現金で支払った。なお、消費税は商品代金4,000円に対してかかり、税抜方式で処理する。");
   });
 });
 
@@ -414,7 +414,7 @@ describe("消費税は「残額」の側に含める", () => {
     expect(sale("売掛金").answer.debit).toEqual([
       { account: "現金", amount: 4000 },
       { account: "売掛金", amount: 7000 },
-    ]);
+    ]);    expect(sale("売掛金").exam).toBe("商品10,000円を売り上げ、消費税1,000円を含めた代金のうち4,000円は現金で受け取り、残額は掛けとした。なお、消費税は税抜方式で処理する。");
   });
 });
 
@@ -437,22 +437,23 @@ describe("ギルドの帳簿相談", () => {
   });
 });
 
-describe("苦手ドリル：消費税のルールを変える前に記帳した問題", () => {
-  it("消費税をどちらに含めたかを問題文に書き足す", () => {
-    const exam = "商品24,000円を売り上げ、代金のうち9,000円は現金で受け取り、残額は掛けとした。消費税（税率10%、2,400円）は税抜方式で処理する。";
-    const entry = {
-      debit: [
-        { account: "現金" as const, amount: 11400 },
-        { account: "売掛金" as const, amount: 15000 },
-      ],
-      credit: [
-        { account: "売上" as const, amount: 24000 },
-        { account: "仮受消費税" as const, amount: 2400 },
-      ],
-    };
-    expect(withLegacyTaxNote(exam, entry)).toBe(`${exam}なお、消費税は現金の金額に含める。`);
-    // 代金が1つなら何も足さない
-    const single = { debit: [{ account: "現金" as const, amount: 26400 }], credit: entry.credit };
-    expect(withLegacyTaxNote(exam, single)).toBe(exam);
+describe("消費税のルールを変える前に記帳した、代金を分けて受け払いする問題", () => {
+  const entry = {
+    debit: [
+      { account: "現金" as const, amount: 11400 },
+      { account: "売掛金" as const, amount: 15000 },
+    ],
+    credit: [
+      { account: "売上" as const, amount: 24000 },
+      { account: "仮受消費税" as const, amount: 2400 },
+    ],
+  };
+  it("注記のない古い問題文だけを見分ける", () => {
+    const old = "商品24,000円を売り上げ、代金のうち9,000円は現金で受け取り、残額は掛けとした。消費税（税率10%、2,400円）は税抜方式で処理する。";
+    expect(isLegacyTaxSplit(old, entry)).toBe(true);
+    expect(isLegacyTaxSplit(`${old}なお、消費税は掛け代金に含める。`, entry)).toBe(false);
+    expect(isLegacyTaxSplit("商品24,000円を売り上げ、消費税2,400円を含めた代金のうち9,000円は現金で受け取り、残額は掛けとした。なお、消費税は税抜方式で処理する。", entry)).toBe(false);
+    // 代金が1つなら答えは決まる
+    expect(isLegacyTaxSplit(old, { debit: [{ account: "現金", amount: 26400 }], credit: entry.credit })).toBe(false);
   });
 });

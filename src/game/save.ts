@@ -1,6 +1,6 @@
 import { DAYS_PER_MONTH, DAYS_PER_YEAR, ITEMS, OPEN_DAY, perItem } from "@/content/world";
 import { UPGRADES, UPGRADE_IDS, type UpgradeId } from "@/content/upgrades";
-import { withLegacyTaxNote } from "@/content/salesTax";
+import { isLegacyTaxSplit } from "@/content/salesTax";
 import { initialState, practiceFromHistory } from "./logic";
 import { rollRequests } from "./requests";
 import type { GameState, LessonId, QueueItem } from "./types";
@@ -49,7 +49,7 @@ function migrate(raw: Saved): GameState | null {
  */
 function unfairTaxMistake(saved: GameState, m: GameState["mistakes"][number]): boolean {
   const record = saved.journal.find((r) => r.templateId === m.templateId && r.exam === m.exam);
-  return !!record && withLegacyTaxNote(m.exam, record.entry) !== m.exam;
+  return !!record && isLegacyTaxSplit(m.exam, record.entry);
 }
 
 function upgradesFromHistory(saved: GameState): UpgradeId[] {

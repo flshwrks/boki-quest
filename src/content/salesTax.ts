@@ -11,24 +11,33 @@ const SALES_TAX_RATE = 0.1;
 const SALE_PAY: AccountName[] = ["現金", "売掛金", "普通預金", "当座預金", "受取手形", "電子記録債権", "クレジット売掛金", "受取商品券"];
 const BUY_PAY: AccountName[] = ["買掛金", "現金", "普通預金", "当座預金", "未払金", "支払手形", "電子記録債務"];
 
-/** 代金を2つ以上の方法で受け払いするときは、本番と同じく、消費税をどちらに含めるかを問題文に書く */
-function whereNote(payLines: Entry["debit"], taxed: AccountName, isSale: boolean): string {
-  if (payLines.filter((l) => (isSale ? SALE_PAY : BUY_PAY).includes(l.account)).length < 2) return "";
-  return `なお、消費税は${taxed === "売掛金" || taxed === "買掛金" ? "掛け代金" : `${taxed}の金額`}に含める。`;
+/**
+ * 2026-10-30 より前に記帳した、代金を分けて受け払いする取引か。そのころの問題文には消費税をどちらに含めるかがなく、
+ * 科目の並びの先頭（現金など、金額の書かれた側）に含めていたので、答えが問題文と合わない
+ */
+export function isLegacyTaxSplit(exam: string, entry: Entry): boolean {
+  if (!exam.endsWith("税抜方式で処理する。") || exam.includes("なお、消費税は")) return false;
+  const taxSide = (["debit", "credit"] as Side[]).find((s) => entry[s].some((l) => l.account === "仮受消費税" || l.account === "仮払消費税"));
+  if (!taxSide) return false;
+  const pays = entry[opposite(taxSide)].filter((l) => [...SALE_PAY, ...BUY_PAY].includes(l.account));
+  return pays.length > 1;
 }
 
 /**
- * 2026-10-30 より前に記帳した、代金を分けて受け払いする取引の問題文には「消費税をどちらに含めるか」がない。
- * そのころは科目の並び（SALE_PAY・BUY_PAY）の先頭の代金に含めていた。その注記を足した問題文を返す（足すものがなければそのまま）
+ * 問題文に消費税を書き込む。本番と同じく「代金は消費税〇円とともに〜」「消費税〇円を含めた代金のうち〜円は…、残額は…」の形にする。
+ * こうすると、金額の書かれた代金はそのまま、消費税は残額の側に入ることが問題文から読み取れる。
+ * 「代金」の出てこない問題文（返品・クレジット販売など）は、文末に消費税の金額を書き足す
  */
-export function withLegacyTaxNote(exam: string, entry: Entry): string {
-  if (!exam.endsWith("税抜方式で処理する。")) return exam;
-  const taxSide = (["debit", "credit"] as Side[]).find((s) => entry[s].some((l) => l.account === "仮受消費税" || l.account === "仮払消費税"));
-  if (!taxSide) return exam;
-  const isSale = entry[taxSide].some((l) => l.account === "仮受消費税");
-  const payLines = entry[opposite(taxSide)];
-  const taxed = (isSale ? SALE_PAY : BUY_PAY).find((a) => payLines.some((l) => l.account === a));
-  return taxed ? exam + whereNote(payLines, taxed, isSale) : exam;
+function taxedExam(exam: string, tax: number, base: number, taxBase: boolean): string {
+  const t = `消費税${n(tax)}円`;
+  if (exam.includes("代金のうち")) return `${exam.replace("代金のうち", `${t}を含めた代金のうち`)}なお、消費税は税抜方式で処理する。`;
+  if (exam.includes("代金は")) {
+    // 「代金は引取運賃〇円とともに」なら「代金は消費税〇円および引取運賃〇円とともに」
+    const withFreight = exam.replace(/代金は(引取運賃[\d,]+円)とともに/, `代金は${t}および$1とともに`);
+    const body = withFreight !== exam ? withFreight : exam.replace("代金は", `代金は${t}とともに`);
+    return `${body}なお、${taxBase ? `消費税は商品代金${n(base)}円に対してかかり、` : "消費税は"}税抜方式で処理する。`;
+  }
+  return `${exam}消費税（税率${pct(SALES_TAX_RATE)}、${n(tax)}円）は税抜方式で処理する。`;
 }
 
 /**
@@ -59,12 +68,11 @@ export function withSalesTax(tx: Transaction): Transaction {
     addCredits: tx.effect.addCredits?.map((a, i) => (i === first ? { ...a, amount: a.amount + tax, taxed: true } : a)),
     settleCredits: isReturn ? tx.effect.settleCredits?.map((s, i) => (i === 0 ? { ...s, amount: s.amount + tax } : s)) : tx.effect.settleCredits,
   };
-  const where = whereNote(tx.answer[paySide], payLine.account, isSale);
   return {
     ...tx,
     answer,
     effect,
-    exam: `${tx.exam}${tx.taxBase !== undefined ? `商品代金${n(base)}円に対する` : ""}消費税（税率${pct(SALES_TAX_RATE)}、${n(tax)}円）は税抜方式で処理する。${where}`,
+    exam: taxedExam(tx.exam, tax, base, tx.taxBase !== undefined),
     idea: `${tx.idea} 消費税は、仕入なら仮払消費税、売上なら仮受消費税として別に記録するよ。`,
   };
 }
