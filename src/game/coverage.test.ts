@@ -13,7 +13,7 @@ import {
   worksheetProblem,
 } from "@/content/mockExam";
 import { TEMPLATES, purchaseTx } from "@/content/events";
-import { withSalesTax } from "@/content/salesTax";
+import { withLegacyTaxNote, withSalesTax } from "@/content/salesTax";
 import { advance, afterResult, choose, newGame, nextLesson, planDay, skipLesson, startOrder, startUpgrade, submitEntry, upgradePreview } from "./logic";
 import { seededRand } from "./random";
 import { rollRequests } from "./requests";
@@ -434,5 +434,25 @@ describe("ギルドの帳簿相談", () => {
     expect(s.phase.kind).toBe("result");
     expect(s.journal.length).toBe(base.journal.length);
     expect(s.practice.at(-1)).toEqual({ day: s.day, lesson: "fixedsale", ok: true });
+  });
+});
+
+describe("苦手ドリル：消費税のルールを変える前に記帳した問題", () => {
+  it("消費税をどちらに含めたかを問題文に書き足す", () => {
+    const exam = "商品24,000円を売り上げ、代金のうち9,000円は現金で受け取り、残額は掛けとした。消費税（税率10%、2,400円）は税抜方式で処理する。";
+    const entry = {
+      debit: [
+        { account: "現金" as const, amount: 11400 },
+        { account: "売掛金" as const, amount: 15000 },
+      ],
+      credit: [
+        { account: "売上" as const, amount: 24000 },
+        { account: "仮受消費税" as const, amount: 2400 },
+      ],
+    };
+    expect(withLegacyTaxNote(exam, entry)).toBe(`${exam}なお、消費税は現金の金額に含める。`);
+    // 代金が1つなら何も足さない
+    const single = { debit: [{ account: "現金" as const, amount: 26400 }], credit: entry.credit };
+    expect(withLegacyTaxNote(exam, single)).toBe(exam);
   });
 });
