@@ -67,6 +67,9 @@ import {
   nextPracticeStep,
   setPracticeFill,
   gradePractice,
+  checkGuide,
+  guideBlank,
+  setGuide,
   finishPractice,
   startPrepLesson,
 } from "@/game/training";
@@ -681,6 +684,13 @@ export default function GameApp() {
           onNext={() => update((s) => nextPracticeStep(s))}
           onSkip={() => update((s) => nextPracticeStep(s, true))}
           onFill={(b, v) => update((s) => setPracticeFill(s, b, v))}
+          onGuideCheck={(v) => {
+            const i = guideBlank(p.practice);
+            const next = checkGuide(state, v);
+            if (i !== undefined && next.phase.kind === "practice") play(next.phase.practice.checks?.[i] ? "correct" : "wrong");
+            commit(next);
+          }}
+          onGuide={(on) => update((s) => setGuide(s, on))}
           onGrade={() => update(gradePractice)}
           onRetry={() => update((s) => startPractice(s, p.practice.format, rand))}
           onFinish={() => update(finishPractice)}

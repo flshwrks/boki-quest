@@ -12,12 +12,12 @@ import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamP
 import { QuestionText } from "./Question";
 import { Btn, Paper, Portrait, Win, fmt } from "./ui";
 
-const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");
+export const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");
 
-const answerText = (b: FillBlank) => (Array.isArray(b.answer) ? b.answer.join("・") : typeof b.answer === "number" ? fmt(b.answer) : b.answer);
+export const answerText = (b: FillBlank) => (Array.isArray(b.answer) ? b.answer.join("・") : typeof b.answer === "number" ? fmt(b.answer) : b.answer);
 
 /** 空欄ひとつ。採点後は自分の答えと正誤、間違いなら正解を出す */
-function Blank({
+export function Blank({
   blank,
   value,
   onChange,
@@ -26,11 +26,13 @@ function Blank({
 }: {
   blank: FillBlank;
   value: FillAnswer;
-  onChange: (v: FillAnswer) => void;
-  result?: boolean;
+  /** 省くと入力できない（見直し用） */
+  onChange?: (v: FillAnswer) => void;
+  result?: boolean | null;
   prefix?: string;
 }) {
-  const graded = result !== undefined;
+  const graded = result !== undefined && result !== null;
+  const locked = graded || !onChange;
   const mark = graded && <span className={result ? "text-[#1e7a46]" : "text-[#c0392b]"}>{result ? "◯" : "✕"}</span>;
   const fix = graded && !result && <span className="block text-[11px] text-[#c0392b]">正解：{answerText(blank)}</span>;
   if (blank.kind === "multi") {
@@ -44,9 +46,9 @@ function Blank({
               <button
                 key={o}
                 type="button"
-                disabled={graded}
+                disabled={locked}
                 aria-pressed={on}
-                onClick={() => onChange(on ? chosen.filter((x) => x !== o) : [...chosen, o])}
+                onClick={() => onChange?.(on ? chosen.filter((x) => x !== o) : [...chosen, o])}
                 className={`rounded border px-1.5 py-0.5 text-[11px] ${on ? "border-[#2f3f6f] bg-[#2f3f6f] text-white" : "border-[#b8bfd3] bg-white"}`}
               >
                 {o}
@@ -63,8 +65,8 @@ function Blank({
     blank.kind === "select" ? (
       <select
         value={typeof value === "string" ? value : ""}
-        disabled={graded}
-        onChange={(e) => onChange(e.target.value || null)}
+        disabled={locked}
+        onChange={(e) => onChange?.(e.target.value || null)}
         className="rounded border border-[#8a93ad] bg-[#fffbe6] px-1 py-0.5"
         aria-label="摘要を選ぶ"
       >
@@ -77,8 +79,8 @@ function Blank({
       <input
         inputMode="numeric"
         value={typeof value === "string" ? value : ""}
-        disabled={graded}
-        onChange={(e) => onChange(e.target.value)}
+        disabled={locked}
+        onChange={(e) => onChange?.(e.target.value)}
         className="w-24 rounded border border-[#8a93ad] bg-[#fffbe6] px-1 py-0.5 text-right tabular-nums"
         aria-label="金額"
       />
@@ -102,13 +104,16 @@ function Table({
   values,
   onChange,
   results,
+  active,
 }: {
   table: FillTable;
   problem: FillProblem;
   /** 省くと読むだけの表（問題として与える表） */
   values?: FillAnswer[];
   onChange?: (blank: number, v: FillAnswer) => void;
-  results?: boolean[];
+  results?: (boolean | null)[];
+  /** ガイドで今埋めている空欄。枠で目立たせる */
+  active?: number;
 }) {
   const isNumber = (c: FillCell) => (typeof c === "string" ? /^[△\d,]+$/.test(c) : problem.blanks[c.blank].kind === "amount");
   return (
@@ -135,14 +140,22 @@ function Table({
               }
             >
               {row.map((c, i) => (
-                <td key={i} className={`border border-[#b8bfd3] px-1.5 py-1 ${isNumber(c) ? "text-right tabular-nums" : ""}`}>
+                <td
+                  key={i}
+                  data-blank={typeof c === "string" ? undefined : c.blank}
+                  className={`border border-[#b8bfd3] px-1.5 py-1 ${isNumber(c) ? "text-right tabular-nums" : ""} ${
+                    typeof c !== "string" && c.blank === active ? "bg-[#fff1b8] outline-3 outline-[#e0a800]" : ""
+                  }`}
+                >
                   {typeof c === "string" ? (
                     c
+                  ) : c.blank === active && results?.[c.blank] == null ? (
+                    <span className="font-bold text-[#8a5a00]">？</span>
                   ) : (
                     <Blank
                       blank={problem.blanks[c.blank]}
                       value={values?.[c.blank] ?? null}
-                      onChange={(v) => onChange?.(c.blank, v)}
+                      onChange={onChange && ((v) => onChange(c.blank, v))}
                       result={results?.[c.blank]}
                       prefix={c.prefix}
                     />
@@ -189,12 +202,14 @@ export function FillSheet({
   values,
   onChange,
   results,
+  active,
 }: {
   problem: FillProblem;
   values: FillAnswer[];
   /** 省くと見直し用（入力できない） */
   onChange?: (blank: number, v: FillAnswer) => void;
-  results?: boolean[];
+  results?: (boolean | null)[];
+  active?: number;
 }) {
   return (
     <div>
@@ -203,7 +218,7 @@ export function FillSheet({
       </p>
       <ProblemContext problem={problem} />
       {problem.sheet.map((t, i) => (
-        <Table key={`s${i}`} table={t} problem={problem} values={values} onChange={onChange} results={results} />
+        <Table key={`s${i}`} table={t} problem={problem} values={values} onChange={onChange} results={results} active={active} />
       ))}
     </div>
   );

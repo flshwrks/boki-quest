@@ -3,10 +3,12 @@
 import type { AccountName } from "@/engine/accounts";
 import type { Entry } from "@/engine/journal";
 import { type ExamFormat, FORMAT_BY_ID } from "@/content/examFormats";
-import { problemPassed, problemScore } from "@/game/training";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { blankLabel, blankOrder, fillCorrect, guideBlank, problemPassed, problemScore } from "@/game/training";
 import type { FillAnswer, PracticeStep, ProblemPractice } from "@/game/types";
 import { Calculator, useCalcResults } from "./Calculator";
-import { FillSheet, ProblemContext } from "./MockExamPanel";
+import { Blank, FillSheet, ProblemContext, answerText, filled } from "./MockExamPanel";
 import { QuizCard } from "./Question";
 import { Btn, EntryTable, Paper, Portrait, ProgressDots, Win } from "./ui";
 
@@ -40,6 +42,130 @@ function StepAnswer({ step }: { step: PracticeStep }) {
   );
 }
 
+/** いま解き方のどこをやっているか */
+function Stage({ children }: { children: React.ReactNode }) {
+  return <p className="mb-3 rounded-lg border-l-4 border-gold bg-gold/10 p-2 text-sm">{children}</p>;
+}
+
+/** 下書きの仕訳の一覧（求め方に出てくる「決算整理事項3」などは、ここの仕訳） */
+function StepList({ steps }: { steps: PracticeStep[] }) {
+  return (
+    <details className="mb-3">
+      <summary className="cursor-pointer text-sm">下書きの仕訳（求め方に出てくる仕訳）</summary>
+      <ol className="mt-1 space-y-2 text-sm">
+        {steps.map((s) => (
+          <li key={s.text} className="rounded-lg border border-white/20 p-2">
+            <p className="mb-1">
+              {s.label && <span className="mr-1 text-gold">{s.label}</span>}
+              {s.text}
+            </p>
+            <StepAnswer step={s} />
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+/** 表のその欄が見える位置までスクロールする（下の案内に隠れないよう、画面の上のほうへ） */
+function scrollToBlank(blank: number) {
+  const el = document.querySelector(`[data-blank="${blank}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  window.scrollBy({ top: el.getBoundingClientRect().top - window.innerHeight * 0.2, behavior: "smooth" });
+}
+
+/** ガイド：画面の下に、今埋める欄の場所・入力・求め方を出す。答え合わせのあとは求め方を見せてから次の欄へ */
+type LastCheck = { blank: number; ok: boolean } | null;
+
+function GuideBar({
+  practice,
+  shown,
+  last,
+  onCheck,
+  onNext,
+  onGrade,
+}: {
+  practice: ProblemPractice;
+  /** 案内している欄（答え合わせの直後は、その欄） */
+  shown: number | undefined;
+  last: LastCheck;
+  onCheck: (value: FillAnswer, ok: boolean) => void;
+  onNext: () => void;
+  onGrade: () => void;
+}) {
+  const { problem } = practice;
+  const [draft, setDraft] = useState<FillAnswer>(null);
+  const [why, setWhy] = useState(false);
+  const order = blankOrder(problem);
+
+  useEffect(() => {
+    if (shown !== undefined) scrollToBlank(shown);
+  }, [shown]);
+
+  const blank = shown === undefined ? undefined : problem.blanks[shown];
+  // 画面の下に固定する。親に transform があると fixed が効かないので body に出す（電卓と同じ）
+  return createPortal(
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-gold bg-[#151a33]/95 p-3 backdrop-blur">
+      <div className="mx-auto max-h-[42vh] max-w-3xl overflow-y-auto">
+        {shown === undefined || !blank ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm">全部の欄を埋めた！ 採点して、まちがえた欄を見直そう。</p>
+            <Btn onClick={onGrade}>採点する</Btn>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-dim">
+              ガイド {order.indexOf(shown) + 1} / {order.length} 欄　黄色の欄を埋めよう
+            </p>
+            <p className="mb-1 font-bold text-gold">
+              {blankLabel(problem, shown)}
+              {blank.kind === "amount" ? "の金額は？" : blank.kind === "multi" ? "（あてはまるものをすべて）" : "に入るものは？"}
+            </p>
+            {last ? (
+              <>
+                <p className={`mb-1 ${last.ok ? "text-ok" : "text-ng"}`}>{last.ok ? "◯ 正解！" : `✕ 正解は ${answerText(blank)}`}</p>
+                {blank.why && <p className="mb-2 text-sm">🧮 {blank.why}</p>}
+                <Btn
+                  onClick={() => {
+                    setDraft(null);
+                    setWhy(false);
+                    onNext();
+                  }}
+                >
+                  次の欄へ
+                </Btn>
+              </>
+            ) : (
+              <>
+                <div className="mb-2 rounded bg-[#eef0f6] p-2 text-[#1d1d2b]">
+                  <Blank blank={blank} value={draft} onChange={setDraft} />
+                </div>
+                {why ? (
+                  <p className="mb-2 text-sm">🧮 {blank.why}</p>
+                ) : (
+                  <button type="button" className="mb-2 text-sm text-gold underline" onClick={() => setWhy(true)}>
+                    求め方を見る（答えも出る）
+                  </button>
+                )}
+                <div>
+                  <Btn
+                    disabled={!filled(draft)}
+                    onClick={() => onCheck(draft, fillCorrect(blank, draft))}
+                  >
+                    確かめる
+                  </Btn>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /** 第2問・第3問の問題演習：下書きの仕訳を1つずつ答え合わせ → 答案を埋めて採点 */
 export function PracticePanel({
   practice,
@@ -48,6 +174,8 @@ export function PracticePanel({
   onNext,
   onSkip,
   onFill,
+  onGuideCheck,
+  onGuide,
   onGrade,
   onRetry,
   onFinish,
@@ -58,11 +186,14 @@ export function PracticePanel({
   onNext: () => void;
   onSkip: () => void;
   onFill: (blank: number, value: FillAnswer) => void;
+  onGuideCheck: (value: FillAnswer) => void;
+  onGuide: (on: boolean) => void;
   onGrade: () => void;
   onRetry: () => void;
   onFinish: () => void;
 }) {
   const [, addCalc] = useCalcResults();
+  const [last, setLast] = useState<LastCheck>(null);
   const format = FORMAT_BY_ID.get(practice.format)!;
   const { problem } = practice;
   const steps = problem.steps ?? [];
@@ -74,6 +205,11 @@ export function PracticePanel({
     return (
       <Win title={`${head}：下書き（${practice.step + 1} / ${steps.length}）`}>
         <ProgressDots results={practice.stepResults} current={practice.step} />
+        <Stage>
+          いまの作業：<b>手順1</b>　{format.method[0]}
+          <br />
+          ここで書いた仕訳の金額が、あとで表に入る数字のもとになる。
+        </Stage>
         <MethodCard format={format} open={practice.step === 0} />
         <details open className="mb-3">
           <summary className="cursor-pointer text-sm">問題（{problem.title}）</summary>
@@ -106,8 +242,44 @@ export function PracticePanel({
   const score = results && problemScore(problem, results);
   const full = problemScore(problem);
   const passed = !!results && problemPassed(problem, results);
+  const guiding = !!practice.checks && !results;
+  const active = guiding ? (last?.blank ?? guideBlank(practice)) : undefined;
+  const modes = [
+    [true, "ガイドつき（1欄ずつ、求め方つき）"],
+    [false, "ガイドなし（本番と同じ）"],
+  ] as const;
   return (
-    <Win title={head}>
+    <Win title={head} className={guiding ? "pb-[45vh]" : ""}>
+      {!results && (
+        <>
+          <div className="mb-2 flex flex-wrap gap-2 text-sm" role="group" aria-label="解き方">
+            {modes.map(([on, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={!!practice.checks === on}
+                onClick={() => {
+                  if (!!practice.checks === on) return;
+                  setLast(null);
+                  onGuide(on);
+                }}
+                className={`rounded-full border px-3 py-1 ${!!practice.checks === on ? "border-gold bg-gold/20 text-gold" : "border-white/30"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <Stage>
+            {guiding ? (
+              <>
+                いまの作業：<b>表を1欄ずつ埋める</b>。黄色く光っている欄が、今埋める欄。画面の下に、その欄の場所と入力欄が出る。わからなければ「求め方を見る」で、問題の数字を使った計算を確かめよう。
+              </>
+            ) : (
+              <>いまの作業：本番と同じく、自分で表を埋めてから「採点する」。手順は下の「解き方の手順」を見よう。</>
+            )}
+          </Stage>
+        </>
+      )}
       <MethodCard format={format} open={!!results} />
       {results && (
         <div className="mb-3 flex items-center gap-3">
@@ -129,21 +301,28 @@ export function PracticePanel({
       <div className="mb-1">
         <Calculator onResult={addCalc} />
       </div>
+      {steps.length > 0 && <StepList steps={steps} />}
       <Paper className="mb-3">
-        <FillSheet problem={problem} values={practice.fills} onChange={onFill} results={results} />
+        <FillSheet
+          problem={problem}
+          values={practice.fills}
+          onChange={guiding ? undefined : onFill}
+          results={results ?? (guiding ? practice.checks : undefined)}
+          active={active}
+        />
       </Paper>
-      {results && steps.length > 0 && (
-        <details className="mb-3">
-          <summary className="cursor-pointer text-sm">下書きの仕訳（答え）</summary>
-          <ol className="mt-1 space-y-2 text-sm">
-            {steps.map((s) => (
-              <li key={s.text} className="rounded-lg border border-white/20 p-2">
-                <p className="mb-1">{s.text}</p>
-                <StepAnswer step={s} />
-              </li>
-            ))}
-          </ol>
-        </details>
+      {guiding && (
+        <GuideBar
+          practice={practice}
+          shown={active}
+          last={last}
+          onCheck={(value, ok) => {
+            setLast({ blank: active!, ok });
+            onGuideCheck(value);
+          }}
+          onNext={() => setLast(null)}
+          onGrade={onGrade}
+        />
       )}
       <div className="flex flex-wrap gap-2">
         {results ? (
@@ -155,7 +334,7 @@ export function PracticePanel({
           </>
         ) : (
           <>
-            <Btn onClick={onGrade}>採点する</Btn>
+            {!guiding && <Btn onClick={onGrade}>採点する</Btn>}
             <Btn variant="ghost" onClick={onFinish}>
               やめる
             </Btn>

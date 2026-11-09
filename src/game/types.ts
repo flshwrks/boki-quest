@@ -303,6 +303,8 @@ export interface FillBlank {
   options?: string[];
   answer: number | string | string[];
   points: number;
+  /** この欄の求め方（問題の数字を使った説明）。ガイドつきの問題演習で見せる */
+  why?: string;
 }
 
 export type FillAnswer = string | string[] | null;
@@ -329,6 +331,8 @@ export interface FillProblem {
 
 /** 下書きの仕訳ひとつ。note は答え合わせのあとに出す解説（金額の計算など） */
 export interface PracticeStep {
+  /** 表の求め方で、どの仕訳かを指す短い名前（「決算整理事項3①」など） */
+  label?: string;
   text: string;
   answer: Entry;
   note?: string;
@@ -343,6 +347,8 @@ export interface ProblemPractice {
   stepResults: (boolean | null)[];
   stepAnswer: Entry | null;
   fills: FillAnswer[];
+  /** ガイドつきで埋めるときの、空欄ごとの答え合わせ（null はまだ）。ガイドなしなら undefined */
+  checks?: (boolean | null)[];
   /** 採点したら空欄ごとの正誤 */
   results: boolean[] | null;
 }

@@ -11,7 +11,19 @@ import { type Mastery, advance, gradeQuestions, lessonOfTemplate, logPractice, l
 
 export { type Mastery, masteryOf };
 import { type Rand, shuffle } from "./random";
-import type { DrillSession, ExamQuestion, FillAnswer, FillBlank, FillProblem, GameState, LessonId, MockSession, Mistake, ProblemPractice } from "./types";
+import type {
+  DrillSession,
+  ExamQuestion,
+  FillAnswer,
+  FillBlank,
+  FillCell,
+  FillProblem,
+  GameState,
+  LessonId,
+  MockSession,
+  Mistake,
+  ProblemPractice,
+} from "./types";
 
 export const DRILL_SIZE = 8;
 export const MOCK_MINUTES = 60;
@@ -227,10 +239,60 @@ export function startPractice(state: GameState, format: string, rand: Rand): Gam
     stepResults: (problem.steps ?? []).map(() => null),
     stepAnswer: null,
     fills: problem.blanks.map(() => null),
+    // はじめはガイドつき（1欄ずつ、求め方を見ながら）
+    checks: problem.blanks.map(() => null),
     results: null,
   };
   return { ...state, phase: { kind: "practice", practice } };
 }
+
+const isNumberCell = (c: FillCell) => typeof c === "string" && /^[△\d,]+$/.test(c);
+
+/** 答案用紙の空欄を、表の上から下・左から右の順に並べる（ガイドで埋める順） */
+export function blankOrder(problem: FillProblem): number[] {
+  return problem.sheet.flatMap((t) => t.rows.flatMap((row) => row.flatMap((c) => (typeof c === "string" ? [] : [c.blank]))));
+}
+
+/** 空欄の場所の名前（「損益計算書の『減価償却費』」「商品有高帳 6/15 売上の払出金額」など） */
+export function blankLabel(problem: FillProblem, blank: number): string {
+  for (const t of problem.sheet) {
+    for (const row of t.rows) {
+      const col = row.findIndex((c) => typeof c !== "string" && c.blank === blank);
+      if (col < 0) continue;
+      const named = (c: FillCell) => typeof c === "string" && c !== "" && !isNumberCell(c);
+      // 行の名前は、左にある言葉（なければ右）。長すぎる文（取引の文など）なら行の番号
+      const left = row.slice(0, col).reverse().find(named) ?? row.slice(col + 1).find(named);
+      let name = typeof left === "string" ? left : "";
+      if (name.length > 16 && typeof row[0] === "string" && row[0]) name = row[0];
+      const date = typeof row[0] === "string" && row[0].includes("/") && row[0] !== name ? `${row[0]} ` : "";
+      const column = t.head?.[col] && t.head[col] !== "金額" ? `の${t.head[col]}` : "";
+      return `${t.title ?? "答案"}：${date}${name ? `「${name}」` : ""}${column}`;
+    }
+  }
+  return "";
+}
+
+/** ガイドで次に埋める空欄（全部埋めたら undefined） */
+export const guideBlank = (p: ProblemPractice) => (p.checks ? blankOrder(p.problem).find((i) => p.checks![i] === null) : undefined);
+
+/** 空欄の正解を、入力欄に入る形にする */
+export const answerValue = (b: FillBlank): FillAnswer => (typeof b.answer === "number" ? String(b.answer) : b.answer);
+
+/** ガイドの1欄を答え合わせする。間違えたら正解を書き込んで先へ進める（表が最後まで埋まるように） */
+export const checkGuide = (state: GameState, value: FillAnswer) =>
+  updatePractice(state, (p) => {
+    const i = guideBlank(p);
+    if (i === undefined || p.results) return p;
+    const blank = p.problem.blanks[i];
+    const ok = fillCorrect(blank, value);
+    return { ...p, fills: setAt(p.fills, i, ok ? value : answerValue(blank)), checks: setAt(p.checks!, i, ok) };
+  });
+
+/** ガイドつき・なしを切り替える。切り替えたら答案は書き直し */
+export const setGuide = (state: GameState, on: boolean) =>
+  updatePractice(state, (p) =>
+    p.results ? p : { ...p, fills: p.problem.blanks.map(() => null), checks: on ? p.problem.blanks.map(() => null) : undefined },
+  );
 
 function updatePractice(state: GameState, f: (p: ProblemPractice) => ProblemPractice): GameState {
   return state.phase.kind === "practice" ? { ...state, phase: { kind: "practice", practice: f(state.phase.practice) } } : state;
@@ -255,7 +317,8 @@ export const setPracticeFill = (state: GameState, blank: number, value: FillAnsw
 export function gradePractice(state: GameState): GameState {
   if (state.phase.kind !== "practice" || state.phase.practice.results) return state;
   const p = state.phase.practice;
-  const results = p.problem.blanks.map((b, i) => fillCorrect(b, p.fills[i]));
+  // ガイドつきなら、1欄ずつ答え合わせしたときの正誤で採点する（間違えた欄は正解が書き込まれているため）
+  const results = p.checks ? p.checks.map((c) => c === true) : p.problem.blanks.map((b, i) => fillCorrect(b, p.fills[i]));
   const logged = logPractice(state, p.problem.lesson, problemPassed(p.problem, results));
   return { ...logged, phase: { kind: "practice", practice: { ...p, results } } };
 }

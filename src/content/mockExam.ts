@@ -1,6 +1,6 @@
 // 模擬試験の第2問・第3問。数字は毎回変わり、答えは仕訳エンジンで計算する（手で答えを書かない）
 
-import { type AccountName, categoryOf, inMasterOrder, statementLabel } from "@/engine/accounts";
+import { type AccountName, type Side, categoryOf, homeSide, inMasterOrder, statementLabel } from "@/engine/accounts";
 import { type Entry, entry, sumAmounts } from "@/engine/journal";
 import {
   type Pair,
@@ -36,9 +36,9 @@ function blanks() {
   };
   return {
     list,
-    amount: (answer: number, prefix?: string) => add({ kind: "amount", answer }, prefix),
-    select: (answer: string, options: string[]) => add({ kind: "select", answer, options }),
-    multi: (answer: string[], options: string[]) => add({ kind: "multi", answer, options }),
+    amount: (answer: number, prefix?: string, why?: string) => add({ kind: "amount", answer, why }, prefix),
+    select: (answer: string, options: string[], why?: string) => add({ kind: "select", answer, options, why }),
+    multi: (answer: string[], options: string[], why?: string) => add({ kind: "multi", answer, options, why }),
     /** total 点をなるべく均等に割り振る（端数は前の空欄から1点ずつ）。空欄が total より多いと0点の空欄ができるので、作る側の誤り */
     score(total: number): FillBlank[] {
       if (list.length > total) throw new Error(`空欄が${list.length}個あり、${total}点では1点ずつ配れない`);
@@ -49,11 +49,36 @@ function blanks() {
   };
 }
 
-/** focus の科目なら金額を空欄に、そうでなければ金額を書いたセル */
+/** focus の科目なら金額を空欄に、そうでなければ金額を書いたセル。why はその欄の求め方 */
 const focusCell =
-  (b: ReturnType<typeof blanks>, focus: Set<AccountName>) =>
+  (b: ReturnType<typeof blanks>, focus: Set<AccountName>, why?: (account: AccountName) => string) =>
   (account: AccountName, amount: number): FillCell =>
-    focus.has(account) ? b.amount(amount) : fmt(amount);
+    focus.has(account) ? b.amount(amount, undefined, why?.(account)) : fmt(amount);
+
+const sideName = (side: Side) => (side === "debit" ? "借方" : "貸方");
+
+/**
+ * 決算整理後の金額の求め方：「決算整理前の〇〇は X円。決算整理事項3で＋Y円 → Z円」。
+ * 増える側（資産・費用は借方、負債・純資産・収益・控除科目は貸方）に書かれたら足し、反対側なら引く
+ */
+function adjustedWhy(trial: Entry, steps: PracticeStep[]) {
+  const before = new Map(trialBalance([trial]).map((r) => [r.account, r]));
+  return (account: AccountName): string => {
+    const r = before.get(account);
+    const home = homeSide(categoryOf(account)) ?? (r && r.credit > r.debit ? "credit" : "debit");
+    const start = r ? (home === "debit" ? r.debit - r.credit : r.credit - r.debit) : 0;
+    const moves = steps.flatMap((s) =>
+      (["debit", "credit"] as const).flatMap((side) =>
+        s.answer[side].filter((l) => l.account === account).map((l) => ({ label: s.label ?? "決算整理", amount: side === home ? l.amount : -l.amount })),
+      ),
+    );
+    const end = start + moves.reduce((a, m) => a + m.amount, 0);
+    const head = r ? `決算整理前の${account}は${fmt(start)}円。` : `${account}は決算整理前の試算表にない科目。`;
+    if (moves.length === 0) return `${head}決算整理で変わらないので、そのまま${fmt(end)}円。`;
+    const list = moves.map((m) => `${m.label}で${m.amount > 0 ? "＋" : "−"}${fmt(Math.abs(m.amount))}円`).join("、");
+    return `${head}${list} → ${fmt(end)}円。`;
+  };
+}
 
 const FISCAL = "当社（会計期間は4月1日から3月31日までの1年間）";
 
@@ -95,16 +120,41 @@ function prepaidLedger(rand: Rand): FillProblem {
     ledgerTable(
       "支払保険料",
       [
-        ["4/1", b.select("前払保険料", opts), fmt(x0), "3/31", "前払保険料", b.amount(x1)],
-        [`${m}/1`, "普通預金", fmt(now), "3/31", "損益", b.amount(x0 + now - x1)],
+        [
+          "4/1",
+          b.select("前払保険料", opts, "期首の再振替仕訳は（借）支払保険料／（貸）前払保険料。支払保険料の借方に書くので、摘要は相手の科目「前払保険料」。"),
+          fmt(x0),
+          "3/31",
+          "前払保険料",
+          b.amount(x1, undefined, `決算の仕訳（借）前払保険料／（貸）支払保険料の金額。翌期の${months}か月分：${fmt(now)} × ${months}/12 = ${fmt(x1)}円。`),
+        ],
+        [
+          `${m}/1`,
+          "普通預金",
+          fmt(now),
+          "3/31",
+          "損益",
+          b.amount(
+            x0 + now - x1,
+            undefined,
+            `当期の費用（勘定の残高）を「損益」に振り替える。借方の${fmt(x0)} + ${fmt(now)}から、貸方の前払分${fmt(x1)}を引いて${fmt(x0 + now - x1)}円。これで左右の合計がそろう。`,
+          ),
+        ],
       ],
       x0 + now,
     ),
     ledgerTable(
       "前払保険料",
       [
-        ["4/1", b.select("前期繰越", opts), fmt(x0), "4/1", "支払保険料", fmt(x0)],
-        ["3/31", "支払保険料", b.amount(x1), "3/31", b.select("次期繰越", opts), fmt(x1)],
+        ["4/1", b.select("前期繰越", opts, "前期末に繰り越した残高は、期首に「前期繰越」として借方（資産の増える側）に書く。"), fmt(x0), "4/1", "支払保険料", fmt(x0)],
+        [
+          "3/31",
+          "支払保険料",
+          b.amount(x1, undefined, `決算の仕訳（借）前払保険料 ${fmt(x1)}円を借方に書く。摘要は相手の科目「支払保険料」。`),
+          "3/31",
+          b.select("次期繰越", opts, "期末に残った前払保険料は、「次期繰越」として貸方に書いて締め切る（翌期首に前期繰越になる）。"),
+          fmt(x1),
+        ],
       ],
       x0 + x1,
     ),
@@ -149,15 +199,36 @@ function accruedLedger(rand: Rand): FillProblem {
       "支払利息",
       [
         [`${m}/${MONTH_END[m]}`, "普通預金", fmt(paid), "4/1", "未払利息", fmt(x)],
-        ["3/31", b.select("未払利息", opts), fmt(x), "3/31", "損益", b.amount(paid)],
+        [
+          "3/31",
+          b.select("未払利息", opts, "決算の仕訳は（借）支払利息／（貸）未払利息。支払利息の借方に書くので、摘要は相手の科目「未払利息」。"),
+          fmt(x),
+          "3/31",
+          "損益",
+          b.amount(paid, undefined, `当期の費用（勘定の残高）を「損益」に振り替える。借方の${fmt(paid)} + ${fmt(x)}から、貸方の再振替${fmt(x)}を引いて${fmt(paid)}円。`),
+        ],
       ],
       paid + x,
     ),
     ledgerTable(
       "未払利息",
       [
-        ["4/1", b.select("支払利息", opts), fmt(x), "4/1", b.select("前期繰越", opts), fmt(x)],
-        ["3/31", "次期繰越", fmt(x), "3/31", "支払利息", b.amount(x)],
+        [
+          "4/1",
+          b.select("支払利息", opts, "期首の再振替仕訳は（借）未払利息／（貸）支払利息。未払利息の借方に書くので、摘要は相手の科目「支払利息」。"),
+          fmt(x),
+          "4/1",
+          b.select("前期繰越", opts, "前期末に繰り越した未払利息（負債）は、期首に「前期繰越」として貸方（負債の増える側）に書く。"),
+          fmt(x),
+        ],
+        [
+          "3/31",
+          "次期繰越",
+          fmt(x),
+          "3/31",
+          "支払利息",
+          b.amount(x, undefined, `決算の仕訳（貸）未払利息の金額。${m + 1}月〜3月の${15 - m}か月分：${fmt(loan)} × ${rate}% × ${15 - m}/12 = ${fmt(x)}円。`),
+        ],
       ],
       x * 2,
     ),
@@ -202,28 +273,32 @@ export const SUB_BOOKS = [
   "固定資産台帳",
 ];
 
-/** 取引と、記入する補助簿（答え）。仕訳に出る科目から決まる */
-export const SUB_BOOK_CASES: [string, string[]][] = [
-  ["商品80,000円を仕入れ、代金のうち半額は約束手形を振り出して支払い、残額は掛けとした。", ["仕入帳", "商品有高帳", "支払手形記入帳", "買掛金元帳"]],
-  ["商品120,000円を売り上げ、代金は得意先振出しの約束手形で受け取った。", ["売上帳", "商品有高帳", "受取手形記入帳"]],
-  ["売掛金60,000円が当座預金口座に振り込まれた。", ["当座預金出納帳", "売掛金元帳"]],
-  ["備品250,000円を購入し、代金は月末に支払うこととした。", ["固定資産台帳"]],
-  ["掛けで仕入れた商品のうち5,000円を品違いのため返品した。", ["仕入帳", "商品有高帳", "買掛金元帳"]],
-  ["商品90,000円を売り上げ、代金のうち30,000円は現金で受け取り、残額は掛けとした。", ["現金出納帳", "売上帳", "商品有高帳", "売掛金元帳"]],
-  ["買掛金45,000円を小切手を振り出して支払った。", ["当座預金出納帳", "買掛金元帳"]],
-  ["かねて受け取っていた約束手形70,000円が満期となり、当座預金口座に入金された。", ["当座預金出納帳", "受取手形記入帳"]],
-  ["商品50,000円を掛けで仕入れ、引取運賃2,000円は現金で支払った。", ["現金出納帳", "仕入帳", "商品有高帳", "買掛金元帳"]],
-  ["備品（取得原価300,000円、減価償却累計額180,000円）を100,000円で売却し、代金は現金で受け取った。", ["現金出納帳", "固定資産台帳"]],
-  ["かねて振り出していた約束手形40,000円が満期となり、当座預金口座から支払われた。", ["当座預金出納帳", "支払手形記入帳"]],
-  ["掛けで売り上げた商品のうち8,000円が品違いのため返品された。", ["売上帳", "商品有高帳", "売掛金元帳"]],
-  ["商品の注文にあたり、手付金20,000円を現金で支払った。", ["現金出納帳"]],
+/** 取引と、記入する補助簿（答え）と、その仕訳。補助簿は仕訳に出る科目から決まる */
+export const SUB_BOOK_CASES: [string, string[], string][] = [
+  ["商品80,000円を仕入れ、代金のうち半額は約束手形を振り出して支払い、残額は掛けとした。", ["仕入帳", "商品有高帳", "支払手形記入帳", "買掛金元帳"], "（借）仕入 80,000／（貸）支払手形 40,000・買掛金 40,000"],
+  ["商品120,000円を売り上げ、代金は得意先振出しの約束手形で受け取った。", ["売上帳", "商品有高帳", "受取手形記入帳"], "（借）受取手形 120,000／（貸）売上 120,000"],
+  ["売掛金60,000円が当座預金口座に振り込まれた。", ["当座預金出納帳", "売掛金元帳"], "（借）当座預金 60,000／（貸）売掛金 60,000"],
+  ["備品250,000円を購入し、代金は月末に支払うこととした。", ["固定資産台帳"], "（借）備品 250,000／（貸）未払金 250,000（未払金を記入する補助簿はない）"],
+  ["掛けで仕入れた商品のうち5,000円を品違いのため返品した。", ["仕入帳", "商品有高帳", "買掛金元帳"], "（借）買掛金 5,000／（貸）仕入 5,000"],
+  ["商品90,000円を売り上げ、代金のうち30,000円は現金で受け取り、残額は掛けとした。", ["現金出納帳", "売上帳", "商品有高帳", "売掛金元帳"], "（借）現金 30,000・売掛金 60,000／（貸）売上 90,000"],
+  ["買掛金45,000円を小切手を振り出して支払った。", ["当座預金出納帳", "買掛金元帳"], "（借）買掛金 45,000／（貸）当座預金 45,000"],
+  ["かねて受け取っていた約束手形70,000円が満期となり、当座預金口座に入金された。", ["当座預金出納帳", "受取手形記入帳"], "（借）当座預金 70,000／（貸）受取手形 70,000"],
+  ["商品50,000円を掛けで仕入れ、引取運賃2,000円は現金で支払った。", ["現金出納帳", "仕入帳", "商品有高帳", "買掛金元帳"], "（借）仕入 52,000／（貸）買掛金 50,000・現金 2,000"],
+  ["備品（取得原価300,000円、減価償却累計額180,000円）を100,000円で売却し、代金は現金で受け取った。", ["現金出納帳", "固定資産台帳"], "（借）備品減価償却累計額 180,000・現金 100,000・固定資産売却損 20,000／（貸）備品 300,000"],
+  ["かねて振り出していた約束手形40,000円が満期となり、当座預金口座から支払われた。", ["当座預金出納帳", "支払手形記入帳"], "（借）支払手形 40,000／（貸）当座預金 40,000"],
+  ["掛けで売り上げた商品のうち8,000円が品違いのため返品された。", ["売上帳", "商品有高帳", "売掛金元帳"], "（借）売上 8,000／（貸）売掛金 8,000"],
+  ["商品の注文にあたり、手付金20,000円を現金で支払った。", ["現金出納帳"], "（借）前払金 20,000／（貸）現金 20,000（商品はまだ受け取っていないので仕入ではない。前払金の補助簿はない）"],
 ];
 
 export function subBookProblem(rand: Rand): FillProblem {
   const b = blanks();
   const rows: FillCell[][] = shuffle(SUB_BOOK_CASES, rand)
     .slice(0, 5)
-    .map(([text, books], i) => [`(${i + 1})`, text, b.multi(books, SUB_BOOKS)]);
+    .map(([text, books, journal], i) => [
+      `(${i + 1})`,
+      text,
+      b.multi(books, SUB_BOOKS, `仕訳は ${journal}。仕訳に出てくる科目から選ぶと「${books.join("・")}」。${books.includes("商品有高帳") ? "商品が出入りするので商品有高帳にも書く。" : ""}`),
+    ]);
   return {
     title: "第2問(2) 補助簿の選択",
     short: "第2問(2)",
@@ -256,8 +331,9 @@ function closingCase(rand: Rand): ClosingCase {
   // 決算整理仕訳は steps だけに持ち、adjustments はそこから作る（2つの配列がずれないように）
   const steps: PracticeStep[] = [];
   const adj = () => steps.map((s) => s.answer);
-  /** 直前に items へ足した決算整理事項の仕訳 */
-  const post = (e: Entry, note: string, label = "") => steps.push({ text: `${items.at(-1)}${label}`, answer: e, note });
+  /** 直前に items へ足した決算整理事項の仕訳。売上原価のように2つあるときは mark（①②）で分ける */
+  const post = (e: Entry, note: string, suffix = "", mark = "") =>
+    steps.push({ label: `決算整理事項${items.length}${mark}`, text: `${items.at(-1)}${suffix}`, answer: e, note });
   const focus = new Set<AccountName>([
     "仕入",
     "繰越商品",
@@ -332,11 +408,13 @@ function closingCase(rand: Rand): ClosingCase {
     entry([["仕入", d.繰越商品]], [["繰越商品", d.繰越商品]]),
     `試算表の繰越商品${fmt(d.繰越商品)}円は期首の在庫。売れた分の原価に含めるため、仕入に足す（しーくり）。`,
     "（①期首の商品）",
+    "①",
   );
   post(
     entry([["繰越商品", ending]], [["仕入", ending]]),
     `売れ残った期末の在庫${fmt(ending)}円を仕入から引き、繰越商品にする（くりしー）。売上原価 = ${fmt(d.仕入)} + ${fmt(d.繰越商品)} − ${fmt(ending)} = ${fmt(d.仕入 + d.繰越商品 - ending)}円。`,
     "（②期末の商品）",
+    "②",
   );
   // 4. 貸倒引当金（差額補充法）
   const rate = pick(rand, [2, 3]);
@@ -450,16 +528,25 @@ function linesOf(x: Partial<Record<AccountName, number>>): Lines {
 
 export function closingProblem(rand: Rand): FillProblem {
   const { trial, items, adjustments, steps, focus } = closingCase(rand);
-  // 貸借対照表の繰越利益剰余金は、当期純利益を足した額を答えさせる
-  focus.add("繰越利益剰余金");
   const s = statements([trial, ...adjustments]);
   const b = blanks();
+  const adjusted = adjustedWhy(trial, steps);
+  const shown = (account: AccountName) => {
+    const label = statementLabel(account);
+    const contra = categoryOf(account) === "contra" ? "資産から差し引く形（△）で書く。" : "";
+    return `${label !== account ? `表では「${label}」と表示する。` : ""}${contra}${adjusted(account)}`;
+  };
   const cell = (account: AccountName, amount: number, prefix?: string): FillCell =>
-    focus.has(account) ? b.amount(amount, prefix) : `${prefix ?? ""}${fmt(amount)}`;
+    focus.has(account) ? b.amount(amount, prefix, shown(account)) : `${prefix ?? ""}${fmt(amount)}`;
+  const revenue = sumAmounts(s.revenues);
+  const expense = sumAmounts(s.expenses);
 
   // 損益計算書（勘定式）：左に費用と当期純利益、右に収益。問題は必ず黒字になるように作ってある
   const left: FillCell[][] = s.expenses.map((r) => [statementLabel(r.account), cell(r.account, r.amount)]);
-  left.push(["当期純利益", b.amount(s.netIncome)]);
+  left.push([
+    "当期純利益",
+    b.amount(s.netIncome, undefined, `収益の合計${fmt(revenue)}円 − 費用の合計${fmt(expense)}円 = ${fmt(s.netIncome)}円。左右の合計をそろえるため、費用の側（左）に書く。`),
+  ]);
   const right: FillCell[][] = s.revenues.map((r) => [statementLabel(r.account), cell(r.account, r.amount)]);
   const plTotal = sumAmounts(s.revenues);
 
@@ -474,7 +561,16 @@ export function closingProblem(rand: Rand): FillProblem {
   const claims: FillCell[][] = [
     ...s.liabilities.map((l): FillCell[] => [statementLabel(l.account), cell(l.account, l.amount)]),
     ...s.equity.map((e): FillCell[] =>
-      e.account === "繰越利益剰余金" ? [e.account, cell(e.account, retainedEarnings(s))] : [e.account, fmt(e.amount)],
+      e.account === "繰越利益剰余金"
+        ? [
+            e.account,
+            b.amount(
+              retainedEarnings(s),
+              undefined,
+              `試算表の繰越利益剰余金${fmt(e.amount)}円 ＋ 当期純利益${fmt(s.netIncome)}円 = ${fmt(retainedEarnings(s))}円（当期のもうけが純資産に加わる）。`,
+            ),
+          ]
+        : [e.account, fmt(e.amount)],
     ),
   ];
   const bsTotal = sumAmounts(s.assets) - sumAmounts(s.contras);
@@ -524,8 +620,9 @@ function trialTable(title: string, entries: Entry[], cell?: (account: AccountNam
 export function trialAfterProblem(rand: Rand): FillProblem {
   const { trial, items, adjustments, steps, focus } = closingCase(rand);
   const b = blanks();
-  const sheet = trialTable("決算整理後残高試算表", [trial, ...adjustments], focusCell(b, focus));
-  const net = statements([trial, ...adjustments]).netIncome;
+  const sheet = trialTable("決算整理後残高試算表", [trial, ...adjustments], focusCell(b, focus, adjustedWhy(trial, steps)));
+  const st = statements([trial, ...adjustments]);
+  const net = st.netIncome;
   return {
     title: "第3問 決算整理後残高試算表",
     short: "第3問",
@@ -533,7 +630,7 @@ export function trialAfterProblem(rand: Rand): FillProblem {
     lead: [`次の決算整理前残高試算表と決算整理事項にもとづいて、${FISCAL}の決算整理後残高試算表の空欄を埋め、当期純利益を答えなさい。`],
     given: [trialTable("決算整理前残高試算表", [trial])],
     items,
-    sheet: [sheet, { title: "当期純利益", head: ["", "金額"], rows: [["当期純利益", b.amount(net)]] }],
+    sheet: [sheet, { title: "当期純利益", head: ["", "金額"], rows: [["当期純利益", b.amount(net, undefined, `収益の合計${fmt(sumAmounts(st.revenues))}円 − 費用の合計${fmt(sumAmounts(st.expenses))}円 = ${fmt(net)}円。`)]] }],
     blanks: b.score(35),
     steps,
   };
@@ -585,7 +682,8 @@ function inventorySheet(
   // 残高。先入先出法なら単価ごとの塊、移動平均法なら1つの塊
   let lots: Lot[] = [{ qty: d.q0, price: d.c0 }];
   let cogs = 0;
-  const cell = (x: number, blank: boolean): FillCell => (blank ? b.amount(x) : fmt(x));
+  const cell = (x: number, blank: boolean, why: string): FillCell => (blank ? b.amount(x, undefined, why) : fmt(x));
+  const outAmounts: number[] = [];
   /**
    * 1つの取引を、受入・払出・残高の行にする（塊が複数なら行を分ける）。
    * 売上の行は払出の金額を空欄にし、hideBalance のときは残高も空欄にする。
@@ -598,8 +696,28 @@ function inventorySheet(
     for (let i = 0; i < Math.max(out.length, lots.length); i++) {
       const o = out[i];
       const l = lots[i];
-      const outCells: FillCell[] = o ? [`${o.qty}`, cell(o.price, sale && !fifo), cell(o.qty * o.price, true)] : ["", "", ""];
-      const balCells: FillCell[] = l ? [`${l.qty}`, cell(l.price, hide && !fifo), cell(l.qty * l.price, hide && fifo)] : ["", "", ""];
+      const outWhy = fifo
+        ? `先入先出法なので、古い単価のものから払い出す${out.length > 1 ? "（足りない分は次に古い単価で払い出し、行を分けて書く）" : ""}。`
+        : "金額は売価ではなく原価（平均単価）で書く。";
+      const outCells: FillCell[] = o
+        ? [
+            `${o.qty}`,
+            cell(o.price, sale && !fifo, `移動平均法では、払い出す直前の残高の単価${fmt(o.price)}円で払い出す。`),
+            cell(o.qty * o.price, true, `${o.qty}個 × ${fmt(o.price)}円 = ${fmt(o.qty * o.price)}円。${outWhy}`),
+          ]
+        : ["", "", ""];
+      // 移動平均法の仕入のあとの単価は、受け入れる前の残高と受け入れた分を合わせて平均する
+      const before = l && t.in ? { qty: l.qty - t.in.qty, amount: l.qty * l.price - t.in.qty * t.in.price } : null;
+      const priceWhy = before
+        ? `移動平均の単価：（受け入れる前の残高${fmt(before.amount)}円 ＋ 受入${fmt(t.in!.qty * t.in!.price)}円）÷（${before.qty}個 ＋ ${t.in!.qty}個）= ${fmt(l!.price)}円。`
+        : `払い出しても平均単価は変わらない。${l ? fmt(l.price) : ""}円のまま。`;
+      const balCells: FillCell[] = l
+        ? [
+            `${l.qty}`,
+            cell(l.price, hide && !fifo, priceWhy),
+            cell(l.qty * l.price, hide && fifo, `${l.qty}個 × ${fmt(l.price)}円 = ${fmt(l.qty * l.price)}円。${lots.length > 1 ? "先入先出法では、単価のちがう残高は行を分けて書く。" : ""}`),
+          ]
+        : ["", "", ""];
       rows.push([i === 0 ? date : "", i === 0 ? memo : "", ...lotCells(i === 0 ? t.in : undefined), ...outCells, ...balCells]);
     }
   };
@@ -618,6 +736,7 @@ function inventorySheet(
     }
     lots = next;
     cogs += out.reduce((a, l) => a + l.qty * l.price, 0);
+    outAmounts.push(...out.map((l) => l.qty * l.price));
     return out;
   };
 
@@ -656,8 +775,11 @@ function inventorySheet(
         title: "6月の売上原価と売上総利益",
         head: ["", "金額"],
         rows: [
-          ["売上原価", b.amount(cogs)],
-          ["売上総利益", b.amount(sales - cogs)],
+          ["売上原価", b.amount(cogs, undefined, `払出金額の合計：${outAmounts.map(fmt).join(" ＋ ")} = ${fmt(cogs)}円。`)],
+          [
+            "売上総利益",
+            b.amount(sales - cogs, undefined, `売上高（${d.s1 + d.s2}個 × 売価${fmt(d.price)}円）${fmt(sales)}円 − 売上原価${fmt(cogs)}円 = ${fmt(sales - cogs)}円。`),
+          ],
         ],
       },
     ],
@@ -668,6 +790,8 @@ function inventorySheet(
 // ───────── 第2問(1) 伝票と仕訳日計表 ─────────
 
 type Slip = { kind: "入金伝票" | "出金伝票" | "振替伝票"; debit: AccountName; credit: AccountName; amount: number };
+
+const SLIP_FOCUS = new Set<AccountName>(["現金", "売掛金", "買掛金", "仕入", "売上"]);
 
 export function slipsProblem(rand: Rand): FillProblem {
   const k = amt(rand, 1000);
@@ -707,7 +831,17 @@ export function slipsProblem(rand: Rand): FillProblem {
         "仕訳日計表",
         ["借方", "勘定科目", "貸方"],
         sums,
-        focusCell(b, new Set<AccountName>(["現金", "売掛金", "買掛金", "仕入", "売上"])),
+        (account, amount, side) =>
+          SLIP_FOCUS.has(account)
+            ? b.amount(
+                amount,
+                undefined,
+                `伝票を仕訳に直すと、${account}が${sideName(side)}に出てくるのは ${slips
+                  .map((sl, i) => ((side === "debit" ? sl.debit : sl.credit) === account ? `No.${101 + i}（${sl.kind}）${fmt(sl.amount)}円` : ""))
+                  .filter(Boolean)
+                  .join("、")}。合計${fmt(amount)}円。`,
+              )
+            : fmt(amount),
         b,
       ),
     ],
@@ -751,7 +885,7 @@ export function theoryProblem(rand: Rand): FillProblem {
   const b = blanks();
   const rows: FillCell[][] = shuffle(THEORY, rand)
     .slice(0, 5)
-    .map(([word, text], i) => [`(${i + 1})`, text, b.select(word, words)]);
+    .map(([word, text], i) => [`(${i + 1})`, text, b.select(word, words, `正しい文：${text.replace("（　）", `（${word}）`)}`)]);
   return {
     title: "第2問(2) 語群選択",
     short: "第2問(2)",
@@ -770,17 +904,17 @@ function totalsTable(
   title: string,
   head: string[],
   sums: Map<AccountName, Pair>,
-  cell: (a: AccountName, x: number) => FillCell = (_, x) => fmt(x),
+  cell: (a: AccountName, x: number, side: Side) => FillCell = (_, x) => fmt(x),
   b?: ReturnType<typeof blanks>,
 ): FillTable {
-  const show = (a: AccountName, x: number): FillCell => (x ? cell(a, x) : "");
+  const show = (a: AccountName, x: number, side: Side): FillCell => (x ? cell(a, x, side) : "");
   const total = [...sums.values()].reduce((a, r) => a + r.debit, 0);
   return {
     title,
     head,
     rows: [
-      ...inMasterOrder([...sums.keys()]).map((a) => [show(a, sums.get(a)!.debit), a, show(a, sums.get(a)!.credit)]),
-      [b ? b.amount(total) : fmt(total), "合計", fmt(total)],
+      ...inMasterOrder([...sums.keys()]).map((a) => [show(a, sums.get(a)!.debit, "debit"), a, show(a, sums.get(a)!.credit, "credit")]),
+      [b ? b.amount(total, undefined, `借方の金額をすべて足した合計${fmt(total)}円。貸方の合計と一致することを確かめる。`) : fmt(total), "合計", fmt(total)],
     ],
   };
 }
@@ -812,14 +946,37 @@ export function worksheetProblem(rand: Rand): FillProblem {
   // 空欄は配点の数まで。最終の欄と当期純利益（2つ）を優先し、残りを修正記入に回す
   const finals = rows.filter((r) => focus.has(r.account)).reduce((a, r) => a + nonzero(r.income) + nonzero(r.balance), 0);
   let adjRoom = WORKSHEET_POINTS - 2 - finals;
-  const pair = (p: Pair, blank: boolean): FillCell[] =>
-    (["debit", "credit"] as const).map((side) => (p[side] ? (blank ? b.amount(p[side]) : fmt(p[side])) : ""));
+  const pair = (p: Pair, blank: boolean, why?: (side: Side) => string): FillCell[] =>
+    (["debit", "credit"] as const).map((side) => (p[side] ? (blank ? b.amount(p[side], undefined, why?.(side)) : fmt(p[side])) : ""));
+  const adjusted = adjustedWhy(trial, steps);
+  /** 修正記入欄：決算整理仕訳でその科目がその側に出てくる金額の合計 */
+  const adjustWhy = (account: AccountName) => (side: Side) => {
+    const hits = steps.flatMap((s) => s.answer[side].filter((l) => l.account === account).map((l) => ({ label: s.label, amount: l.amount })));
+    const list = hits.map((h) => `${h.label}の${fmt(h.amount)}円`).join("、");
+    const total = hits.length > 1 ? `。合計${fmt(sumAmounts(hits))}円` : "";
+    return `決算整理仕訳で${account}が${sideName(side)}に出てくるもの：${list}${total}。`;
+  };
+  /** 損益計算書欄・貸借対照表欄：整理後の金額を、科目の種類で決まる欄に書く */
+  const finalWhy = (account: AccountName, income: boolean) => (side: Side) =>
+    `${income ? "収益・費用なので損益計算書欄" : "資産・負債・純資産なので貸借対照表欄"}の${sideName(side)}に書く。${adjusted(account)}`;
   const body: FillCell[][] = rows.map((r) => {
     const f = focus.has(r.account);
     const blankAdj = f && nonzero(r.adjust) <= adjRoom;
     if (blankAdj) adjRoom -= nonzero(r.adjust);
-    return [r.account, ...pair(r.trial, false), ...pair(r.adjust, blankAdj), ...pair(r.income, f), ...pair(r.balance, f)];
+    return [
+      r.account,
+      ...pair(r.trial, false),
+      ...pair(r.adjust, blankAdj, adjustWhy(r.account)),
+      ...pair(r.income, f, finalWhy(r.account, true)),
+      ...pair(r.balance, f, finalWhy(r.account, false)),
+    ];
   });
+  const plCredit = ws.totals.income.credit;
+  const plDebit = ws.totals.income.debit - ws.netIncomeRow.income.debit;
+  const netWhy = (side: Side) =>
+    side === "debit"
+      ? `損益計算書欄の貸方（収益）合計${fmt(plCredit)}円 − 借方（費用）合計${fmt(plDebit)}円 = ${fmt(plCredit - plDebit)}円。利益なので、損益計算書欄の借方に書いて左右をそろえる。`
+      : `損益計算書欄と同じ当期純利益を、貸借対照表欄の貸方に書く（純資産が増える）。`;
   const t = ws.totals;
   return {
     title: "第3問 精算表",
@@ -833,7 +990,7 @@ export function worksheetProblem(rand: Rand): FillProblem {
         head: WORKSHEET_HEAD,
         rows: [
           ...body,
-          ["当期純利益", "", "", "", "", ...pair(ws.netIncomeRow.income, true), ...pair(ws.netIncomeRow.balance, true)],
+          ["当期純利益", "", "", "", "", ...pair(ws.netIncomeRow.income, true, netWhy), ...pair(ws.netIncomeRow.balance, true, netWhy)],
           ["合計", ...[t.trial, t.adjust, t.income, t.balance].flatMap((p) => [fmt(p.debit), fmt(p.credit)])],
         ],
       },
@@ -915,12 +1072,17 @@ export function totalsTrialProblem(rand: Rand): FillProblem {
   const now = totalsOf(after);
   const balances = new Map(trialBalance(after).map((r) => [r.account, r]));
   const b = blanks();
-  const show = (x: number, blank: boolean): FillCell => (x ? (blank ? b.amount(x) : fmt(x)) : "");
+  const show = (x: number, blank: boolean, why?: string): FillCell => (x ? (blank ? b.amount(x, undefined, why) : fmt(x)) : "");
+  const prev = totalsOf(before);
   const rows: FillCell[][] = inMasterOrder([...now.keys()]).map((a) => {
     const t = now.get(a)!;
     const m = moved.get(a);
+    const p = prev.get(a) ?? { debit: 0, credit: 0 };
     const bal = balances.get(a);
-    return [show(bal?.debit ?? 0, !!m), show(t.debit, !!m?.debit), a, show(t.credit, !!m?.credit), show(bal?.credit ?? 0, !!m)];
+    const totalWhy = (side: Side) =>
+      `前月末の${sideName(side)}合計${fmt(p[side])}円 ＋ 当月の取引で${a}が${sideName(side)}に出た${fmt(m?.[side] ?? 0)}円 = ${fmt(t[side])}円。`;
+    const balWhy = `借方合計${fmt(t.debit)}円と貸方合計${fmt(t.credit)}円の差額${fmt(Math.abs(t.debit - t.credit))}円を、大きいほう（${t.debit >= t.credit ? "借方" : "貸方"}）の残高欄に書く。`;
+    return [show(bal?.debit ?? 0, !!m, balWhy), show(t.debit, !!m?.debit, totalWhy("debit")), a, show(t.credit, !!m?.credit, totalWhy("credit")), show(bal?.credit ?? 0, !!m, balWhy)];
   });
   const total = [...now.values()].reduce((a, r) => a + r.debit, 0);
   const balanceTotal = trialBalanceTotals([...balances.values()]).debit;
@@ -963,10 +1125,31 @@ export function receivableLedgerProblem(rand: Rand): FillProblem {
   const closing = afterReturn - collectA;
   const rows: FillCell[][] = [
     ["4/1", "前月繰越", fmt(open.A), "", "借", fmt(open.A)],
-    ["4/8", "売上", b.amount(saleA), "", "借", b.amount(debitTotal)],
-    ["4/15", b.select("返品", memos), "", b.amount(returnA), "借", b.amount(afterReturn)],
-    ["4/25", b.select("入金", memos), "", b.amount(collectA), "借", b.amount(closing)],
-    ["4/30", "次月繰越", "", b.amount(closing), "", ""],
+    [
+      "4/8",
+      "売上",
+      b.amount(saleA, undefined, `8日の掛け売上でA商店の売掛金が増えたので、借方に${fmt(saleA)}円。`),
+      "",
+      "借",
+      b.amount(debitTotal, undefined, `前の残高${fmt(open.A)}円 ＋ 売上${fmt(saleA)}円 = ${fmt(debitTotal)}円。`),
+    ],
+    [
+      "4/15",
+      b.select("返品", memos, "15日は品違いの返品。A商店の売掛金が減るので貸方に書き、摘要は「返品」。"),
+      "",
+      b.amount(returnA, undefined, `返品された${fmt(returnA)}円。`),
+      "借",
+      b.amount(afterReturn, undefined, `${fmt(debitTotal)}円 − 返品${fmt(returnA)}円 = ${fmt(afterReturn)}円。（12日・22日はB商店の取引なので、A商店の元帳には書かない）`),
+    ],
+    [
+      "4/25",
+      b.select("入金", memos, "25日はA商店からの振り込み（売掛金の回収）。売掛金が減るので貸方に書き、摘要は「入金」。"),
+      "",
+      b.amount(collectA, undefined, `振り込まれた${fmt(collectA)}円。`),
+      "借",
+      b.amount(closing, undefined, `${fmt(afterReturn)}円 − 入金${fmt(collectA)}円 = ${fmt(closing)}円。`),
+    ],
+    ["4/30", "次月繰越", "", b.amount(closing, undefined, `月末の残高${fmt(closing)}円を「次月繰越」として貸方に書く。これで借方と貸方の合計が${fmt(debitTotal)}円でそろう。`), "", ""],
     ["", "", fmt(debitTotal), fmt(debitTotal), "", ""],
   ];
   return {
