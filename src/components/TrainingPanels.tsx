@@ -2,7 +2,7 @@
 
 import type { AccountName } from "@/engine/accounts";
 import type { Entry } from "@/engine/journal";
-import { EXAM_FORMATS, type ExamPart } from "@/content/examFormats";
+import { EXAM_FORMATS, EXAM_PARTS } from "@/content/examFormats";
 import { LESSONS, LESSON_BY_ID, PREP_LEVEL, type Lesson } from "@/content/lessons";
 import { LEVELS } from "@/content/world";
 import { EXAM_PASS } from "@/game/logic";
@@ -10,15 +10,13 @@ import { type Memory, memoryOf, retention } from "@/game/memory";
 import { DRILL_SIZE, LESSONS_WITH_QUESTIONS, type Mastery, lessonsLeft, masteryOf, weakLessons } from "@/game/training";
 import type { DrillSession, GameState, LessonId } from "@/game/types";
 import { QuizCard } from "./Question";
-import { Btn, Portrait, Win } from "./ui";
+import { Btn, Portrait, ProgressDots, Win } from "./ui";
 
 /** 習熟度マップの段（店の成長の順、決算、試験対策） */
 const GROUPS: [string, (l: Lesson) => boolean][] = [
   ...[1, 2, 3, 4, 5].map((lv): [string, (l: Lesson) => boolean] => [`Lv${lv} ${LEVELS[lv].name}`, (l) => l.level === lv]),
   ["決算", (l) => l.level === 0],
 ];
-
-const PARTS: ExamPart[] = ["第2問(1)", "第2問(2)", "第3問"];
 
 const STAR_STYLE: Record<Mastery["stars"], string> = {
   1: "border-ng/70 bg-ng/10",
@@ -144,7 +142,7 @@ export function TrainingHub({
         <p className="mb-2 text-xs text-dim">
           本番と同じ形式の問題を、形式を選んで時間無制限で解く。解き方の手順を見ながら、表を埋める前の仕訳（決算整理仕訳など）を1つずつ下書きしてから答案を埋める。数字は毎回変わる。
         </p>
-        {PARTS.map((part) => (
+        {EXAM_PARTS.map((part) => (
           <div key={part} className="mb-2">
             <p className="mb-1 text-xs text-dim">{part}</p>
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
@@ -244,14 +242,7 @@ export function DrillPanel({
   const result = drill.results[drill.index];
   return (
     <Win title={`${title}（${drill.index + 1} / ${total}）`}>
-      <div className="mb-2 flex gap-1" aria-hidden>
-        {drill.results.map((r, i) => (
-          <span
-            key={i}
-            className={`h-2 flex-1 rounded-full ${r === null ? (i === drill.index ? "bg-white/60" : "bg-white/20") : r ? "bg-ok" : "bg-ng"}`}
-          />
-        ))}
-      </div>
+      <ProgressDots results={drill.results} current={drill.index} />
       <p className="mb-1 text-xs text-dim">{LESSON_BY_ID[q.lesson].title}</p>
       <QuizCard key={drill.index} q={q} accounts={accounts} result={result} mine={drill.answer} onCheck={onCheck}>
         <Btn onClick={onNext}>{drill.index + 1 < total ? "次の問題" : "結果を見る"}</Btn>

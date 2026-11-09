@@ -10,7 +10,7 @@ import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamPanel";
 import { QuestionText } from "./Question";
-import { Btn, Portrait, Win, fmt } from "./ui";
+import { Btn, Paper, Portrait, Win, fmt } from "./ui";
 
 const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");
 
@@ -105,8 +105,9 @@ function Table({
 }: {
   table: FillTable;
   problem: FillProblem;
-  values: FillAnswer[];
-  onChange: (blank: number, v: FillAnswer) => void;
+  /** 省くと読むだけの表（問題として与える表） */
+  values?: FillAnswer[];
+  onChange?: (blank: number, v: FillAnswer) => void;
   results?: boolean[];
 }) {
   const isNumber = (c: FillCell) => (typeof c === "string" ? /^[△\d,]+$/.test(c) : problem.blanks[c.blank].kind === "amount");
@@ -140,8 +141,8 @@ function Table({
                   ) : (
                     <Blank
                       blank={problem.blanks[c.blank]}
-                      value={values[c.blank]}
-                      onChange={(v) => onChange(c.blank, v)}
+                      value={values?.[c.blank] ?? null}
+                      onChange={(v) => onChange?.(c.blank, v)}
                       result={results?.[c.blank]}
                       prefix={c.prefix}
                     />
@@ -166,7 +167,7 @@ export function ProblemContext({ problem }: { problem: FillProblem }) {
         </p>
       ))}
       {problem.given?.map((t, i) => (
-        <Table key={i} table={t} problem={problem} values={[]} onChange={() => {}} />
+        <Table key={i} table={t} problem={problem} />
       ))}
       {problem.items && (
         <div className="mb-3 rounded border border-[#b8bfd3] bg-white p-2 text-sm">
@@ -191,7 +192,8 @@ export function FillSheet({
 }: {
   problem: FillProblem;
   values: FillAnswer[];
-  onChange: (blank: number, v: FillAnswer) => void;
+  /** 省くと見直し用（入力できない） */
+  onChange?: (blank: number, v: FillAnswer) => void;
   results?: boolean[];
 }) {
   return (
@@ -278,9 +280,9 @@ function Result({ mock, onFinish }: { mock: MockSession; onFinish: () => void })
       {mock.problems.map((p, i) => (
         <details key={i} className="mb-2">
           <summary className="cursor-pointer text-sm">{p.title}を見直す</summary>
-          <div className="mt-2 rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b]">
-            <FillSheet problem={p} values={mock.fills[i]} onChange={() => {}} results={g.fills[i]} />
-          </div>
+          <Paper className="mt-2">
+            <FillSheet problem={p} values={mock.fills[i]} results={g.fills[i]} />
+          </Paper>
         </details>
       ))}
       <Btn onClick={onFinish}>試験対策にもどる</Btn>

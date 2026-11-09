@@ -15,13 +15,14 @@ import {
   worksheetProblem,
 } from "./mockExam";
 
-export type ExamPart = "第2問(1)" | "第2問(2)" | "第3問";
+export const EXAM_PARTS = ["第2問(1)", "第2問(2)", "第3問"] as const;
+export type ExamPart = (typeof EXAM_PARTS)[number];
 
 export interface ExamFormat {
   id: string;
   part: ExamPart;
   title: string;
-  /** この講義を受けたら練習できる（problem.lesson と同じ） */
+  /** この講義を受けたら練習できる（problem.lesson と同じ。テストで照合している） */
   lesson: LessonId;
   make: (rand: Rand) => FillProblem;
   /** 解き方の手順。上から順にやれば解ける */

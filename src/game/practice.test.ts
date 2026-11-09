@@ -18,6 +18,11 @@ describe("第2問・第3問の問題演習", () => {
     }
   });
 
+  it("形式の論点（練習を開く条件）は、問題が記録する論点と同じ", () => {
+    const rand = seededRand(2);
+    for (const f of EXAM_FORMATS) for (let i = 0; i < 5; i++) expect(f.make(rand).lesson, f.id).toBe(f.lesson);
+  });
+
   it("講義を受けた形式だけ始められ、下書き→答案→採点で、満点なら「できた」と記録する", () => {
     const rand = seededRand(5);
     const base = newGame("テスト", rand);

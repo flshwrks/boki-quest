@@ -110,6 +110,22 @@ export function AccountChip({ account, className = "" }: { account: AccountName;
 }
 
 /** 仕訳を「借方｜貸方」の表で見せる */
+/** 答案用紙の色の箱（模擬試験・問題演習・ドリルの入力欄） */
+export function Paper({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b] ${className}`}>{children}</div>;
+}
+
+/** 1問ずつ進む練習の進み具合（答え合わせした問題は正誤の色、今の問題は明るく） */
+export function ProgressDots({ results, current }: { results: (boolean | null)[]; current: number }) {
+  return (
+    <div className="mb-2 flex gap-1" aria-hidden>
+      {results.map((r, i) => (
+        <span key={i} className={`h-2 flex-1 rounded-full ${r === null ? (i === current ? "bg-white/60" : "bg-white/20") : r ? "bg-ok" : "bg-ng"}`} />
+      ))}
+    </div>
+  );
+}
+
 export function EntryTable({ entry, highlight = false }: { entry: Entry; highlight?: boolean }) {
   const rows = Math.max(entry.debit.length, entry.credit.length);
   return (

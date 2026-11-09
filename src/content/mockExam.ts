@@ -253,13 +253,11 @@ function closingCase(rand: Rand): ClosingCase {
   const d: Partial<Record<AccountName, number>> = {};
   const c: Partial<Record<AccountName, number>> = {};
   const items: string[] = [];
-  const adj: Entry[] = [];
+  // 決算整理仕訳は steps だけに持ち、adjustments はそこから作る（2つの配列がずれないように）
   const steps: PracticeStep[] = [];
-  /** 直前に足した決算整理事項の仕訳 */
-  const post = (e: Entry, note: string, label = "") => {
-    adj.push(e);
-    steps.push({ text: `${items.at(-1)}${label}`, answer: e, note });
-  };
+  const adj = () => steps.map((s) => s.answer);
+  /** 直前に items へ足した決算整理事項の仕訳 */
+  const post = (e: Entry, note: string, label = "") => steps.push({ text: `${items.at(-1)}${label}`, answer: e, note });
   const focus = new Set<AccountName>([
     "仕入",
     "繰越商品",
@@ -407,7 +405,7 @@ function closingCase(rand: Rand): ClosingCase {
   }
 
   // 税引前当期純利益がほどよい額になるよう、売上を決める
-  const pretaxWithoutSales = statements([entry(linesOf(d), linesOf({ ...c, 売上: 0 })), ...adj]).netIncome;
+  const pretaxWithoutSales = statements([entry(linesOf(d), linesOf({ ...c, 売上: 0 })), ...adj()]).netIncome;
   const target = 10000 * ri(rand, 30, 120);
   c.売上 = target - pretaxWithoutSales;
   // 9. 法人税等（中間納付は仮払法人税等）
@@ -437,7 +435,7 @@ function closingCase(rand: Rand): ClosingCase {
   return {
     trial: entry(linesOf(d), linesOf(c)),
     items,
-    adjustments: adj,
+    adjustments: adj(),
     steps,
     focus,
   };

@@ -671,7 +671,8 @@ export default function GameApp() {
       panel = (
         <PracticePanel
           practice={p.practice}
-          accounts={unlockedAccounts(state)}
+          // 下書きで使う科目は、店でまだ使っていなくても選べるようにする（講義の練習と同じ）
+          accounts={[...unlockedAccounts(state), ...(p.practice.problem.steps ?? []).flatMap((s) => [...s.answer.debit, ...s.answer.credit].map((l) => l.account))]}
           onCheck={(entry) => {
             const next = checkPracticeStep(state, entry);
             if (next.phase.kind === "practice") play(next.phase.practice.stepResults[next.phase.practice.step] ? "correct" : "wrong");

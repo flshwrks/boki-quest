@@ -6,7 +6,7 @@ import { parseAmount } from "@/engine/format";
 import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
 import { pick } from "@/content/eventKit";
-import { EXAM_FORMATS, type ExamPart, FORMAT_BY_ID } from "@/content/examFormats";
+import { EXAM_FORMATS, EXAM_PARTS, FORMAT_BY_ID } from "@/content/examFormats";
 import { type Mastery, advance, gradeQuestions, lessonOfTemplate, logPractice, logPractices, pickQuestions , masteryOf } from "./logic";
 
 export { type Mastery, masteryOf };
@@ -128,9 +128,11 @@ export const lessonsLeft = (state: GameState) => LESSONS.filter((l) => !state.le
 
 export function makeMock(state: GameState, rand: Rand): MockSession {
   const questions = pickQuestions(state, MOCK_QUESTIONS, rand, false);
-  // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ
-  const parts: ExamPart[] = ["第2問(1)", "第2問(2)", "第3問"];
-  const problems = parts.map((part) => pick(rand, EXAM_FORMATS.filter((f) => f.part === part)).make(rand));
+  // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ。模擬試験では下書きの仕訳を使わないので、セーブに残さない
+  const problems = EXAM_PARTS.map((part) => {
+    const { steps: _, ...problem } = pick(rand, EXAM_FORMATS.filter((f) => f.part === part)).make(rand);
+    return problem;
+  });
   return {
     questions,
     answers: questions.map(() => null),
@@ -170,6 +172,9 @@ export function fillCorrect(blank: FillBlank, value: FillAnswer): boolean {
   return Array.isArray(value) && value.length === want.length && want.every((w) => value.includes(w));
 }
 
+/** 第2問・第3問は、7割とれたら「できた」と記録する */
+export const problemPassed = (p: FillProblem, results: boolean[]) => problemScore(p, results) >= problemScore(p) * 0.7;
+
 /** 穴埋め問題の得点。results を省くと満点 */
 export const problemScore = (p: FillProblem, results?: boolean[]) => p.blanks.reduce((a, b, i) => a + (!results || results[i] ? b.points : 0), 0);
 
@@ -195,7 +200,7 @@ export function gradeMock(state: GameState): GameState {
   // 第2問・第3問は、7割以上とれたら「できた」と記録する
   const logged = logPractices(
     next,
-    m.problems.map((p, i) => ({ lesson: p.lesson, ok: problemScore(p, fills[i]) >= problemScore(p) * 0.7 })),
+    m.problems.map((p, i) => ({ lesson: p.lesson, ok: problemPassed(p, fills[i]) })),
   );
   return {
     ...logged,
@@ -209,8 +214,6 @@ export const finishMock = (state: GameState): GameState =>
 
 // ───────── 第2問・第3問の問題演習 ─────────
 
-/** 7割とれたら「できた」と記録する（模擬試験と同じ） */
-const PASS_RATE = 0.7;
 
 /** 形式を選んで始める（数字は毎回変わる）。下書きの仕訳がある形式は、そこから */
 export function startPractice(state: GameState, format: string, rand: Rand): GameState {
@@ -253,7 +256,7 @@ export function gradePractice(state: GameState): GameState {
   if (state.phase.kind !== "practice" || state.phase.practice.results) return state;
   const p = state.phase.practice;
   const results = p.problem.blanks.map((b, i) => fillCorrect(b, p.fills[i]));
-  const logged = logPractice(state, p.problem.lesson, problemScore(p.problem, results) >= problemScore(p.problem) * PASS_RATE);
+  const logged = logPractice(state, p.problem.lesson, problemPassed(p.problem, results));
   return { ...logged, phase: { kind: "practice", practice: { ...p, results } } };
 }
 

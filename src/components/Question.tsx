@@ -7,7 +7,7 @@ import type { ExamQuestion } from "@/game/types";
 import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { VoucherView } from "./VoucherView";
-import { AnswerExplain, Btn, EntryTable } from "./ui";
+import { AnswerExplain, Btn, EntryTable, Paper } from "./ui";
 
 // 審査・模試・ドリル・講義の確認問題で共通に使う、仕訳問題の部品
 
@@ -66,12 +66,12 @@ export function QuizCard({
       <QuestionText q={q} className="mb-3 rounded-lg border border-white/30 p-2" />
       {result === null ? (
         <>
-          <div className="rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b]">
+          <Paper>
             <div className="mb-1">
               <Calculator onResult={addCalc} />
             </div>
             <CbtEntryForm accounts={accounts} initial={null} onChange={setDraft} chips={calc} />
-          </div>
+          </Paper>
           <div className="mt-3 flex flex-wrap gap-2">
             <Btn onClick={() => draft && onCheck(draft)} disabled={!draft || isEmptyEntry(draft)}>
               答え合わせ
