@@ -156,6 +156,32 @@ function Table({
   );
 }
 
+/** 問題文と、問題として与える表・決算整理事項（答案用紙より上の部分） */
+export function ProblemContext({ problem }: { problem: FillProblem }) {
+  return (
+    <>
+      {problem.lead.map((l) => (
+        <p key={l} className="mb-1 text-sm">
+          {l}
+        </p>
+      ))}
+      {problem.given?.map((t, i) => (
+        <Table key={i} table={t} problem={problem} values={[]} onChange={() => {}} />
+      ))}
+      {problem.items && (
+        <div className="mb-3 rounded border border-[#b8bfd3] bg-white p-2 text-sm">
+          <p className="mb-1 font-bold">{problem.itemsTitle ?? "決算整理事項"}</p>
+          <ol className="list-decimal pl-5">
+            {problem.items.map((it) => (
+              <li key={it}>{it}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** 穴埋め問題（第2問・第3問）の画面 */
 export function FillSheet({
   problem,
@@ -173,24 +199,7 @@ export function FillSheet({
       <p className="mb-1 font-bold">
         {problem.title}（{problemScore(problem)}点）
       </p>
-      {problem.lead.map((l) => (
-        <p key={l} className="mb-1 text-sm">
-          {l}
-        </p>
-      ))}
-      {problem.given?.map((t, i) => (
-        <Table key={`g${i}`} table={t} problem={problem} values={values} onChange={onChange} />
-      ))}
-      {problem.items && (
-        <div className="mb-3 rounded border border-[#b8bfd3] bg-white p-2 text-sm">
-          <p className="mb-1 font-bold">{problem.itemsTitle ?? "決算整理事項"}</p>
-          <ol className="list-decimal pl-5">
-            {problem.items.map((it) => (
-              <li key={it}>{it}</li>
-            ))}
-          </ol>
-        </div>
-      )}
+      <ProblemContext problem={problem} />
       {problem.sheet.map((t, i) => (
         <Table key={`s${i}`} table={t} problem={problem} values={values} onChange={onChange} results={results} />
       ))}

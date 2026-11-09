@@ -62,6 +62,12 @@ import {
   setMockFill,
   startDrill,
   startMock,
+  startPractice,
+  checkPracticeStep,
+  nextPracticeStep,
+  setPracticeFill,
+  gradePractice,
+  finishPractice,
   startPrepLesson,
 } from "@/game/training";
 import type { CharacterId, GameState, LessonId, Phase } from "@/game/types";
@@ -71,6 +77,7 @@ import { BookModal, type Tab as BookTab } from "./BookModal";
 import { ReportPanel, WorksheetPanel } from "./ClosingPanels";
 import { ExamPanel } from "./ExamPanel";
 import { MockExamPanel } from "./MockExamPanel";
+import { PracticePanel } from "./PracticePanel";
 import { DrillPanel, TrainingHub } from "./TrainingPanels";
 import { type InputMode, JournalInput } from "./JournalInput";
 import { LedgerViz } from "./LedgerViz";
@@ -130,6 +137,7 @@ function sceneOf(state: GameState): { time: TimeOfDay; fx: SceneFx } {
     }
     case "exam":
     case "mock":
+    case "practice":
       return { time: "day", fx: { mood: "think" } };
     case "result": {
       const { debit, credit } = p.info.tx.answer;
@@ -623,6 +631,7 @@ export default function GameApp() {
           onDrill={(lesson) => update((s) => startDrill(s, lesson, rand))}
           onMock={() => update((s) => startMock(s, rand))}
           onLesson={(lesson) => update((s) => startPrepLesson(s, lesson))}
+          onPractice={(format) => update((s) => startPractice(s, format, rand))}
         />
       );
       break;
@@ -655,6 +664,25 @@ export default function GameApp() {
             commit(graded);
           }}
           onFinish={() => update(finishMock)}
+        />
+      );
+      break;
+    case "practice":
+      panel = (
+        <PracticePanel
+          practice={p.practice}
+          accounts={unlockedAccounts(state)}
+          onCheck={(entry) => {
+            const next = checkPracticeStep(state, entry);
+            if (next.phase.kind === "practice") play(next.phase.practice.stepResults[next.phase.practice.step] ? "correct" : "wrong");
+            commit(next);
+          }}
+          onNext={() => update((s) => nextPracticeStep(s))}
+          onSkip={() => update((s) => nextPracticeStep(s, true))}
+          onFill={(b, v) => update((s) => setPracticeFill(s, b, v))}
+          onGrade={() => update(gradePractice)}
+          onRetry={() => update((s) => startPractice(s, p.practice.format, rand))}
+          onFinish={() => update(finishPractice)}
         />
       );
       break;

@@ -6,23 +6,12 @@ import { parseAmount } from "@/engine/format";
 import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
 import { pick } from "@/content/eventKit";
-import {
-  closingProblem,
-  inventoryProblem,
-  ledgerProblem,
-  slipsProblem,
-  subBookProblem,
-  theoryProblem,
-  trialAfterProblem,
-  receivableLedgerProblem,
-  totalsTrialProblem,
-  worksheetProblem,
-} from "@/content/mockExam";
+import { EXAM_FORMATS, type ExamPart, FORMAT_BY_ID } from "@/content/examFormats";
 import { type Mastery, advance, gradeQuestions, lessonOfTemplate, logPractice, logPractices, pickQuestions , masteryOf } from "./logic";
 
 export { type Mastery, masteryOf };
 import { type Rand, shuffle } from "./random";
-import type { DrillSession, ExamQuestion, FillAnswer, FillBlank, FillProblem, GameState, LessonId, MockSession, Mistake } from "./types";
+import type { DrillSession, ExamQuestion, FillAnswer, FillBlank, FillProblem, GameState, LessonId, MockSession, Mistake, ProblemPractice } from "./types";
 
 export const DRILL_SIZE = 8;
 export const MOCK_MINUTES = 60;
@@ -140,11 +129,8 @@ export const lessonsLeft = (state: GameState) => LESSONS.filter((l) => !state.le
 export function makeMock(state: GameState, rand: Rand): MockSession {
   const questions = pickQuestions(state, MOCK_QUESTIONS, rand, false);
   // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ
-  const problems = [
-    pick(rand, [ledgerProblem, inventoryProblem, slipsProblem, receivableLedgerProblem]),
-    pick(rand, [subBookProblem, theoryProblem]),
-    pick(rand, [closingProblem, trialAfterProblem, worksheetProblem, totalsTrialProblem]),
-  ].map((make) => make(rand));
+  const parts: ExamPart[] = ["第2問(1)", "第2問(2)", "第3問"];
+  const problems = parts.map((part) => pick(rand, EXAM_FORMATS.filter((f) => f.part === part)).make(rand));
   return {
     questions,
     answers: questions.map(() => null),
@@ -220,3 +206,55 @@ export function gradeMock(state: GameState): GameState {
 
 export const finishMock = (state: GameState): GameState =>
   state.phase.kind === "mock" && state.phase.mock.graded ? { ...state, phase: { kind: "training" } } : state;
+
+// ───────── 第2問・第3問の問題演習 ─────────
+
+/** 7割とれたら「できた」と記録する（模擬試験と同じ） */
+const PASS_RATE = 0.7;
+
+/** 形式を選んで始める（数字は毎回変わる）。下書きの仕訳がある形式は、そこから */
+export function startPractice(state: GameState, format: string, rand: Rand): GameState {
+  const f = FORMAT_BY_ID.get(format);
+  if (!f || !(state.phase.kind === "training" || state.phase.kind === "practice") || !state.lessonsDone.includes(f.lesson)) return state;
+  const problem = f.make(rand);
+  const practice: ProblemPractice = {
+    format,
+    problem,
+    step: 0,
+    stepResults: (problem.steps ?? []).map(() => null),
+    stepAnswer: null,
+    fills: problem.blanks.map(() => null),
+    results: null,
+  };
+  return { ...state, phase: { kind: "practice", practice } };
+}
+
+function updatePractice(state: GameState, f: (p: ProblemPractice) => ProblemPractice): GameState {
+  return state.phase.kind === "practice" ? { ...state, phase: { kind: "practice", practice: f(state.phase.practice) } } : state;
+}
+
+/** 下書きの仕訳を答え合わせする */
+export const checkPracticeStep = (state: GameState, answer: Entry) =>
+  updatePractice(state, (p) => {
+    const step = p.problem.steps?.[p.step];
+    if (!step || p.stepResults[p.step] !== null) return p;
+    return { ...p, stepResults: setAt(p.stepResults, p.step, sameEntry(answer, step.answer)), stepAnswer: answer };
+  });
+
+/** 次の下書きへ。all なら残りの下書きを飛ばして答案の記入へ */
+export const nextPracticeStep = (state: GameState, all = false) =>
+  updatePractice(state, (p) => ({ ...p, step: all ? (p.problem.steps?.length ?? 0) : p.step + 1, stepAnswer: null }));
+
+export const setPracticeFill = (state: GameState, blank: number, value: FillAnswer) =>
+  updatePractice(state, (p) => (p.results ? p : { ...p, fills: setAt(p.fills, blank, value) }));
+
+/** 答案を採点する。7割以上なら、その論点を「できた」と記録する */
+export function gradePractice(state: GameState): GameState {
+  if (state.phase.kind !== "practice" || state.phase.practice.results) return state;
+  const p = state.phase.practice;
+  const results = p.problem.blanks.map((b, i) => fillCorrect(b, p.fills[i]));
+  const logged = logPractice(state, p.problem.lesson, problemScore(p.problem, results) >= problemScore(p.problem) * PASS_RATE);
+  return { ...logged, phase: { kind: "practice", practice: { ...p, results } } };
+}
+
+export const finishPractice = (state: GameState): GameState => (state.phase.kind === "practice" ? { ...state, phase: { kind: "training" } } : state);

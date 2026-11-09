@@ -274,7 +274,8 @@ export type Phase =
   // 試験対策（朝の画面から入り、終わったら朝に戻る）
   | { kind: "training" }
   | { kind: "drill"; drill: DrillSession }
-  | { kind: "mock"; mock: MockSession };
+  | { kind: "mock"; mock: MockSession }
+  | { kind: "practice"; practice: ProblemPractice };
 
 /** 苦手ドリル。1問ずつ答え合わせする */
 export interface DrillSession {
@@ -322,6 +323,28 @@ export interface FillProblem {
   /** 答案用紙 */
   sheet: FillTable[];
   blanks: FillBlank[];
+  /** 問題演習で、表を埋める前に書く下書きの仕訳（決算整理仕訳・期中の取引など）。順に答えると表が埋められる */
+  steps?: PracticeStep[];
+}
+
+/** 下書きの仕訳ひとつ。note は答え合わせのあとに出す解説（金額の計算など） */
+export interface PracticeStep {
+  text: string;
+  answer: Entry;
+  note?: string;
+}
+
+/** 第2問・第3問の問題演習。下書きの仕訳（steps）→ 答案の記入 → 採点。時間制限はない */
+export interface ProblemPractice {
+  format: string;
+  problem: FillProblem;
+  /** 今の下書きの段。steps の数以上なら答案の記入 */
+  step: number;
+  stepResults: (boolean | null)[];
+  stepAnswer: Entry | null;
+  fills: FillAnswer[];
+  /** 採点したら空欄ごとの正誤 */
+  results: boolean[] | null;
 }
 
 /** 模擬試験。第1問は仕訳15問（各3点）、第2問・第3問は穴埋め */

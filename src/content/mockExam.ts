@@ -15,7 +15,7 @@ import {
 } from "@/engine/ledger";
 import { fmt } from "@/engine/format";
 import { type Rand, shuffle } from "@/game/random";
-import type { FillBlank, FillCell, FillProblem, FillTable } from "@/game/types";
+import type { FillBlank, FillCell, FillProblem, FillTable, PracticeStep } from "@/game/types";
 import { pick } from "./eventKit";
 
 /** lo 以上 hi 以下の整数 */
@@ -68,13 +68,14 @@ const ledgerTable = (title: string, rows: FillCell[][], total: number): FillTabl
 const ledgerOptions = (expense: AccountName, accrual: AccountName) => ["前期繰越", "次期繰越", "損益", expense, accrual, "普通預金"];
 
 /** 第2問(1)の問題文の形。どちらの勘定記入も、最後の1文は共通 */
-const ledgerProblemOf = (lead: string[], sheet: FillTable[], b: ReturnType<typeof blanks>): FillProblem => ({
+const ledgerProblemOf = (lead: string[], sheet: FillTable[], b: ReturnType<typeof blanks>, steps: PracticeStep[]): FillProblem => ({
   title: "第2問(1) 勘定記入",
   short: "第2問(1)",
   lesson: "ledgerclose",
   lead: [...lead, "次の各勘定の空欄に、適切な摘要または金額を記入しなさい。"],
   sheet,
   blanks: b.score(10),
+  steps,
 });
 
 // ───────── 第2問(1) 勘定記入 ─────────
@@ -115,6 +116,19 @@ function prepaidLedger(rand: Rand): FillProblem {
     ],
     sheet,
     b,
+    [
+      {
+        text: "4月1日（期首）：前期末に計上した前払保険料を、支払保険料勘定に戻す（再振替仕訳）。",
+        answer: flow("支払保険料", "前払保険料", x0),
+        note: `前期に払った${fmt(prev)}円のうち、当期の4月〜${m - 1}月の${months}か月分が前払いだった。${fmt(prev)} × ${months}/12 = ${fmt(x0)}円。`,
+      },
+      { text: `${m}月1日：向こう1年分の保険料${fmt(now)}円を普通預金口座から支払った。`, answer: flow("支払保険料", "普通預金", now) },
+      {
+        text: "3月31日（決算）：当期に支払った保険料のうち、翌期の分を前払保険料勘定に振り替える。",
+        answer: flow("前払保険料", "支払保険料", x1),
+        note: `翌期の4月〜${m - 1}月の${months}か月分。${fmt(now)} × ${months}/12 = ${fmt(x1)}円。支払保険料勘定の残り${fmt(x0 + now - x1)}円は「損益」に振り替えて締め切り、前払保険料勘定は「次期繰越」で締め切る。`,
+      },
+    ],
   );
 }
 
@@ -155,6 +169,19 @@ function accruedLedger(rand: Rand): FillProblem {
     ],
     sheet,
     b,
+    [
+      {
+        text: "4月1日（期首）：前期末に計上した未払利息を、支払利息勘定に戻す（再振替仕訳）。",
+        answer: flow("未払利息", "支払利息", x),
+        note: `前期末の未払分は、${m + 1}月〜3月の${15 - m}か月分。${fmt(loan)} × ${rate}% × ${15 - m}/12 = ${fmt(x)}円。`,
+      },
+      { text: `${m}月${MONTH_END[m]}日：過去1年分の利息${fmt(paid)}円を普通預金口座から支払った。`, answer: flow("支払利息", "普通預金", paid) },
+      {
+        text: "3月31日（決算）：利息の未払分を月割で計上する。",
+        answer: flow("支払利息", "未払利息", x),
+        note: `当期も${m + 1}月〜3月の${15 - m}か月分が未払いで${fmt(x)}円。支払利息勘定の残高は ${fmt(paid)} + ${fmt(x)} − ${fmt(x)} = ${fmt(paid)}円で、「損益」に振り替えて締め切る。`,
+      },
+    ],
   );
 }
 
@@ -215,6 +242,8 @@ interface ClosingCase {
   trial: Entry;
   items: string[];
   adjustments: Entry[];
+  /** 決算整理事項ごとの決算整理仕訳（売上原価は2つ） */
+  steps: PracticeStep[];
   /** 答え合わせで空欄にする科目（決算整理で金額が変わるもの） */
   focus: Set<AccountName>;
 }
@@ -225,6 +254,12 @@ function closingCase(rand: Rand): ClosingCase {
   const c: Partial<Record<AccountName, number>> = {};
   const items: string[] = [];
   const adj: Entry[] = [];
+  const steps: PracticeStep[] = [];
+  /** 直前に足した決算整理事項の仕訳 */
+  const post = (e: Entry, note: string, label = "") => {
+    adj.push(e);
+    steps.push({ text: `${items.at(-1)}${label}`, answer: e, note });
+  };
   const focus = new Set<AccountName>([
     "仕入",
     "繰越商品",
@@ -271,7 +306,7 @@ function closingCase(rand: Rand): ClosingCase {
     items.push(
       `現金過不足${fmt(diff)}円（借方残高）のうち${fmt(found)}円は、通信費の記入漏れと判明した。残額は原因が不明のため、雑損として処理する。`,
     );
-    adj.push(
+    post(
       entry(
         [
           ["通信費", found],
@@ -279,6 +314,7 @@ function closingCase(rand: Rand): ClosingCase {
         ],
         [["現金過不足", diff]],
       ),
+      `借方残高の現金過不足は、実際の現金が帳簿より少なかった分。判明した通信費${fmt(found)}円を計上し、原因不明の${fmt(diff - found)}円は雑損にする。現金過不足は貸方に書いてゼロにする。`,
     );
     focus.add("通信費").add("雑損");
   }
@@ -288,35 +324,51 @@ function closingCase(rand: Rand): ClosingCase {
     collected = 10000 * ri(rand, 2, 8);
     c.仮受金 = collected;
     items.push(`仮受金${fmt(collected)}円は、得意先からの売掛金の回収であることが判明した。`);
-    adj.push(entry([["仮受金", collected]], [["売掛金", collected]]));
+    post(entry([["仮受金", collected]], [["売掛金", collected]]), "内容が分かったので仮受金を減らし、売掛金を減らす。この回収で、売掛金の期末残高（貸倒引当金の計算のもと）も減る。");
     focus.add("売掛金");
   }
   // 3. 売上原価（期末商品の棚卸）
   const ending = 10000 * ri(rand, 15, 35);
   items.push(`期末商品の棚卸高は${fmt(ending)}円である。売上原価は「仕入」の行で計算すること。`);
-  adj.push(entry([["仕入", d.繰越商品]], [["繰越商品", d.繰越商品]]), entry([["繰越商品", ending]], [["仕入", ending]]));
+  post(
+    entry([["仕入", d.繰越商品]], [["繰越商品", d.繰越商品]]),
+    `試算表の繰越商品${fmt(d.繰越商品)}円は期首の在庫。売れた分の原価に含めるため、仕入に足す（しーくり）。`,
+    "（①期首の商品）",
+  );
+  post(
+    entry([["繰越商品", ending]], [["仕入", ending]]),
+    `売れ残った期末の在庫${fmt(ending)}円を仕入から引き、繰越商品にする（くりしー）。売上原価 = ${fmt(d.仕入)} + ${fmt(d.繰越商品)} − ${fmt(ending)} = ${fmt(d.仕入 + d.繰越商品 - ending)}円。`,
+    "（②期末の商品）",
+  );
   // 4. 貸倒引当金（差額補充法）
   const rate = pick(rand, [2, 3]);
   const allowance = ((receivable - collected) * rate) / 100;
   items.push(`売掛金の期末残高に対して${rate}％の貸倒引当金を、差額補充法により設定する。`);
   const gap = allowance - c.貸倒引当金;
-  if (gap > 0) adj.push(entry([["貸倒引当金繰入", gap]], [["貸倒引当金", gap]]));
-  if (gap < 0) adj.push(entry([["貸倒引当金", -gap]], [["貸倒引当金戻入", -gap]]));
+  const allowanceNote = `売掛金の期末残高${fmt(receivable - collected)}円 × ${rate}% = ${fmt(allowance)}円。試算表の貸倒引当金${fmt(c.貸倒引当金)}円との差額だけを`;
+  if (gap > 0) post(entry([["貸倒引当金繰入", gap]], [["貸倒引当金", gap]]), `${allowanceNote}繰り入れる（${fmt(gap)}円）。`);
+  if (gap < 0) post(entry([["貸倒引当金", -gap]], [["貸倒引当金戻入", -gap]]), `${allowanceNote}戻し入れる（${fmt(-gap)}円）。`);
   focus.add(gap >= 0 ? "貸倒引当金繰入" : "貸倒引当金戻入");
   // 5. 減価償却
   items.push(`備品について、定額法（残存価額ゼロ、耐用年数${life}年）により減価償却を行う。`);
-  adj.push(entry([["減価償却費", dep]], [["備品減価償却累計額", dep]]));
+  post(
+    entry([["減価償却費", dep]], [["備品減価償却累計額", dep]]),
+    `定額法・残存価額ゼロなので、${fmt(d.備品)} ÷ ${life}年 = ${fmt(dep)}円。間接法なので備品は減らさず、減価償却累計額を増やす。`,
+  );
   // 6. 郵便切手の未使用分
   if (rand() < 0.6) {
     const stamps = 1000 * ri(rand, 2, 8);
     items.push(`購入時に通信費として処理した郵便切手のうち、${fmt(stamps)}円分が未使用である。`);
-    adj.push(entry([["貯蔵品", stamps]], [["通信費", stamps]]));
+    post(entry([["貯蔵品", stamps]], [["通信費", stamps]]), "未使用の切手はまだ使える資産なので、通信費から差し引いて貯蔵品にする。");
     focus.add("通信費").add("貯蔵品");
   }
   // 7. 保険料の前払い
   const prepaid = (premium * (pm - 4)) / 12;
   items.push(`支払保険料は、毎年${pm}月1日に向こう1年分（毎年同額）を支払っているものである。前払分を月割で計上する。`);
-  adj.push(entry([["前払保険料", prepaid]], [["支払保険料", prepaid]]));
+  post(
+    entry([["前払保険料", prepaid]], [["支払保険料", prepaid]]),
+    `${pm}月1日に払った1年分のうち、翌期の4月〜${pm - 1}月の${pm - 4}か月分が前払い。${fmt(premium)} × ${pm - 4}/12 = ${fmt(prepaid)}円。`,
+  );
   // 8. 利息の未払い（当期に借り入れ、利息は返済時に支払う）
   const lm = pick(rand, [10, 11, 12, 1, 2]);
   const months = lm >= 4 ? 16 - lm : 4 - lm;
@@ -325,7 +377,10 @@ function closingCase(rand: Rand): ClosingCase {
   items.push(
     `借入金は${lm}月1日に借入期間1年、年利${loanRate}％で借り入れたもので、利息は返済時に元金とともに支払う。利息の未払分を月割で計上する。`,
   );
-  adj.push(entry([["支払利息", accrued]], [["未払利息", accrued]]));
+  post(
+    entry([["支払利息", accrued]], [["未払利息", accrued]]),
+    `${lm}月1日から3月31日までの${months}か月分の利息がまだ払われていない。${fmt(loan)} × ${loanRate}% × ${months}/12 = ${fmt(accrued)}円。`,
+  );
 
   // 9. 家賃の経過勘定（前受か未収のどちらか）
   const monthlyRent = 1000 * ri(rand, 5, 12);
@@ -335,13 +390,19 @@ function closingCase(rand: Rand): ClosingCase {
     const ahead = monthlyRent * (rm - 4);
     c.受取家賃 = monthlyRent * 12 + ahead;
     items.push(`受取家賃は、毎年${rm}月1日に向こう1年分（毎年同額）を受け取っているものである。前受分を月割で計上する。`);
-    adj.push(entry([["受取家賃", ahead]], [["前受家賃", ahead]]));
+    post(
+      entry([["受取家賃", ahead]], [["前受家賃", ahead]]),
+      `${rm}月1日に受け取った1年分のうち、翌期の4月〜${rm - 1}月の${rm - 4}か月分は前受け。${fmt(monthlyRent)} × ${rm - 4}か月 = ${fmt(ahead)}円。`,
+    );
     focus.add("受取家賃").add("前受家賃");
   } else {
     const unpaid = ri(rand, 1, 3);
     c.受取家賃 = monthlyRent * (12 - unpaid);
     items.push(`受取家賃は月額${fmt(monthlyRent)}円であり、${unpaid}か月分が未収である。`);
-    adj.push(entry([["未収家賃", monthlyRent * unpaid]], [["受取家賃", monthlyRent * unpaid]]));
+    post(
+      entry([["未収家賃", monthlyRent * unpaid]], [["受取家賃", monthlyRent * unpaid]]),
+      `まだ受け取っていない当期分も収益に含める。${fmt(monthlyRent)} × ${unpaid}か月 = ${fmt(monthlyRent * unpaid)}円を未収家賃（資産）にする。`,
+    );
     focus.add("受取家賃").add("未収家賃");
   }
 
@@ -353,7 +414,7 @@ function closingCase(rand: Rand): ClosingCase {
   const tax = (target * 30) / 100;
   d.仮払法人税等 = 1000 * Math.floor((tax * ri(rand, 30, 60)) / 100 / 1000);
   items.push("法人税、住民税及び事業税として、税引前当期純利益の30％を計上する。なお、中間納付額は仮払法人税等で処理している。");
-  adj.push(
+  post(
     entry(
       [["法人税、住民税及び事業税", tax]],
       [
@@ -361,6 +422,7 @@ function closingCase(rand: Rand): ClosingCase {
         ["未払法人税等", tax - d.仮払法人税等],
       ],
     ),
+    `ほかの決算整理をすべて済ませると、税引前当期純利益は${fmt(target)}円（収益 − 費用）。× 30% = ${fmt(tax)}円。中間納付の${fmt(d.仮払法人税等)}円を差し引いた${fmt(tax - d.仮払法人税等)}円が未払法人税等。`,
   );
 
   // 貸借の差を当座預金と繰越利益剰余金で埋める
@@ -376,6 +438,7 @@ function closingCase(rand: Rand): ClosingCase {
     trial: entry(linesOf(d), linesOf(c)),
     items,
     adjustments: adj,
+    steps,
     focus,
   };
 }
@@ -388,7 +451,7 @@ function linesOf(x: Partial<Record<AccountName, number>>): Lines {
 }
 
 export function closingProblem(rand: Rand): FillProblem {
-  const { trial, items, adjustments, focus } = closingCase(rand);
+  const { trial, items, adjustments, steps, focus } = closingCase(rand);
   // 貸借対照表の繰越利益剰余金は、当期純利益を足した額を答えさせる
   focus.add("繰越利益剰余金");
   const s = statements([trial, ...adjustments]);
@@ -438,6 +501,7 @@ export function closingProblem(rand: Rand): FillProblem {
       },
     ],
     blanks: b.score(35),
+    steps,
   };
 }
 
@@ -460,7 +524,7 @@ function trialTable(title: string, entries: Entry[], cell?: (account: AccountNam
 
 /** 第3問（別形式）：決算整理後残高試算表を作る */
 export function trialAfterProblem(rand: Rand): FillProblem {
-  const { trial, items, adjustments, focus } = closingCase(rand);
+  const { trial, items, adjustments, steps, focus } = closingCase(rand);
   const b = blanks();
   const sheet = trialTable("決算整理後残高試算表", [trial, ...adjustments], focusCell(b, focus));
   const net = statements([trial, ...adjustments]).netIncome;
@@ -473,6 +537,7 @@ export function trialAfterProblem(rand: Rand): FillProblem {
     items,
     sheet: [sheet, { title: "当期純利益", head: ["", "金額"], rows: [["当期純利益", b.amount(net)]] }],
     blanks: b.score(35),
+    steps,
   };
 }
 
@@ -739,7 +804,7 @@ const WORKSHEET_POINTS = 35;
 
 /** 精算表を完成させる。決算整理で金額が変わる科目の、修正記入と損益計算書・貸借対照表の欄を空欄にする */
 export function worksheetProblem(rand: Rand): FillProblem {
-  const { trial, items, adjustments, focus } = closingCase(rand);
+  const { trial, items, adjustments, steps, focus } = closingCase(rand);
   const ws = worksheet([trial], adjustments);
   // 試算表にある科目を先に、決算整理で新しく出てくる科目をあとに並べる（精算表の書き方）
   const inTrial = (r: WorksheetRow) => !!(r.trial.debit || r.trial.credit);
@@ -776,6 +841,7 @@ export function worksheetProblem(rand: Rand): FillProblem {
       },
     ],
     blanks: b.score(WORKSHEET_POINTS),
+    steps,
   };
 }
 
@@ -876,6 +942,7 @@ export function totalsTrialProblem(rand: Rand): FillProblem {
       },
     ],
     blanks: b.score(35),
+    steps: month.map((m) => ({ text: m.text, answer: m.e })),
   };
 }
 
@@ -922,5 +989,20 @@ export function receivableLedgerProblem(rand: Rand): FillProblem {
     ],
     sheet: [{ title: "売掛金元帳（A商店）", head: ["日付", "摘要", "借方", "貸方", "借または貸", "残高"], rows }],
     blanks: b.score(10),
+    steps: [
+      { text: `4月8日 A商店に商品${fmt(saleA)}円を掛けで売り上げた。`, answer: flow("売掛金", "売上", saleA), note: "A商店の売掛金が増えたので、A商店の元帳の借方に「売上」と書く。" },
+      { text: `4月12日 B商店に商品${fmt(saleB)}円を掛けで売り上げた。`, answer: flow("売掛金", "売上", saleB), note: "B商店の取引なので、A商店の元帳には書かない。" },
+      {
+        text: `4月15日 8日にA商店に売り上げた商品のうち${fmt(returnA)}円が、品違いのため返品された。`,
+        answer: flow("売上", "売掛金", returnA),
+        note: "返品の分だけA商店の売掛金が減るので、貸方に「返品」と書く。",
+      },
+      { text: `4月22日 B商店から売掛金${fmt(collectB)}円が普通預金口座に振り込まれた。`, answer: flow("普通預金", "売掛金", collectB), note: "B商店の取引なので、A商店の元帳には書かない。" },
+      {
+        text: `4月25日 A商店から売掛金${fmt(collectA)}円が普通預金口座に振り込まれた。`,
+        answer: flow("普通預金", "売掛金", collectA),
+        note: `貸方に「入金」と書く。残高は ${fmt(debitTotal)} − ${fmt(returnA)} − ${fmt(collectA)} = ${fmt(closing)}円で、これを「次月繰越」として貸方に書いて締め切る。`,
+      },
+    ],
   };
 }

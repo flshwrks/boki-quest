@@ -2,6 +2,7 @@
 
 import type { AccountName } from "@/engine/accounts";
 import type { Entry } from "@/engine/journal";
+import { EXAM_FORMATS, type ExamPart } from "@/content/examFormats";
 import { LESSONS, LESSON_BY_ID, PREP_LEVEL, type Lesson } from "@/content/lessons";
 import { LEVELS } from "@/content/world";
 import { EXAM_PASS } from "@/game/logic";
@@ -16,6 +17,8 @@ const GROUPS: [string, (l: Lesson) => boolean][] = [
   ...[1, 2, 3, 4, 5].map((lv): [string, (l: Lesson) => boolean] => [`Lv${lv} ${LEVELS[lv].name}`, (l) => l.level === lv]),
   ["決算", (l) => l.level === 0],
 ];
+
+const PARTS: ExamPart[] = ["第2問(1)", "第2問(2)", "第3問"];
 
 const STAR_STYLE: Record<Mastery["stars"], string> = {
   1: "border-ng/70 bg-ng/10",
@@ -57,12 +60,14 @@ export function TrainingHub({
   onDrill,
   onMock,
   onLesson,
+  onPractice,
 }: {
   state: GameState;
   onClose: () => void;
   onDrill: (lesson: LessonId | null) => void;
   onMock: () => void;
   onLesson: (lesson: LessonId) => void;
+  onPractice: (format: string) => void;
 }) {
   const mastery = masteryOf(state);
   const memory = memoryOf(state.practice);
@@ -132,6 +137,35 @@ export function TrainingHub({
             <Tile key={l.id} lesson={l} learned={learned(l.id)} m={mastery.get(l.id)} day={state.day} onClick={() => onLesson(l.id)} />
           ))}
         </div>
+      </section>
+
+      <section className="mb-4">
+        <h3 className="mb-1 text-gold">第2問・第3問の問題演習</h3>
+        <p className="mb-2 text-xs text-dim">
+          本番と同じ形式の問題を、形式を選んで時間無制限で解く。解き方の手順を見ながら、表を埋める前の仕訳（決算整理仕訳など）を1つずつ下書きしてから答案を埋める。数字は毎回変わる。
+        </p>
+        {PARTS.map((part) => (
+          <div key={part} className="mb-2">
+            <p className="mb-1 text-xs text-dim">{part}</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {EXAM_FORMATS.filter((f) => f.part === part).map((f) => {
+                const ok = learned(f.lesson);
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    disabled={!ok}
+                    onClick={() => onPractice(f.id)}
+                    className="flex min-h-12 flex-col justify-between rounded-lg border border-white/30 p-1.5 text-left text-xs transition-colors hover:brightness-125 disabled:cursor-default disabled:opacity-40"
+                  >
+                    <span className="leading-tight">{f.title}</span>
+                    <span className="text-[10px] text-dim">{ok ? "解き方から練習" : `講義「${LESSON_BY_ID[f.lesson].title}」のあと`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="mb-4">
