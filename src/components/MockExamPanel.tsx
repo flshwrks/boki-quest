@@ -4,13 +4,15 @@ import { useState } from "react";
 import type { AccountName } from "@/engine/accounts";
 import { type Entry, isEmptyEntry } from "@/engine/journal";
 import { EXAM_PASS } from "@/game/logic";
-import { MOCK_QUESTIONS, mockFullParts, mockParts, mockScore, problemScore } from "@/game/training";
+import { FORMAT_BY_ID } from "@/content/examFormats";
+import { MOCK_QUESTIONS, blankLabel, blankOrder, mockFullParts, mockParts, mockScore, problemScore } from "@/game/training";
 import type { FillAnswer, FillBlank, FillCell, FillProblem, FillTable, MockSession } from "@/game/types";
 import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamPanel";
+import { MethodCard } from "./MethodCard";
 import { QuestionText } from "./Question";
-import { Btn, Paper, Portrait, Win, fmt } from "./ui";
+import { Btn, Paper, Portrait, QuitButton, Win, fmt } from "./ui";
 
 export const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");
 
@@ -224,7 +226,7 @@ export function FillSheet({
   );
 }
 
-function Intro({ onBegin }: { onBegin: () => void }) {
+function Intro({ onBegin, onQuit }: { onBegin: () => void; onQuit: () => void }) {
   return (
     <Win title="模擬試験（日商簿記3級）">
       <div className="flex gap-3">
@@ -241,8 +243,11 @@ function Intro({ onBegin }: { onBegin: () => void }) {
           <p className="mt-2 text-dim">数字は毎回変わるから、何度でも挑戦できるぞ。</p>
         </div>
       </div>
-      <div className="mt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-4">
         <Btn onClick={onBegin}>試験を始める</Btn>
+        <Btn variant="ghost" onClick={onQuit}>
+          試験対策にもどる
+        </Btn>
       </div>
     </Win>
   );
@@ -292,14 +297,36 @@ function Result({ mock, onFinish }: { mock: MockSession; onFinish: () => void })
           <ExamReview questions={mock.questions} answers={mock.answers} graded={g.questions} />
         </div>
       </details>
-      {mock.problems.map((p, i) => (
-        <details key={i} className="mb-2">
-          <summary className="cursor-pointer text-sm">{p.title}を見直す</summary>
-          <Paper className="mt-2">
-            <FillSheet problem={p} values={mock.fills[i]} results={g.fills[i]} />
-          </Paper>
-        </details>
-      ))}
+      {mock.problems.map((p, i) => {
+        const format = p.format ? FORMAT_BY_ID.get(p.format) : undefined;
+        const wrong = blankOrder(p).filter((b) => !g.fills[i][b]);
+        return (
+          <details key={i} className="mb-2">
+            <summary className="cursor-pointer text-sm">{p.title}を見直す</summary>
+            {format && (
+              <div className="mt-2">
+                <MethodCard format={format} />
+              </div>
+            )}
+            <Paper className="mt-2">
+              <FillSheet problem={p} values={mock.fills[i]} results={g.fills[i]} />
+            </Paper>
+            {wrong.length > 0 && (
+              <div className="mt-2 text-sm">
+                <p className="mb-1 text-gold">まちがえた欄の求め方</p>
+                <ul className="space-y-1">
+                  {wrong.map((b) => (
+                    <li key={b} className="rounded border border-white/20 p-2">
+                      <span className="text-gold">{blankLabel(p, b)}</span>（正解：{answerText(p.blanks[b])}）
+                      {p.blanks[b].why && <span className="block text-xs">🧮 {p.blanks[b].why}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </details>
+        );
+      })}
       <Btn onClick={onFinish}>試験対策にもどる</Btn>
     </Win>
   );
@@ -314,6 +341,7 @@ export function MockExamPanel({
   onFill,
   onGrade,
   onFinish,
+  onQuit,
 }: {
   mock: MockSession;
   accounts: AccountName[];
@@ -322,11 +350,13 @@ export function MockExamPanel({
   onFill: (problem: number, blank: number, value: FillAnswer) => void;
   onGrade: () => void;
   onFinish: () => void;
+  /** 途中でやめる（採点も記録もしない） */
+  onQuit: () => void;
 }) {
   const [page, setPage] = useState(0);
   const [calc, addCalc] = useCalcResults();
   if (mock.graded) return <Result mock={mock} onFinish={onFinish} />;
-  if (mock.startedAt === null) return <Intro onBegin={() => onBegin(Date.now())} />;
+  if (mock.startedAt === null) return <Intro onBegin={() => onBegin(Date.now())} onQuit={onQuit} />;
 
   const n = mock.questions.length;
   const pages = n + mock.problems.length;
@@ -357,6 +387,9 @@ export function MockExamPanel({
         <FillSheet problem={mock.problems[page - n]} values={mock.fills[page - n]} onChange={(b, v) => onFill(page - n, b, v)} />
       )}
       <CbtFooter index={page} count={pages} onSelect={setPage} unanswered={unanswered} onGrade={onGrade} />
+      <div className="mt-3 text-right [&_button]:text-[#55607a]">
+        <QuitButton onQuit={onQuit} label="試験をやめる（採点しない）" />
+      </div>
     </CbtFrame>
   );
 }

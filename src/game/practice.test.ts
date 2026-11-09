@@ -8,11 +8,13 @@ import {
   blankLabel,
   blankOrder,
   checkGuide,
+  formatProgress,
   checkPracticeStep,
   gradePractice,
   guideBlank,
   nextPracticeStep,
   problemScore,
+  quitTraining,
   setGuide,
   setPracticeFill,
   startPractice,
@@ -107,5 +109,20 @@ describe("第2問・第3問の問題演習", () => {
     if (s.phase.kind !== "practice") throw new Error("始まらない");
     expect(s.phase.practice.checks).toBeUndefined();
     expect(guideBlank(s.phase.practice)).toBeUndefined();
+  });
+
+  it("採点すると形式ごとの成績に残り、ガイドなしの最高は別に数える。やめると途中を捨てて試験対策に戻る", () => {
+    const rand = seededRand(11);
+    const base = newGame("テスト", rand);
+    const ready: GameState = { ...base, lessonsDone: [...base.lessonsDone, "subbooks"], phase: { kind: "training" } };
+    let s = startPractice(ready, "subbook", rand);
+    expect(quitTraining(s).phase).toEqual({ kind: "training" });
+
+    s = setGuide(s, false);
+    if (s.phase.kind !== "practice") throw new Error("始まらない");
+    s.phase.practice.problem.blanks.forEach((b, i) => (s = setPracticeFill(s, i, answerValue(b))));
+    s = gradePractice(s);
+    const g = formatProgress(s).get("subbook")!;
+    expect(g).toEqual({ tries: 1, best: 1, bestSolo: 1, last: 1 });
   });
 });

@@ -110,6 +110,26 @@ export function AccountChip({ account, className = "" }: { account: AccountName;
 }
 
 /** 仕訳を「借方｜貸方」の表で見せる */
+/** やめて戻るボタン。押し間違えで途中の答えを失わないよう、2回押して確かめる */
+export function QuitButton({ onQuit, label = "やめて試験対策にもどる", className = "" }: { onQuit: () => void; label?: string; className?: string }) {
+  const [sure, setSure] = useState(false);
+  return sure ? (
+    <span className={`inline-flex flex-wrap items-center gap-2 text-sm ${className}`}>
+      <span>途中の答えは消えます。</span>
+      <Btn variant="ghost" onClick={onQuit}>
+        やめる
+      </Btn>
+      <Btn variant="ghost" onClick={() => setSure(false)}>
+        つづける
+      </Btn>
+    </span>
+  ) : (
+    <button type="button" className={`text-sm text-dim underline hover:text-white ${className}`} onClick={() => setSure(true)}>
+      {label}
+    </button>
+  );
+}
+
 /** 答案用紙の色の箱（模擬試験・問題演習・ドリルの入力欄） */
 export function Paper({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`rounded-lg bg-[#eef0f6] p-2 text-[#1d1d2b] ${className}`}>{children}</div>;

@@ -325,6 +325,8 @@ export interface FillProblem {
   /** 答案用紙 */
   sheet: FillTable[];
   blanks: FillBlank[];
+  /** 出題形式（examFormats.ts の id）。見直しで解説を出すのに使う */
+  format?: string;
   /** 問題演習で、表を埋める前に書く下書きの仕訳（決算整理仕訳・期中の取引など）。順に答えると表が埋められる */
   steps?: PracticeStep[];
 }
@@ -363,6 +365,16 @@ export interface MockSession {
   minutes: number;
   /** 採点後に入る。第1問の各問、穴埋めの各空欄の正誤 */
   graded: { questions: boolean[]; fills: boolean[][] } | null;
+}
+
+/** 問題演習の成績（1問ごと） */
+export interface PracticeResult {
+  format: string;
+  day: number;
+  score: number;
+  full: number;
+  /** ガイドつきで解いたか（ガイドなし＝本番と同じ形で解いた成績を分けて見せる） */
+  guided: boolean;
 }
 
 export interface MockResult {
@@ -453,6 +465,8 @@ export interface GameState {
   practice: PracticeRecord[];
   /** 模擬試験の成績 */
   mocks: MockResult[];
+  /** 第2問・第3問の問題演習の成績 */
+  practiceLog: PracticeResult[];
   /** 慣れた決済（習熟度★3の論点の後始末）を、見習いのノエルに記帳してもらう */
   autoPost: boolean;
   /** 決算日の間だけ、決算整理を始めた時点の仕訳の件数（精算表の「修正記入」をここから数える） */

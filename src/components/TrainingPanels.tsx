@@ -7,10 +7,10 @@ import { LESSONS, LESSON_BY_ID, PREP_LEVEL, type Lesson } from "@/content/lesson
 import { LEVELS } from "@/content/world";
 import { EXAM_PASS } from "@/game/logic";
 import { type Memory, memoryOf, retention } from "@/game/memory";
-import { DRILL_SIZE, LESSONS_WITH_QUESTIONS, type Mastery, lessonsLeft, masteryOf, weakLessons } from "@/game/training";
+import { DRILL_SIZE, LESSONS_WITH_QUESTIONS, type Mastery, formatProgress, lessonsLeft, masteryOf, weakLessons } from "@/game/training";
 import type { DrillSession, GameState, LessonId } from "@/game/types";
 import { QuizCard } from "./Question";
-import { Btn, Portrait, ProgressDots, Win } from "./ui";
+import { Btn, Portrait, ProgressDots, QuitButton, Win } from "./ui";
 
 /** 習熟度マップの段（店の成長の順、決算、試験対策） */
 const GROUPS: [string, (l: Lesson) => boolean][] = [
@@ -68,6 +68,9 @@ export function TrainingHub({
   onPractice: (format: string) => void;
 }) {
   const mastery = masteryOf(state);
+  const progress = formatProgress(state);
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const soloPassed = EXAM_FORMATS.filter((f) => (progress.get(f.id)?.bestSolo ?? 0) >= 0.7).length;
   const memory = memoryOf(state.practice);
   const learned = (id: LessonId) => state.lessonsDone.includes(id);
   const open = state.mistakes.filter((m) => !m.resolved).length;
@@ -139,6 +142,13 @@ export function TrainingHub({
 
       <section className="mb-4">
         <h3 className="mb-1 text-gold">第2問・第3問の問題演習</h3>
+        <p className="mb-1 text-sm">
+          ガイドなしで7割をこえた形式：
+          <span className="text-gold tabular-nums">
+            {soloPassed} / {EXAM_FORMATS.length}
+          </span>
+          {state.practiceLog.length > 0 && <span className="ml-2 text-xs text-dim">（演習 {state.practiceLog.length}回）</span>}
+        </p>
         <p className="mb-2 text-xs text-dim">
           本番と同じ形式の問題を、形式を選んで時間無制限で解く。解き方の手順を見ながら、表を埋める前の仕訳（決算整理仕訳など）を1つずつ下書きしてから答案を埋める。数字は毎回変わる。
         </p>
@@ -148,16 +158,28 @@ export function TrainingHub({
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
               {EXAM_FORMATS.filter((f) => f.part === part).map((f) => {
                 const ok = learned(f.lesson);
+                const g = progress.get(f.id);
+                // ガイドなしで7割をこえたら緑、ガイドつきだけなら金、まだなら白の枠
+                const tone = (g?.bestSolo ?? 0) >= 0.7 ? STAR_STYLE[3] : g ? STAR_STYLE[2] : "border-white/30";
                 return (
                   <button
                     key={f.id}
                     type="button"
                     disabled={!ok}
                     onClick={() => onPractice(f.id)}
-                    className="flex min-h-12 flex-col justify-between rounded-lg border border-white/30 p-1.5 text-left text-xs transition-colors hover:brightness-125 disabled:cursor-default disabled:opacity-40"
+                    className={`flex min-h-14 flex-col justify-between rounded-lg border p-1.5 text-left text-xs transition-colors hover:brightness-125 disabled:cursor-default disabled:opacity-40 ${tone}`}
                   >
                     <span className="leading-tight">{f.title}</span>
-                    <span className="text-[10px] text-dim">{ok ? "解き方から練習" : `講義「${LESSON_BY_ID[f.lesson].title}」のあと`}</span>
+                    {!ok ? (
+                      <span className="text-[10px] text-dim">講義「{LESSON_BY_ID[f.lesson].title}」のあと</span>
+                    ) : g ? (
+                      <span className="text-[10px] text-dim tabular-nums">
+                        {g.tries}回・最高{pct(g.best)}
+                        {g.bestSolo !== null ? `・ガイドなし${pct(g.bestSolo)}` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-dim">まだ解いていない</span>
+                    )}
                   </button>
                 );
               })}
@@ -211,11 +233,13 @@ export function DrillPanel({
   accounts,
   onCheck,
   onNext,
+  onQuit,
 }: {
   drill: DrillSession;
   accounts: AccountName[];
   onCheck: (entry: Entry) => void;
   onNext: () => void;
+  onQuit: () => void;
 }) {
   const total = drill.questions.length;
   const title = drill.lesson ? `ドリル：${LESSON_BY_ID[drill.lesson].title}` : "苦手ドリル";
@@ -247,6 +271,7 @@ export function DrillPanel({
       <QuizCard key={drill.index} q={q} accounts={accounts} result={result} mine={drill.answer} onCheck={onCheck}>
         <Btn onClick={onNext}>{drill.index + 1 < total ? "次の問題" : "結果を見る"}</Btn>
       </QuizCard>
+      <QuitButton onQuit={onQuit} className="mt-4 block" />
     </Win>
   );
 }

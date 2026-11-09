@@ -44,6 +44,7 @@ export const ACCOUNTS = {
   立替金: "asset",
   仮払金: "asset",
   建物: "asset",
+  建物減価償却累計額: "contra",
   備品: "asset",
   備品減価償却累計額: "contra",
   車両運搬具: "asset",
@@ -115,6 +116,7 @@ export type AccountName = keyof typeof ACCOUNTS;
 /** 資産から差し引く科目と、差し引かれる側の資産 */
 export const CONTRA_TARGETS: Partial<Record<AccountName, AccountName[]>> = {
   貸倒引当金: ["売掛金", "受取手形", "電子記録債権"],
+  建物減価償却累計額: ["建物"],
   備品減価償却累計額: ["備品"],
   車両運搬具減価償却累計額: ["車両運搬具"],
 };
@@ -169,6 +171,7 @@ const STATEMENT_LABEL: Partial<Record<AccountName, string>> = {
   未収利息: "未収収益",
   未収家賃: "未収収益",
   前受家賃: "前受収益",
+  建物減価償却累計額: "減価償却累計額",
   備品減価償却累計額: "減価償却累計額",
   車両運搬具減価償却累計額: "減価償却累計額",
 };

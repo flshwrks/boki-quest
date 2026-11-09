@@ -67,6 +67,7 @@ import {
   nextPracticeStep,
   setPracticeFill,
   gradePractice,
+  quitTraining,
   checkGuide,
   guideBlank,
   setGuide,
@@ -566,6 +567,7 @@ export default function GameApp() {
           page={p.page}
           onTurn={(d) => update((s) => turnLessonPage(s, d))}
           skip={skipOf(p.lesson)}
+          onQuit={p.returnTo === "training" ? () => update(quitTraining) : undefined}
         />
       );
       break;
@@ -649,6 +651,7 @@ export default function GameApp() {
             commit(next);
           }}
           onNext={() => update(nextDrill)}
+          onQuit={() => update(quitTraining)}
         />
       );
       break;
@@ -667,6 +670,7 @@ export default function GameApp() {
             commit(graded);
           }}
           onFinish={() => update(finishMock)}
+          onQuit={() => update(quitTraining)}
         />
       );
       break;

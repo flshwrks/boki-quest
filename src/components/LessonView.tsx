@@ -6,7 +6,7 @@ import type { ExamQuestion, LessonId } from "@/game/types";
 import { type AccountName, CATEGORY_LABEL } from "@/engine/accounts";
 import { type Entry, sameEntry } from "@/engine/journal";
 import { QuizCard } from "./Question";
-import { Btn, CATEGORY_BG, Dialogue, EntryTable, Portrait, Speaker, Win } from "./ui";
+import { Btn, CATEGORY_BG, Dialogue, EntryTable, Portrait, Speaker, Win, QuitButton } from "./ui";
 
 const FIVE = (
   [
@@ -143,6 +143,7 @@ export function LessonView({
   onTurn,
   finishLabel = "講義を終える",
   skip,
+  onQuit,
 }: {
   lessonId: LessonId;
   page: number;
@@ -150,6 +151,8 @@ export function LessonView({
   finishLabel?: string;
   /** 早送りを許すときだけ渡す */
   skip?: SkipProps;
+  /** 試験対策から開いた講義は、途中でやめて戻れる */
+  onQuit?: () => void;
 }) {
   const [quiz, setQuiz] = useState(false);
   const lesson = LESSON_BY_ID[lessonId];
@@ -190,6 +193,7 @@ export function LessonView({
         </Btn>
         <Btn onClick={() => onTurn(1)}>{last ? finishLabel : "つぎへ"}</Btn>
       </div>
+      {onQuit && <QuitButton onQuit={onQuit} className="mt-3 block" />}
       {skip && page === 0 && (
         <p className="mt-2 text-right text-xs">
           <button type="button" className="text-dim underline hover:text-white" onClick={() => setQuiz(true)}>

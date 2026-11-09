@@ -123,6 +123,7 @@ export function initialState(shopName: string): GameState {
     bestCombo: 0,
     practice: [],
     mocks: [],
+    practiceLog: [],
     autoPost: false,
     today: emptyDay(),
     phase: { kind: "dayStart" },

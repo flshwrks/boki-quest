@@ -2,35 +2,17 @@
 
 import type { AccountName } from "@/engine/accounts";
 import type { Entry } from "@/engine/journal";
-import { type ExamFormat, FORMAT_BY_ID } from "@/content/examFormats";
+import { FORMAT_BY_ID } from "@/content/examFormats";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { blankLabel, blankOrder, fillCorrect, guideBlank, problemPassed, problemScore } from "@/game/training";
 import type { FillAnswer, PracticeStep, ProblemPractice } from "@/game/types";
 import { Calculator, useCalcResults } from "./Calculator";
+import { MethodCard } from "./MethodCard";
 import { Blank, FillSheet, ProblemContext, answerText, filled } from "./MockExamPanel";
 import { QuizCard } from "./Question";
-import { Btn, EntryTable, Paper, Portrait, ProgressDots, Win } from "./ui";
+import { Btn, EntryTable, Paper, Portrait, ProgressDots, QuitButton, Win } from "./ui";
 
-/** 解き方の手順とよくある間違い。最初の下書きと採点のあとは開いておく */
-export function MethodCard({ format, open }: { format: ExamFormat; open?: boolean }) {
-  return (
-    <details open={open} className="mb-3 rounded-lg border border-gold/40 p-2 text-sm">
-      <summary className="cursor-pointer text-gold">解き方の手順</summary>
-      <ol className="mt-1 list-decimal space-y-1 pl-5">
-        {format.method.map((m) => (
-          <li key={m}>{m}</li>
-        ))}
-      </ol>
-      <p className="mt-2 text-xs text-gold">よくある間違い</p>
-      <ul className="list-disc pl-5 text-xs text-dim">
-        {format.traps.map((t) => (
-          <li key={t}>{t}</li>
-        ))}
-      </ul>
-    </details>
-  );
-}
 
 /** 下書きの仕訳の答えと、金額の計算の解説 */
 function StepAnswer({ step }: { step: PracticeStep }) {
@@ -234,6 +216,7 @@ export function PracticePanel({
           <div className="mb-3">{result ? <StepAnswer step={step} /> : step.note && <p className="text-xs text-dim">🧮 {step.note}</p>}</div>
           <Btn onClick={onNext}>{practice.step + 1 < steps.length ? "次の仕訳" : "答案を埋める"}</Btn>
         </QuizCard>
+        <QuitButton onQuit={onFinish} className="mt-4 block" />
       </Win>
     );
   }
@@ -275,7 +258,7 @@ export function PracticePanel({
                 いまの作業：<b>表を1欄ずつ埋める</b>。黄色く光っている欄が、今埋める欄。画面の下に、その欄の場所と入力欄が出る。わからなければ「求め方を見る」で、問題の数字を使った計算を確かめよう。
               </>
             ) : (
-              <>いまの作業：本番と同じく、自分で表を埋めてから「採点する」。手順は下の「解き方の手順」を見よう。</>
+              <>いまの作業：本番と同じく、自分で表を埋めてから「採点する」。手順は下の「意義・考え方・解き方」を見よう。</>
             )}
           </Stage>
         </>
@@ -335,9 +318,7 @@ export function PracticePanel({
         ) : (
           <>
             {!guiding && <Btn onClick={onGrade}>採点する</Btn>}
-            <Btn variant="ghost" onClick={onFinish}>
-              やめる
-            </Btn>
+            <QuitButton onQuit={onFinish} />
           </>
         )}
       </div>

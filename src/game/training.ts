@@ -142,8 +142,9 @@ export function makeMock(state: GameState, rand: Rand): MockSession {
   const questions = pickQuestions(state, MOCK_QUESTIONS, rand, false);
   // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ。模擬試験では下書きの仕訳を使わないので、セーブに残さない
   const problems = EXAM_PARTS.map((part) => {
-    const { steps: _, ...problem } = pick(rand, EXAM_FORMATS.filter((f) => f.part === part)).make(rand);
-    return problem;
+    const f = pick(rand, EXAM_FORMATS.filter((x) => x.part === part));
+    const { steps: _, ...problem } = f.make(rand);
+    return { ...problem, format: f.id };
   });
   return {
     questions,
@@ -320,7 +321,38 @@ export function gradePractice(state: GameState): GameState {
   // ガイドつきなら、1欄ずつ答え合わせしたときの正誤で採点する（間違えた欄は正解が書き込まれているため）
   const results = p.checks ? p.checks.map((c) => c === true) : p.problem.blanks.map((b, i) => fillCorrect(b, p.fills[i]));
   const logged = logPractice(state, p.problem.lesson, problemPassed(p.problem, results));
-  return { ...logged, phase: { kind: "practice", practice: { ...p, results } } };
+  const record = { format: p.format, day: state.day, score: problemScore(p.problem, results), full: problemScore(p.problem), guided: !!p.checks };
+  return { ...logged, practiceLog: [...logged.practiceLog, record], phase: { kind: "practice", practice: { ...p, results } } };
 }
 
 export const finishPractice = (state: GameState): GameState => (state.phase.kind === "practice" ? { ...state, phase: { kind: "training" } } : state);
+
+/** 形式ごとの成績のまとめ（回数・最高点の割合。ガイドなしの最高は別に） */
+export interface FormatProgress {
+  tries: number;
+  best: number;
+  bestSolo: number | null;
+  last: number;
+}
+
+export function formatProgress(state: GameState): Map<string, FormatProgress> {
+  const out = new Map<string, FormatProgress>();
+  for (const r of state.practiceLog) {
+    const rate = r.full ? r.score / r.full : 0;
+    const x = out.get(r.format) ?? { tries: 0, best: 0, bestSolo: null, last: 0 };
+    out.set(r.format, {
+      tries: x.tries + 1,
+      best: Math.max(x.best, rate),
+      bestSolo: r.guided ? x.bestSolo : Math.max(x.bestSolo ?? 0, rate),
+      last: rate,
+    });
+  }
+  return out;
+}
+
+/** 試験対策の途中（ドリル・模擬試験・問題演習・試験対策から開いた講義）をやめて、試験対策の画面に戻る。途中の答えは捨てる */
+export function quitTraining(state: GameState): GameState {
+  const p = state.phase;
+  const inTraining = p.kind === "drill" || p.kind === "mock" || p.kind === "practice" || (p.kind === "lesson" && p.returnTo === "training");
+  return inTraining ? { ...state, phase: { kind: "training" } } : state;
+}
