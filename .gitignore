@@ -7,3 +7,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# スクリーンショット
+/*.png
+/*.jpg
