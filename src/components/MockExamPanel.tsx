@@ -12,6 +12,7 @@ import { CbtEntryForm } from "./CbtEntryForm";
 import { CbtFooter, CbtFrame, Countdown, ExamReview, QuestionNav } from "./ExamPanel";
 import { MethodCard } from "./MethodCard";
 import { QuestionText } from "./Question";
+import { Why } from "./Why";
 import { Btn, Paper, Portrait, QuitButton, Win, fmt } from "./ui";
 
 export const filled = (v: FillAnswer) => (Array.isArray(v) ? v.length > 0 : !!v && v.trim() !== "");
@@ -299,7 +300,6 @@ function Result({ mock, onFinish }: { mock: MockSession; onFinish: () => void })
       </details>
       {mock.problems.map((p, i) => {
         const format = p.format ? FORMAT_BY_ID.get(p.format) : undefined;
-        const wrong = blankOrder(p).filter((b) => !g.fills[i][b]);
         return (
           <details key={i} className="mb-2">
             <summary className="cursor-pointer text-sm">{p.title}を見直す</summary>
@@ -311,19 +311,7 @@ function Result({ mock, onFinish }: { mock: MockSession; onFinish: () => void })
             <Paper className="mt-2">
               <FillSheet problem={p} values={mock.fills[i]} results={g.fills[i]} />
             </Paper>
-            {wrong.length > 0 && (
-              <div className="mt-2 text-sm">
-                <p className="mb-1 text-gold">まちがえた欄の求め方</p>
-                <ul className="space-y-1">
-                  {wrong.map((b) => (
-                    <li key={b} className="rounded border border-white/20 p-2">
-                      <span className="text-gold">{blankLabel(p, b)}</span>（正解：{answerText(p.blanks[b])}）
-                      {p.blanks[b].why && <span className="block text-xs">🧮 {p.blanks[b].why}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <WrongBlanks problem={p} results={g.fills[i]} />
           </details>
         );
       })}
@@ -391,5 +379,24 @@ export function MockExamPanel({
         <QuitButton onQuit={onQuit} label="試験をやめる（採点しない）" />
       </div>
     </CbtFrame>
+  );
+}
+
+/** 採点のあと、まちがえた欄だけを、正解・求め方・つまずきやすい点つきで並べる */
+export function WrongBlanks({ problem, results }: { problem: FillProblem; results: boolean[] }) {
+  const wrong = blankOrder(problem).filter((b) => !results[b]);
+  if (wrong.length === 0) return null;
+  return (
+    <div className="mt-2 mb-3 text-sm">
+      <p className="mb-1 text-gold">まちがえた欄の求め方（{wrong.length}欄）</p>
+      <ul className="space-y-1">
+        {wrong.map((b) => (
+          <li key={b} className="rounded border border-white/20 p-2">
+            <span className="text-gold">{blankLabel(problem, b)}</span>（正解：{answerText(problem.blanks[b])}）
+            {problem.blanks[b].why && <Why text={problem.blanks[b].why} className="mt-1 text-xs" />}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

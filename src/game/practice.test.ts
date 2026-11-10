@@ -48,6 +48,17 @@ describe("第2問・第3問の問題演習", () => {
     }
   });
 
+  it("どの形式の問題にも、つまずきやすい点の説明がある", () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const rand = seededRand(seed);
+      for (const f of EXAM_FORMATS) {
+        const p = f.make(rand);
+        const traps = [...p.blanks.filter((b) => b.why?.includes("⚠ ")), ...(p.steps ?? []).filter((s) => s.trap)];
+        expect(traps.length, f.id).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it("形式の論点（練習を開く条件）は、問題が記録する論点と同じ", () => {
     const rand = seededRand(2);
     for (const f of EXAM_FORMATS) for (let i = 0; i < 5; i++) expect(f.make(rand).lesson, f.id).toBe(f.lesson);
