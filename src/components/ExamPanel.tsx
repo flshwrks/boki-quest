@@ -11,6 +11,7 @@ import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { MissDetail, QuestionText } from "./Question";
 import { play } from "./sfx";
+import { Trap } from "./Why";
 import { Btn, Portrait, Win } from "./ui";
 
 
@@ -74,6 +75,7 @@ export function ExamReview({ questions, answers, graded }: { questions: ExamQues
           </p>
           <QuestionText q={q} className="my-1" />
           {!graded[i] && <MissDetail answer={q.answer} mine={answers[i]} />}
+          {!graded[i] && q.trap && <Trap text={q.trap} />}
         </li>
       ))}
     </ol>

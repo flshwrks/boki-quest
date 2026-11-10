@@ -7,6 +7,7 @@ import type { ExamQuestion } from "@/game/types";
 import { Calculator, useCalcResults } from "./Calculator";
 import { CbtEntryForm } from "./CbtEntryForm";
 import { VoucherView } from "./VoucherView";
+import { Trap } from "./Why";
 import { AnswerExplain, Btn, EntryTable, Paper } from "./ui";
 
 // 審査・模試・ドリル・講義の確認問題で共通に使う、仕訳問題の部品
@@ -83,6 +84,7 @@ export function QuizCard({
         <>
           <p className={`stamp mb-2 text-2xl ${result ? "text-ok" : "text-ng"}`}>{result ? "◯ 正解！" : "✕ ざんねん"}</p>
           {!result && <MissDetail answer={q.answer} mine={mine} />}
+          {q.trap && <Trap text={q.trap} />}
           <div className="mt-3">{children}</div>
         </>
       )}

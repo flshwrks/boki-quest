@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { AccountName } from "@/engine/accounts";
 import { type Entry, isEmptyEntry } from "@/engine/journal";
 import { EXAM_PASS } from "@/game/logic";
+import { accountChoices } from "@/content/examChoices";
 import { FORMAT_BY_ID } from "@/content/examFormats";
 import { MOCK_QUESTIONS, blankLabel, blankOrder, mockFullParts, mockParts, mockScore, problemScore } from "@/game/training";
 import type { FillAnswer, FillBlank, FillCell, FillProblem, FillTable, MockSession } from "@/game/types";
@@ -235,7 +235,7 @@ function Intro({ onBegin, onQuit }: { onBegin: () => void; onQuit: () => void })
         <div className="text-sm">
           <p>本試験と同じ配分の模擬試験じゃ。店のことは忘れて、試験会場にいるつもりで解いてみよう。</p>
           <ul className="mt-2 list-disc pl-5">
-            <li>第1問：仕訳 {MOCK_QUESTIONS}問（各3点・45点）</li>
+            <li>第1問：仕訳 {MOCK_QUESTIONS}問（各3点・45点）。勘定科目は、本番と同じく問題ごとの選択肢から選ぶ</li>
             <li>第2問：勘定記入と補助簿（20点）</li>
             <li>第3問：決算整理後の財務諸表（35点）</li>
             <li>制限時間60分・{EXAM_PASS}点以上で合格ライン。ヒントはなし</li>
@@ -323,7 +323,6 @@ function Result({ mock, onFinish }: { mock: MockSession; onFinish: () => void })
 /** 第1問（仕訳）は問題ごと、第2問・第3問は大問ごとにページを分ける */
 export function MockExamPanel({
   mock,
-  accounts,
   onBegin,
   onAnswer,
   onFill,
@@ -332,7 +331,6 @@ export function MockExamPanel({
   onQuit,
 }: {
   mock: MockSession;
-  accounts: AccountName[];
   onBegin: (now: number) => void;
   onAnswer: (index: number, entry: Entry) => void;
   onFill: (problem: number, blank: number, value: FillAnswer) => void;
@@ -369,7 +367,7 @@ export function MockExamPanel({
         <>
           <p className="mb-1 text-xs text-[#55607a]">第1問（{page + 1}）　次の取引について仕訳しなさい。（3点）</p>
           <QuestionText q={mock.questions[page]} className="mb-3 rounded border border-[#b8bfd3] bg-white p-2" />
-          <CbtEntryForm key={page} accounts={accounts} initial={mock.answers[page]} onChange={(entry) => onAnswer(page, entry)} chips={calc} />
+          <CbtEntryForm key={page} accounts={accountChoices(mock.questions[page])} initial={mock.answers[page]} onChange={(entry) => onAnswer(page, entry)} chips={calc} />
         </>
       ) : (
         <FillSheet problem={mock.problems[page - n]} values={mock.fills[page - n]} onChange={(b, v) => onFill(page - n, b, v)} />

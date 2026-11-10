@@ -659,7 +659,6 @@ export default function GameApp() {
       panel = (
         <MockExamPanel
           mock={p.mock}
-          accounts={unlockedAccounts(state)}
           onBegin={(now) => update((s) => beginMock(s, now))}
           onAnswer={(i, entry) => update((s) => setMockAnswer(s, i, entry))}
           onFill={(i, b, v) => update((s) => setMockFill(s, i, b, v))}

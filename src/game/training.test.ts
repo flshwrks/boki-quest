@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { parseAmount } from "@/engine/format";
-import { EXAM_BANK } from "@/content/examBank";
+import { EXAM_BANK, unusedTraps } from "@/content/examBank";
+import { CONFUSABLE, accountChoices } from "@/content/examChoices";
+import { isAccountName } from "@/engine/accounts";
 import { LESSONS } from "@/content/lessons";
 import { SUB_BOOKS, closingProblem, ledgerProblem, subBookProblem } from "@/content/mockExam";
 import { newGame, practiceFromHistory, turnLessonPage } from "./logic";
 import { seededRand } from "./random";
 import {
   DRILL_SIZE,
+  MOCK_QUESTIONS,
+  mockQuestions,
   afterLesson,
   startPrepLesson,
   checkDrill,
@@ -224,3 +228,34 @@ describe("習熟度", () => {
     ]);
   });
 });
+
+describe("第1問の問題集（本番レベル）", () => {
+  it("つまずきやすい点の書き出しは、すべてどれかの問題に当たる", () => {
+    expect(unusedTraps()).toEqual([]);
+  });
+
+  it("本番レベルの問題（基本の問題以外）には、すべてつまずきやすい点がある", () => {
+    for (const q of EXAM_BANK.filter((x) => !x.basic)) expect(q.trap, q.text).toBeTruthy();
+  });
+
+  it("模擬試験の第1問は、基本の問題を出さず、論点がなるべく重ならない", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const qs = mockQuestions(trainingState(), seededRand(seed));
+      expect(qs).toHaveLength(MOCK_QUESTIONS);
+      expect(qs.some((q) => q.basic)).toBe(false);
+      expect(new Set(qs.map((q) => q.lesson)).size).toBe(MOCK_QUESTIONS);
+    }
+  });
+
+  it("勘定科目の選択肢は、正解の科目をすべて含み、まちがえやすい科目を混ぜて6つ以上", () => {
+    for (const g of CONFUSABLE) for (const a of g) expect(isAccountName(a), a).toBe(true);
+    for (const q of EXAM_BANK) {
+      const choices = accountChoices(q);
+      for (const l of [...q.answer.debit, ...q.answer.credit]) expect(choices, q.text).toContain(l.account);
+      expect(new Set(choices).size, q.text).toBe(choices.length);
+      expect(choices.length, q.text).toBeGreaterThanOrEqual(6);
+      expect(accountChoices(q), "開き直しても同じ").toEqual(choices);
+    }
+  });
+});
+

@@ -5,7 +5,7 @@ import { type Entry, sumOf } from "@/engine/journal";
 import type { Transaction } from "@/game/types";
 import { n, pct } from "./eventKit";
 
-const SALES_TAX_RATE = 0.1;
+export const SALES_TAX_RATE = 0.1;
 
 /** 消費税をのせる代金の科目（先にあるものを優先） */
 const SALE_PAY: AccountName[] = ["現金", "売掛金", "普通預金", "当座預金", "受取手形", "電子記録債権", "クレジット売掛金", "受取商品券"];

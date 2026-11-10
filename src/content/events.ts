@@ -3,6 +3,7 @@ import { sumAmounts } from "@/engine/journal";
 import type { CharacterId, Choice, Effect, GameState, ItemId, Transaction } from "@/game/types";
 import { CUSTOMER_PREFS, type EventTemplate, voiceOf, creditsOf, decline, je, n, name, needCash, needDeposit, pick, settleAll, tradeScale, pickSale, dueCredits } from "./eventKit";
 import { LESSONS } from "./lessons";
+import { SALES_TAX_RATE } from "./salesTax";
 import { seasonOf } from "./seasons";
 import { LV3_TEMPLATES } from "./eventsLv3";
 import { CLOSING_TEMPLATES } from "./eventsClosing";
@@ -596,7 +597,8 @@ const salesReturn: EventTemplate = {
     const it = ITEMS[c.item];
     const k = Math.max(1, Math.floor(c.qty * 0.2));
     const amt = it.price * k;
-    if (amt > c.amount) return null;
+    // 消費税をのせる売掛金なら、返品で減る額も税込み。残っている売掛金を超えないようにする
+    if (amt * (c.taxed ? 1 + SALES_TAX_RATE : 1) > c.amount) return null;
     return {
       speaker: c.who,
       lines: [voiceOf(c.who).returnGoods(`${it.name}のうち${k}${it.unit}`)],

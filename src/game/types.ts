@@ -392,6 +392,10 @@ export interface ExamQuestion {
   lesson: LessonId;
   /** 証ひょうを見て仕訳する問題 */
   doc?: Voucher;
+  /** つまずきやすい点（答え合わせのあとに出す） */
+  trap?: string;
+  /** 本番の第1問より易しい基本の問題。模擬試験には出さない */
+  basic?: boolean;
 }
 
 /** 昇格審査。本番CBTと同じく、問題を行き来して最後にまとめて採点する */

@@ -3,7 +3,7 @@
 import { memoryOf, retention } from "./memory";
 import { type Entry, sameEntry } from "@/engine/journal";
 import { parseAmount } from "@/engine/format";
-import { BANK_BY_LESSON, EXAM_BANK } from "@/content/examBank";
+import { BANK_BY_LESSON, EXAM_BANK, EXAM_WEIGHT } from "@/content/examBank";
 import { LESSONS } from "@/content/lessons";
 import { pick } from "@/content/eventKit";
 import { EXAM_FORMATS, EXAM_PARTS, FORMAT_BY_ID } from "@/content/examFormats";
@@ -138,8 +138,27 @@ export function nextDrill(state: GameState): GameState {
 /** 模擬試験は、すべての講義（試験対策の講義を含む）を受けたら受けられる */
 export const lessonsLeft = (state: GameState) => LESSONS.filter((l) => !state.lessonsDone.includes(l.id));
 
+/**
+ * 模擬試験の第1問：本番より易しい基本の問題は除き、本番の出題傾向の重み（EXAM_WEIGHT）で論点を選ぶ。
+ * 論点はなるべく重ねず、各論点から1問ずつ
+ */
+export function mockQuestions(state: GameState, rand: Rand, n = MOCK_QUESTIONS): ExamQuestion[] {
+  const learned = new Set(state.lessonsDone);
+  const pool = EXAM_BANK.filter((q) => !q.basic && learned.has(q.lesson));
+  const byLesson = new Map<LessonId, ExamQuestion[]>();
+  for (const q of pool) byLesson.set(q.lesson, [...(byLesson.get(q.lesson) ?? []), q]);
+  // 重みつきで順番を決める（重みが大きいほど前に来やすい）
+  const order = [...byLesson.keys()]
+    .map((id) => ({ id, key: Math.pow(rand(), 1 / (EXAM_WEIGHT[id] ?? 1)) }))
+    .sort((a, b) => b.key - a.key)
+    .map((x) => x.id);
+  const firsts = order.map((id) => pick(rand, byLesson.get(id)!));
+  const rest = shuffle(pool.filter((q) => !firsts.includes(q)), rand);
+  return [...firsts, ...rest].slice(0, n);
+}
+
 export function makeMock(state: GameState, rand: Rand): MockSession {
-  const questions = pickQuestions(state, MOCK_QUESTIONS, rand, false);
+  const questions = mockQuestions(state, rand);
   // 第2問(1)・(2)、第3問は、それぞれ出題形式を選ぶ。模擬試験では下書きの仕訳を使わないので、セーブに残さない
   const problems = EXAM_PARTS.map((part) => {
     const f = pick(rand, EXAM_FORMATS.filter((x) => x.part === part));
