@@ -48,6 +48,10 @@ describe("第2問・第3問の問題演習", () => {
     }
   });
 
+  it("下書きのある形式には、下書きが答案にどうつながるかの説明がある", () => {
+    for (const f of EXAM_FORMATS) expect(!!f.draft, f.id).toBe((f.make(seededRand(1)).steps ?? []).length > 0);
+  });
+
   it("どの形式の問題にも、つまずきやすい点の説明がある", () => {
     for (let seed = 1; seed <= 30; seed++) {
       const rand = seededRand(seed);

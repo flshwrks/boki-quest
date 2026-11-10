@@ -12,8 +12,7 @@ import { MethodCard } from "./MethodCard";
 import { Blank, FillSheet, ProblemContext, WrongBlanks, answerText, filled } from "./MockExamPanel";
 import { QuizCard } from "./Question";
 import { Trap, Why } from "./Why";
-import { Btn, EntryTable, Paper, Portrait, ProgressDots, QuitButton, Win } from "./ui";
-
+import { Btn, EntryTable, Paper, Portrait, ProgressDots, QuitButton, Win, fmt } from "./ui";
 
 /** 下書きの仕訳の答えと、金額の計算の解説 */
 function StepAnswer({ step }: { step: PracticeStep }) {
@@ -31,19 +30,28 @@ function Stage({ children }: { children: React.ReactNode }) {
   return <p className="mb-3 rounded-lg border-l-4 border-gold bg-gold/10 p-2 text-sm">{children}</p>;
 }
 
-/** 下書きの仕訳の一覧（求め方に出てくる「決算整理事項3」などは、ここの仕訳） */
-function StepList({ steps }: { steps: PracticeStep[] }) {
+const sideText = (e: Entry, side: "debit" | "credit") => e[side].map((l) => `${l.account} ${fmt(l.amount)}`).join("・");
+
+/**
+ * 答案を埋めるときに見る下書き（本番の計算用紙にあたる）。自分で書いた仕訳だけを出す。
+ * まちがえた仕訳は答え合わせで直したあとの形。飛ばした仕訳は、ガイドつきか採点のあとだけ見せる
+ */
+function DraftSheet({ steps, results, reveal, link }: { steps: PracticeStep[]; results: (boolean | null)[]; reveal: boolean; link?: string }) {
+  const shown = steps.map((s, i) => ({ s, r: results[i] })).filter(({ r }) => r !== null || reveal);
+  if (shown.length === 0) return null;
   return (
-    <details className="mb-3">
-      <summary className="cursor-pointer text-sm">下書きの仕訳（求め方に出てくる仕訳）</summary>
-      <ol className="mt-1 space-y-2 text-sm">
-        {steps.map((s) => (
-          <li key={s.text} className="rounded-lg border border-white/20 p-2">
-            <p className="mb-1">
-              {s.label && <span className="mr-1 text-gold">{s.label}</span>}
-              {s.text}
+    <details open className="mb-3 rounded-lg border border-white/20 p-2 text-sm">
+      <summary className="cursor-pointer">下書き（計算用紙）</summary>
+      {link && <p className="mt-1 text-xs text-dim">{link}</p>}
+      <ol className="mt-1 divide-y divide-white/10">
+        {shown.map(({ s, r }) => (
+          <li key={s.text} className="py-1">
+            <p className="truncate text-xs text-dim" title={s.text}>
+              <span className={r === null ? "" : r ? "text-ok" : "text-ng"}>{r === null ? "－" : r ? "◯" : "✕"}</span> {s.label ?? s.text}
             </p>
-            <StepAnswer step={s} />
+            <p className="tabular-nums">
+              {sideText(s.answer, "debit")} ／ {sideText(s.answer, "credit")}
+            </p>
           </li>
         ))}
       </ol>
@@ -133,10 +141,7 @@ function GuideBar({
                   </button>
                 )}
                 <div>
-                  <Btn
-                    disabled={!filled(draft)}
-                    onClick={() => onCheck(draft, fillCorrect(blank, draft))}
-                  >
+                  <Btn disabled={!filled(draft)} onClick={() => onCheck(draft, fillCorrect(blank, draft))}>
                     確かめる
                   </Btn>
                 </div>
@@ -190,18 +195,15 @@ export function PracticePanel({
       <Win title={`${head}：下書き（${practice.step + 1} / ${steps.length}）`}>
         <ProgressDots results={practice.stepResults} current={practice.step} />
         <Stage>
-          いまの作業：<b>手順1</b>　{format.method[0]}
-          <br />
-          ここで書いた仕訳の金額が、あとで表に入る数字のもとになる。
+          いまの作業：<b>下書き</b>（本番では計算用紙に自分で書く仕訳）。{format.draft}
         </Stage>
-        <MethodCard format={format} open={practice.step === 0} />
+        <MethodCard format={format} />
         <details open className="mb-3">
           <summary className="cursor-pointer text-sm">問題（{problem.title}）</summary>
           <Paper className="mb-3">
             <ProblemContext problem={problem} />
           </Paper>
         </details>
-        <p className="mb-1 text-sm">表を埋める前に、次の取引の仕訳を書いてみよう。</p>
         <QuizCard
           key={practice.step}
           q={{ text: step.text, answer: step.answer, lesson: problem.lesson }}
@@ -215,7 +217,9 @@ export function PracticePanel({
             </Btn>
           }
         >
-          <div className="mb-3">{result ? <StepAnswer step={step} /> : step.note && <p className="text-xs text-dim">🧮 {step.note}</p>}</div>
+          <div className="mb-3">
+            <StepAnswer step={step} />
+          </div>
           <Btn onClick={onNext}>{practice.step + 1 < steps.length ? "次の仕訳" : "答案を埋める"}</Btn>
         </QuizCard>
         <QuitButton onQuit={onFinish} className="mt-4 block" />
@@ -257,10 +261,12 @@ export function PracticePanel({
           <Stage>
             {guiding ? (
               <>
-                いまの作業：<b>表を1欄ずつ埋める</b>。黄色く光っている欄が、今埋める欄。画面の下に、その欄の場所と入力欄が出る。わからなければ「求め方を見る」で、問題の数字を使った計算を確かめよう。
+                いまの作業：<b>下書きを見ながら、表を1欄ずつ埋める</b>。黄色の欄が今の欄。画面の下に入力欄と「求め方」が出る。
               </>
             ) : (
-              <>いまの作業：本番と同じく、自分で表を埋めてから「採点する」。手順は下の「意義・考え方・解き方」を見よう。</>
+              <>
+                いまの作業：<b>下書きを見ながら表を埋めて</b>、「採点する」。
+              </>
             )}
           </Stage>
         </>
@@ -286,7 +292,7 @@ export function PracticePanel({
       <div className="mb-1">
         <Calculator onResult={addCalc} />
       </div>
-      {steps.length > 0 && <StepList steps={steps} />}
+      <DraftSheet steps={steps} results={practice.stepResults} reveal={guiding || !!results} link={format.draft} />
       <Paper className="mb-3">
         <FillSheet
           problem={problem}
