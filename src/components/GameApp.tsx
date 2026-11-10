@@ -86,16 +86,7 @@ import { DrillPanel, TrainingHub } from "./TrainingPanels";
 import { type InputMode, JournalInput } from "./JournalInput";
 import { LedgerViz } from "./LedgerViz";
 import { LessonView } from "./LessonView";
-import {
-  DayEndPanel,
-  DayStartPanel,
-  EventPanel,
-  LessonDonePanel,
-  LevelUpPanel,
-  MonthEndPanel,
-  ReplyPanel,
-  ResultPanel,
-} from "./Panels";
+import { DayEndPanel, DayStartPanel, EventPanel, LessonDonePanel, LevelUpPanel, MonthEndPanel, ReplyPanel, ResultPanel } from "./Panels";
 import { Scene, type SceneFx, type TimeOfDay } from "./Scene";
 import { play, setSoundEnabled } from "./sfx";
 import { AnimatedNumber, Btn, Modal, Portrait, Win, fmt } from "./ui";
@@ -178,6 +169,22 @@ function speakerOf(state: GameState): CharacterId | undefined {
       return "hoho";
     default:
       return undefined;
+  }
+}
+
+/** 試験対策の最中か。このあいだは店の数字・場面・帳簿を隠して、問題に集中できるようにする */
+function inTraining(p: GameState["phase"]): boolean {
+  switch (p.kind) {
+    case "training":
+    case "drill":
+    case "mock":
+    case "practice":
+      return true;
+    case "lesson":
+    case "lessonDone":
+      return p.returnTo === "training";
+    default:
+      return false;
   }
 }
 
@@ -678,7 +685,10 @@ export default function GameApp() {
         <PracticePanel
           practice={p.practice}
           // 下書きで使う科目は、店でまだ使っていなくても選べるようにする（講義の練習と同じ）
-          accounts={[...unlockedAccounts(state), ...(p.practice.problem.steps ?? []).flatMap((s) => [...s.answer.debit, ...s.answer.credit].map((l) => l.account))]}
+          accounts={[
+            ...unlockedAccounts(state),
+            ...(p.practice.problem.steps ?? []).flatMap((s) => [...s.answer.debit, ...s.answer.credit].map((l) => l.account)),
+          ]}
           onCheck={(entry) => {
             const next = checkPracticeStep(state, entry);
             if (next.phase.kind === "practice") play(next.phase.practice.stepResults[next.phase.practice.step] ? "correct" : "wrong");
@@ -729,6 +739,7 @@ export default function GameApp() {
       break;
   }
 
+  const focus = inTraining(p);
   const stars = "★".repeat(Math.round(state.reputation / 20)).padEnd(5, "☆");
 
   return (
@@ -747,7 +758,7 @@ export default function GameApp() {
           >
             {LEVELS[state.level].name}「{state.shopName}」
           </button>
-          <span className="text-sm">{dateLabel(state.day)}</span>
+          <span className="text-sm">{focus ? "📚 試験対策" : dateLabel(state.day)}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {cloud !== "off" && (
               <span className={`text-sm ${cloudHealthy ? "text-dim" : "text-ng"}`} title={CLOUD_LABEL[cloud]}>
@@ -762,60 +773,70 @@ export default function GameApp() {
             <Btn variant="ghost" className="text-sm" onClick={() => setBook("cards")}>
               📖 簿記の書
             </Btn>
-            <Btn variant="ghost" className="text-sm lg:hidden" onClick={() => setLedger(true)}>
-              📊 帳簿
-            </Btn>
+            {!focus && (
+              <Btn variant="ghost" className="text-sm lg:hidden" onClick={() => setLedger(true)}>
+                📊 帳簿
+              </Btn>
+            )}
             <Btn variant="ghost" className="text-sm" onClick={toggleSound} sound={null}>
               {sound ? "♪" : "×♪"}
               <span className="sr-only">{sound ? "音を消す" : "音を出す"}</span>
             </Btn>
           </div>
         </div>
-        <dl className="mt-1 flex flex-wrap gap-x-4 text-xs tabular-nums sm:text-sm">
-          <div className="flex gap-1">
-            <dt className="text-dim">現金</dt>
-            <dd>
-              <AnimatedNumber value={balanceIn(net, "現金")} />円
-            </dd>
-          </div>
-          <div className="flex gap-1">
-            <dt className="text-dim">普通預金</dt>
-            <dd>
-              <AnimatedNumber value={balanceIn(net, "普通預金")} />円
-            </dd>
-          </div>
-          <div className="flex gap-1">
-            <dt className="text-dim" title="帳簿の信用：最近の記帳の正確さ（ノーヒント正解で上がり、ヒント・間違いで下がる）">
-              信用
-            </dt>
-            <dd>{state.trust}</dd>
-          </div>
-          <div className="flex gap-1">
-            <dt className="text-dim">評判</dt>
-            <dd className="text-gold" aria-label={`評判${state.reputation}`} title={`評判${state.reputation}：${repTier(state.reputation).effect}（何もしないと毎日40に向かって戻る）`}>
-              {stars} <span className="text-xs">{repTier(state.reputation).name}</span>
-            </dd>
-          </div>
-          {state.combo >= 2 && (
-            <div key={state.combo} className="pop text-gold">
-              🔥{state.combo}コンボ中
+        {!focus && (
+          <dl className="mt-1 flex flex-wrap gap-x-4 text-xs tabular-nums sm:text-sm">
+            <div className="flex gap-1">
+              <dt className="text-dim">現金</dt>
+              <dd>
+                <AnimatedNumber value={balanceIn(net, "現金")} />円
+              </dd>
             </div>
-          )}
-        </dl>
+            <div className="flex gap-1">
+              <dt className="text-dim">普通預金</dt>
+              <dd>
+                <AnimatedNumber value={balanceIn(net, "普通預金")} />円
+              </dd>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-dim" title="帳簿の信用：最近の記帳の正確さ（ノーヒント正解で上がり、ヒント・間違いで下がる）">
+                信用
+              </dt>
+              <dd>{state.trust}</dd>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-dim">評判</dt>
+              <dd
+                className="text-gold"
+                aria-label={`評判${state.reputation}`}
+                title={`評判${state.reputation}：${repTier(state.reputation).effect}（何もしないと毎日40に向かって戻る）`}
+              >
+                {stars} <span className="text-xs">{repTier(state.reputation).name}</span>
+              </dd>
+            </div>
+            {state.combo >= 2 && (
+              <div key={state.combo} className="pop text-gold">
+                🔥{state.combo}コンボ中
+              </div>
+            )}
+          </dl>
+        )}
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className={focus ? "mx-auto max-w-4xl" : "grid gap-4 lg:grid-cols-[1fr_320px]"}>
         <main className="flex min-w-0 flex-col gap-3">
-          <Scene state={state} speaker={speakerOf(state)} {...sceneOf(state)} />
+          {!focus && <Scene state={state} speaker={speakerOf(state)} {...sceneOf(state)} />}
           <div key={p.kind} className="rise">
             {panel}
           </div>
         </main>
-        <aside className="hidden lg:block">
-          <Win title="帳簿のすがた" className="sticky top-28">
-            <LedgerViz entries={entries} highlight={highlight} />
-          </Win>
-        </aside>
+        {!focus && (
+          <aside className="hidden lg:block">
+            <Win title="帳簿のすがた" className="sticky top-28">
+              <LedgerViz entries={entries} highlight={highlight} />
+            </Win>
+          </aside>
+        )}
       </div>
 
       {book && <BookModal state={state} initialTab={book} onClose={() => setBook(null)} onDecor={(id) => update((s) => setDecor(s, id))} />}
