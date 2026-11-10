@@ -40,6 +40,14 @@ describe("第2問・第3問の問題演習", () => {
     }
   });
 
+  it("第3問の決算整理仕訳には、すべてつまずきやすい点の説明がある", () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const rand = seededRand(seed);
+      for (const f of EXAM_FORMATS.filter((x) => x.lesson === "closing"))
+        for (const s of f.make(rand).steps ?? []) expect(s.trap, `${f.id}: ${s.label}`).toBeTruthy();
+    }
+  });
+
   it("形式の論点（練習を開く条件）は、問題が記録する論点と同じ", () => {
     const rand = seededRand(2);
     for (const f of EXAM_FORMATS) for (let i = 0; i < 5; i++) expect(f.make(rand).lesson, f.id).toBe(f.lesson);

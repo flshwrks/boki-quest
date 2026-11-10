@@ -338,6 +338,8 @@ export interface PracticeStep {
   text: string;
   answer: Entry;
   note?: string;
+  /** つまずきやすい点：表の数字と問題文の数字がずれる理由など、間違えやすいところを先回りして説明する */
+  trap?: string;
 }
 
 /** 第2問・第3問の問題演習。下書きの仕訳（steps）→ 答案の記入 → 採点。時間制限はない */
