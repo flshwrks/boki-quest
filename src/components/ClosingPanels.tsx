@@ -193,7 +193,7 @@ export function ReportPanel({ state, onFinish }: { state: GameState; onFinish: (
         </section>
       </div>
       <div className="mt-3 flex gap-3 text-sm">
-        <Portrait id="hoho" size={44} className="shrink-0" />
+        <Portrait id="hoho" size={48} className="shrink-0" />
         <p>
           これが1年間の成績表じゃ。最後に、収益と費用の残高を「損益」勘定に集めて、当期純利益を繰越利益剰余金へ振り替える。これで収益・費用はゼロに戻り、新しい年度が始まる。
         </p>

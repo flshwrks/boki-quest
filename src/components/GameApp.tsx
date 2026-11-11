@@ -289,9 +289,9 @@ function Title({
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-center justify-center gap-6 px-4 py-10">
       <div className="text-center">
         <div className="mb-3 flex items-end justify-center gap-3">
-          <Portrait id="gantetsu" size={56} />
-          <Portrait id="hoho" size={72} className="bob" />
-          <Portrait id="allen" size={56} />
+          <Portrait id="gantetsu" size={64} />
+          <Portrait id="hoho" size={64} className="bob" />
+          <Portrait id="allen" size={64} />
         </div>
         <h1 className="text-4xl text-gold sm:text-5xl">ボキクエ</h1>
         <p className="mt-1 text-dim">〜 道具屋の帳簿 〜</p>

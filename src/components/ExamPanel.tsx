@@ -43,7 +43,7 @@ function Intro({ exam, onBegin }: { exam: ExamSession; onBegin: () => void }) {
   return (
     <Win title={level.exam}>
       <div className="flex gap-3">
-        <Portrait id="luke" size={56} className="shrink-0" />
+        <Portrait id="luke" size={64} className="shrink-0" />
         <div className="text-sm">
           <p>昇格の条件がそろいました。「{level.name}」に進むための審査を行います。</p>
           <ul className="mt-2 list-disc pl-5">
@@ -190,7 +190,7 @@ function Result({ exam, onFinish }: { exam: ExamSession; onFinish: () => void })
       </div>
       <ExamReview questions={exam.questions} answers={exam.answers} graded={exam.graded ?? []} />
       <div className="mt-3 flex gap-3">
-        <Portrait id="hoho" size={44} className="shrink-0" />
+        <Portrait id="hoho" size={48} className="shrink-0" />
         <p className="text-sm">
           {passed
             ? "ホッホ、見事じゃ！ 本番と同じ形式でもちゃんと解けたのう。"

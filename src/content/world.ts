@@ -7,11 +7,30 @@ export interface Character {
   palette: Record<string, string>;
 }
 
+/** 色を明るく（t > 0）、または暗く（t < 0）する。影と光の色を、元の色から作る */
+const shade = (hex: string, t: number) =>
+  `#${[1, 3, 5]
+    .map((i) => {
+      const v = parseInt(hex.slice(i, i + 2), 16);
+      return Math.round(t < 0 ? v * (1 + t) : v + (255 - v) * t)
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")}`;
+
+const OUTLINE = "#1d1d2b";
+
+/** 目：e と、いちばん下の行の E（まばたきで閉じた目の線になる）、光の i */
+const EYES = { e: OUTLINE, E: OUTLINE, i: "#ffffff" };
+
 const human = (hair: string, cloth: string, clothDark: string, pants: string): Record<string, string> => ({
-  o: "#1d1d2b",
+  o: OUTLINE,
   h: hair,
+  H: shade(hair, -0.25),
+  L: shade(hair, 0.3),
   s: "#f2c9a0",
-  e: "#1d1d2b",
+  n: "#dba27a",
+  ...EYES,
   c: cloth,
   d: clothDark,
   p: pants,
@@ -45,7 +64,23 @@ export const CHARACTERS: Record<CharacterId, Character> = {
     name: "ガンテツ",
     title: "ドワーフ商会の問屋",
     sprite: "dwarf",
-    palette: { o: "#1d1d2b", m: "#8c8c9c", s: "#e0a878", e: "#1d1d2b", r: "#b8642a", c: "#5a7d2a", d: "#3e5a1c", p: "#5a3e2a", b: "#2e1e12" },
+    palette: {
+      o: OUTLINE,
+      // かぶと：m、ふちの影 M、光 l
+      m: "#8c8c9c",
+      M: "#62627a",
+      l: "#c8c8d8",
+      s: "#e0a878",
+      n: "#c48a5c",
+      ...EYES,
+      // ひげ：r、毛の流れ R
+      r: "#b8642a",
+      R: "#8f4a1c",
+      c: "#5a7d2a",
+      d: "#3e5a1c",
+      p: "#5a3e2a",
+      b: "#2e1e12",
+    },
   },
   allen: { name: "アレン", title: "ツケ払い常連の戦士", sprite: "human", palette: human("#e0b030", "#a83232", "#6e1f1f", "#3a3a4a") },
   mina: { name: "ミーナ", title: "魔法使い", sprite: "human", palette: human("#6b3fa0", "#3a2a6a", "#24183f", "#24183f") },
@@ -55,7 +90,19 @@ export const CHARACTERS: Record<CharacterId, Character> = {
     name: "ピピ",
     title: "いたずら妖精",
     sprite: "fairy",
-    palette: { o: "#1d1d2b", w: "#a8e8f8", h: "#f878b8", s: "#f8d8b8", e: "#1d1d2b", c: "#58c878", y: "#f8e858" },
+    palette: {
+      o: OUTLINE,
+      // 羽：w、光 W、ふち u
+      w: "#a8e8f8",
+      W: "#e4f9ff",
+      u: "#5aa8d0",
+      h: "#f878b8",
+      L: "#ffa8d4",
+      s: "#f8d8b8",
+      n: "#eeb090",
+      ...EYES,
+      c: "#58c878",
+    },
   },
   rose: { name: "マダム・ローズ", title: "店舗の大家", sprite: "human", palette: human("#d04070", "#802050", "#501030", "#301020") },
   luke: { name: "ルーク", title: "王都銀行の窓口係", sprite: "human", palette: human("#303040", "#e8e8f0", "#202838", "#202838") },

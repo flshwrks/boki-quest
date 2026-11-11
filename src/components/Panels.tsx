@@ -311,7 +311,7 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
       {auto.length > 0 && (
         <details className="mb-3 rounded-lg border border-white/30 p-2 text-sm" open>
           <summary className="cursor-pointer">
-            <Portrait id="noel" size={24} className="mr-1 inline-block align-middle" still />
+            <Portrait id="noel" size={32} className="mr-1 inline-block align-middle" still />
             ノエルが記帳した取引（{auto.length}件）。仕訳を確かめておこう
           </summary>
           <ul className="mt-2 flex flex-col gap-2">
@@ -325,7 +325,7 @@ export function DayEndPanel({ state, onClose }: { state: GameState; onClose: () 
         </details>
       )}
       <div className="flex gap-3 text-sm">
-        <Portrait id="hoho" size={44} className="shrink-0" />
+        <Portrait id="hoho" size={48} className="shrink-0" />
         <div>
           <p>{g.comment}</p>
           {tip && (
@@ -423,7 +423,7 @@ export function LevelUpPanel({ level, onNext }: { level: number; onNext: () => v
         <li>・家賃は月{fmt(LEVELS[level].rent)}円になる</li>
       </ul>
       <div className="mt-4 flex justify-center gap-3">
-        <Portrait id="hoho" size={56} />
+        <Portrait id="hoho" size={64} />
         <p className="max-w-xs text-left text-sm">{LEVELS[level].hoho}</p>
       </div>
       <div className="mt-4">

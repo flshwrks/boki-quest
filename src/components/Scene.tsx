@@ -42,53 +42,76 @@ export interface SceneFx {
 /** コマの列。frames を ms ごとに切り替え、loop でなければ最後のコマ（undefined なら元の絵）で止まる */
 export type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
 
+// 跳ねる高さ・震え・歩いてくる動きは CSS（globals.css の mood-*・walk-in）でつけている。
+// コマの数 × ms が CSS の時間とそろうようにしてあるので、変えるときは両方を直す
 export const CLIPS: Record<Mood, Clip> = {
-  happy: { frames: ["crouch", "armsUp", "armsUp", "crouch", undefined], ms: 140 },
-  cheer: { frames: ["armsUp", undefined, "crouch"], ms: 220, loop: true },
-  oops: { frames: ["sweat"], ms: 0 },
-  think: { frames: ["think"], ms: 0 },
-  sleepy: { frames: ["sleep"], ms: 0 },
-  talk: { frames: ["gesture", undefined, "gesture", undefined], ms: 320 },
+  // かがむ → 跳ぶ → 着地 → 小さくもう一度（0.78秒）
+  happy: {
+    frames: ["crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3", "crouch2", "crouch1", "jump1", "jump2", "jump3", "crouch1", undefined],
+    ms: 60,
+  },
+  // 着地 → ためる → 跳ぶ、をくり返す（1回 0.64秒）。動きを減らす設定では、最後のコマ（両手を上げた絵）で止まる
+  cheer: { frames: ["crouch2", "crouch1", "crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3"], ms: 80, loop: true },
+  // すくんで震え、汗のしずくが流れて止まる
+  oops: { frames: ["oops1", "oops1", "oops1", "oops2", "oops2", "oops3"], ms: 130 },
+  // 上を見て、頭を左右にかしげる
+  think: { frames: ["think1", "think1", "think2", "think3", "think3", "think2"], ms: 300, loop: true },
+  // 寝息：Z がのぼっていく
+  sleepy: { frames: ["sleep1", "sleep2", "sleep3", "sleep4"], ms: 500, loop: true },
+  // 身ぶりを2回
+  talk: {
+    frames: ["talk1", "talk2", "talk2", "talk2", "talk1", undefined, undefined, "talk1", "talk2", "talk2", "talk2", "talk1", undefined],
+    ms: 100,
+  },
 };
-/** 登場：歩く4コマ（片足を上げる → 下ろす → 反対の足を上げる → 下ろす）で歩いてくる */
-export const ENTER: Clip = { frames: ["walk1", "walk2", "walk3", "walk4"], ms: 110 };
+/** 登場：歩く8コマで歩いてくる（0.6秒） */
+export const ENTER: Clip = { frames: ["walk1", "walk2", "walk3", "walk4", "walk5", "walk6", "walk7", "walk8"], ms: 75 };
 
-/** コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key が変わるたびに最初から再生する */
-function usePose(mood: Mood | undefined, key: string): Pose | undefined {
+/**
+ * コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key が変わるたびに最初から再生する。
+ * entering は歩いている間だけ true（場面の動きは、歩き終えてから始める）
+ */
+function usePose(mood: Mood | undefined, key: string): { pose?: Pose; entering: boolean } {
   const entered = useRef(false);
-  const [pose, setPose] = useState<Pose | undefined>();
+  const [now, setNow] = useState<{ pose?: Pose; entering: boolean }>({ entering: false });
   useEffect(() => {
     const clip = mood ? CLIPS[mood] : undefined;
     const clips = [...(entered.current ? [] : [ENTER]), clip ?? { frames: [undefined], ms: 0 }];
-    const steps = clips.flatMap((c) => c.frames.map((frame) => ({ frame, ms: c.ms })));
+    const steps = clips.flatMap((c) => c.frames.map((pose) => ({ pose, ms: c.ms, entering: c === ENTER })));
     entered.current = true;
     // 動きを減らす設定なら、コマ送りせず最後のコマだけ見せる
     if (prefersReducedMotion()) {
-      setPose(steps.at(-1)!.frame);
+      setNow(steps.at(-1)!);
       return;
     }
     const loopFrom = clip?.loop ? steps.length - clip.frames.length : -1;
     let i = 0;
+    let due = performance.now();
     let timer: ReturnType<typeof setTimeout>;
     const step = () => {
-      const { frame, ms } = steps[i];
-      setPose(frame);
+      const { ms } = steps[i];
+      setNow(steps[i]);
       i = i + 1 < steps.length ? i + 1 : loopFrom;
-      if (i >= 0 && ms > 0) timer = setTimeout(step, ms);
+      if (i < 0 || ms <= 0) return;
+      // 次のコマは「予定の時刻」から数える。タイマーの遅れをためないので、CSS の動きとずれていかない
+      due += ms;
+      timer = setTimeout(step, Math.max(0, due - performance.now()));
     };
     step();
     return () => clearTimeout(timer);
     // key には mood も含まれている
   }, [key]);
-  return pose;
+  return now;
 }
 
 /** 動きと感情アイコンをつけたキャラクター */
 function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx }) {
   const key = `${fx.mood}:${fx.moodKey ?? ""}`;
-  const pose = usePose(fx.mood, key);
+  const { pose, entering } = usePose(fx.mood, key);
+  // 体ごとの動き（CSS）は、歩き終えてクラスがついたときに始まる
+  const moving = fx.mood && fx.mood !== "talk" && !entering;
   return (
-    <div key={key} className={`relative ${fx.mood && fx.mood !== "talk" ? `mood-${fx.mood}` : ""}`}>
+    <div key={key} className={`relative ${moving ? `mood-${fx.mood}` : ""}`}>
       {fx.emote && (
         <span
           key={fx.emote}
@@ -167,14 +190,14 @@ export function Scene({ state, speaker, time, fx = {} }: { state: GameState; spe
       {/* 師匠は棚の上から見守る。話し手がいないときは、師匠が場面に合わせて動く */}
       {speaker !== "hoho" && (
         <div className="bob absolute top-1 left-2">
-          {speaker ? <Portrait id="hoho" size={36} /> : <Actor id="hoho" size={36} fx={fx} />}
+          {speaker ? <Portrait id="hoho" size={32} /> : <Actor id="hoho" size={32} fx={fx} />}
         </div>
       )}
 
       {/* 話し手 */}
       {speaker && (
         <div key={speaker} className="walk-in absolute bottom-6 left-6 sm:left-10">
-          <Actor id={speaker} size={speaker === "pipi" ? 64 : 88} fx={fx} />
+          <Actor id={speaker} size={speaker === "pipi" ? 64 : 96} fx={fx} />
         </div>
       )}
 

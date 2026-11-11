@@ -252,7 +252,7 @@ export function DrillPanel({
           {correct} / {total}
         </p>
         <div className="mb-3 flex gap-3 text-sm">
-          <Portrait id="hoho" size={44} className="shrink-0" />
+          <Portrait id="hoho" size={48} className="shrink-0" />
           <p>
             {correct === total ? "全問正解！ 苦手が得意に変わる瞬間じゃ。" : "間違えた問題は、次のドリルでまた出す。何度でも挑めば、必ず手が覚える。"}
           </p>

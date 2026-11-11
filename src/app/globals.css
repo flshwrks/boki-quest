@@ -214,8 +214,9 @@ body {
     opacity: 1;
   }
 }
+/* 歩くコマ（Scene.tsx の ENTER：8コマ × 75ms）と同じ長さ */
 .walk-in {
-  animation: walk-in 0.45s ease-out both;
+  animation: walk-in 0.6s ease-out both;
 }
 
 /* 朝の場面転換 */
@@ -270,7 +271,7 @@ body {
 
 /* ───────── ドット絵のキャラクターの動き ───────── */
 
-/* 待機：2コマでぴょこぴょこ */
+/* 待機（妖精）：2コマで体ごと浮き沈み */
 @keyframes sprite-idle {
   50% {
     transform: translateY(-4%);
@@ -278,6 +279,36 @@ body {
 }
 .sprite-idle {
   animation: sprite-idle 1.1s steps(1) var(--sprite-delay, 0s) infinite;
+}
+
+/* 待機の息づかい（4コマ）：上半身が1ドット沈み、頭が1コマ遅れてもう1ドット沈む。戻るときも上半身が先 */
+@keyframes sprite-breath {
+  0%,
+  75%,
+  100% {
+    transform: none;
+  }
+  25%,
+  50% {
+    transform: translateY(1px);
+  }
+}
+@keyframes sprite-breath-head {
+  0%,
+  25%,
+  100% {
+    transform: none;
+  }
+  50%,
+  75% {
+    transform: translateY(1px);
+  }
+}
+.sprite-breath {
+  animation: sprite-breath 1.6s steps(1) var(--sprite-delay, 0s) infinite;
+}
+.sprite-breath-head {
+  animation: sprite-breath-head 1.6s steps(1) var(--sprite-delay, 0s) infinite;
 }
 
 /* まばたき：数秒に一度、目を閉じたコマに切り替える */
@@ -320,28 +351,54 @@ body {
 
 /* ───────── 場面ごとの動き（Scene の mood） ───────── */
 
-/* うれしい：ぴょんぴょん2回 */
+/* コマ送り（Scene.tsx の CLIPS）に合わせて、体ごと動かす。時間はコマの数 × ms とそろえてある。
+   跳ねる高さは絵の大きさに対する割合なので、大きい絵ほど高く跳ぶ */
+
+/* うれしい：かがんでから跳び、着地して小さくもう一度（13コマ × 60ms） */
 @keyframes mood-hop {
   0%,
+  15% {
+    transform: none;
+    animation-timing-function: ease-out;
+  }
+  32% {
+    transform: translateY(-18%);
+    animation-timing-function: ease-in;
+  }
+  46%,
+  61% {
+    transform: none;
+    animation-timing-function: ease-out;
+  }
+  73% {
+    transform: translateY(-10%);
+    animation-timing-function: ease-in;
+  }
+  85%,
   100% {
     transform: none;
   }
-  30% {
-    transform: translateY(-14px);
-  }
-  50% {
-    transform: none;
-  }
-  70% {
-    transform: translateY(-8px);
-  }
 }
 .mood-happy {
-  animation: mood-hop 0.7s ease-out;
+  animation: mood-hop 0.78s linear;
 }
-/* お祝い：跳ね続ける */
+/* お祝い：着地してためる前半と、跳んでいる後半をくり返す（8コマ × 80ms） */
+@keyframes mood-jump {
+  0%,
+  50% {
+    transform: none;
+    animation-timing-function: ease-out;
+  }
+  75% {
+    transform: translateY(-18%);
+    animation-timing-function: ease-in;
+  }
+  100% {
+    transform: none;
+  }
+}
 .mood-cheer {
-  animation: mood-hop 0.7s ease-out infinite;
+  animation: mood-jump 0.64s linear infinite;
 }
 /* あわてる：ぷるぷる */
 @keyframes mood-shake {
@@ -361,45 +418,17 @@ body {
 .mood-oops {
   animation: mood-shake 0.4s steps(4) 2;
 }
-/* 考え中：首をかしげる（2コマ） */
-@keyframes mood-tilt {
-  0%,
-  100% {
-    transform: rotate(-4deg);
-  }
-  50% {
-    transform: rotate(4deg);
-  }
-}
-.mood-think {
-  transform-origin: 50% 100%;
-  animation: mood-tilt 1.6s steps(1) infinite;
-}
-/* 眠そう：ゆっくり舟をこぐ */
-@keyframes mood-doze {
-  0%,
-  100% {
-    transform: none;
-  }
-  50% {
-    transform: translateY(3px) rotate(6deg);
-  }
-}
-.mood-sleepy {
-  transform-origin: 50% 100%;
-  animation: mood-doze 2.4s ease-in-out infinite;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .sprite-idle,
+  .sprite-breath,
+  .sprite-breath-head,
   .sprite-eyes-closed,
   .sprite-flap,
   .sprite-talk,
   .mood-happy,
   .mood-cheer,
-  .mood-oops,
-  .mood-think,
-  .mood-sleepy {
+  .mood-oops {
     animation: none !important;
   }
 }

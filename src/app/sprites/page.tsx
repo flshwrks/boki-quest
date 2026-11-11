@@ -1,37 +1,32 @@
 "use client";
 
-// 見比べ用の一時ページ（/sprites）。細かくしたドット絵を、前の絵と並べて確かめる。
-// 全キャラクターを描き直したら、このページと Sprite.tsx の owl16 を消す。
+// 確認用の一時ページ（/sprites）。細かくしたドット絵と、増やしたコマを並べて確かめる。
+// 確認が済んだら、このページと Scene.tsx の CLIPS・ENTER・Clip の export を消す。
 
-import { CLIPS, type Clip, ENTER, type Mood } from "@/components/Scene";
-import { type Pose, Sprite, type SpriteName } from "@/components/Sprite";
+import { CLIPS, type Clip, ENTER, type Mood, Scene } from "@/components/Scene";
+import type { Pose } from "@/components/Sprite";
+import { Btn, Portrait } from "@/components/ui";
 import { CHARACTERS } from "@/content/world";
+import { initialState } from "@/game/logic";
+import type { CharacterId } from "@/game/types";
 import { useEffect, useState } from "react";
 
-const PALETTE = CHARACTERS.hoho.palette;
+const EVERYONE = Object.keys(CHARACTERS) as CharacterId[];
 
-/** 前の絵（16×16）と新しい絵（32×32） */
-const VERSIONS: { name: SpriteName; label: string }[] = [
-  { name: "owl16", label: "前 16×16" },
-  { name: "owl", label: "新 32×32" },
-];
+/** 絵の種類ごとに1人ずつ（フクロウ・人・ドワーフ・妖精） */
+const CAST: CharacterId[] = ["hoho", "cecil", "gantetsu", "pipi"];
 
-const POSE_LABELS: [Pose | undefined, string][] = [
-  [undefined, "ふだん"],
-  ["walk1", "歩く1"],
-  ["walk2", "歩く2"],
-  ["walk3", "歩く3"],
-  ["walk4", "歩く4"],
-  ["crouch", "かがむ"],
-  ["armsUp", "両手を上げる"],
-  ["gesture", "身ぶり"],
-  ["think", "考える"],
-  ["sleep", "眠る"],
-  ["sweat", "汗"],
+const POSE_GROUPS: [string, (Pose | undefined)[]][] = [
+  ["歩く（8コマ）", ["walk1", "walk2", "walk3", "walk4", "walk5", "walk6", "walk7", "walk8"]],
+  ["かがむ → 跳ぶ", [undefined, "crouch1", "crouch2", "jump1", "jump2", "jump3"]],
+  ["話す身ぶり", [undefined, "talk1", "talk2"]],
+  ["考える", ["think1", "think2", "think3"]],
+  ["眠る", ["sleep1", "sleep2", "sleep3", "sleep4"]],
+  ["あわてる", ["oops1", "oops2", "oops3"]],
 ];
 
 /** ゲームの中で出る大きさ（px） */
-const SIZES = [24, 32, 36, 44, 48, 56, 72, 88];
+const SIZES = [32, 48, 64, 96];
 
 const MOOD_LABELS: Record<Mood, string> = {
   talk: "話す",
@@ -42,21 +37,51 @@ const MOOD_LABELS: Record<Mood, string> = {
   sleepy: "閉店後",
 };
 
+const SHOP = initialState("ためし");
+
 const SKY = "linear-gradient(#3d5a8a,#7aa0c8 54%,#5a8a4a 55%)";
 
 /** コマの列をくり返し再生する。1周ごとに作り直して、CSS の動き（跳ねる・歩いてくる）も最初からやり直す */
-function Player({ name, clip, className = "", talking = false }: { name: SpriteName; clip: Clip; className?: string; talking?: boolean }) {
-  // 1周のあとに、元の絵で少し休む
-  const steps = [...clip.frames, ...(clip.loop ? [] : [undefined, undefined, undefined, undefined])];
+function Player({ id, clip, className = "", talking = false }: { id: CharacterId; clip: Clip; className?: string; talking?: boolean }) {
+  // くり返さない動きは、1周のあとに最後のコマのまま少し休む
+  const length = clip.frames.length + (clip.loop ? 0 : Math.ceil(700 / clip.ms));
   const [n, setN] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setN((v) => v + 1), clip.ms || 400);
+    const timer = setInterval(() => setN((v) => v + 1), clip.ms);
     return () => clearInterval(timer);
   }, [clip.ms]);
-  const pose = clip.ms ? steps[n % steps.length] : clip.frames[0];
+  const pose = clip.frames[Math.min(n % length, clip.frames.length - 1)];
   return (
-    <div key={Math.floor(n / steps.length)} className={className}>
-      <Sprite name={name} palette={PALETTE} size={88} pose={pose} talking={talking} animate />
+    <div key={Math.floor(n / length)} className={className}>
+      <Portrait id={id} size={96} pose={pose} talking={talking} />
+    </div>
+  );
+}
+
+/** 店の場面で、話し手と動きを選んで確かめる */
+function ShopStage() {
+  const [speaker, setSpeaker] = useState<CharacterId | undefined>("cecil");
+  const [fx, setFx] = useState<{ mood?: Mood; moodKey: number }>({ moodKey: 0 });
+  return (
+    <div className="max-w-xl">
+      <Scene state={SHOP} speaker={speaker} time="day" fx={fx} />
+      <div className="mt-2 flex flex-wrap gap-1">
+        <Btn variant="chip" sound={null} active={!speaker} onClick={() => setSpeaker(undefined)}>
+          話し手なし（棚の上の師匠が動く）
+        </Btn>
+        {CAST.map((id) => (
+          <Btn key={id} variant="chip" sound={null} active={speaker === id} onClick={() => setSpeaker(id)}>
+            {CHARACTERS[id].name}
+          </Btn>
+        ))}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {(Object.keys(CLIPS) as Mood[]).map((mood) => (
+          <Btn key={mood} variant="chip" sound={null} active={fx.mood === mood} onClick={() => setFx((v) => ({ mood, moodKey: v.moodKey + 1 }))}>
+            {MOOD_LABELS[mood]}
+          </Btn>
+        ))}
+      </div>
     </div>
   );
 }
@@ -70,71 +95,84 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function Stage({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <figure className="text-center text-xs">
+      <div className="overflow-hidden rounded px-6 pt-6 pb-1" style={{ background: SKY }}>
+        {children}
+      </div>
+      <figcaption>{label}</figcaption>
+    </figure>
+  );
+}
+
 export default function SpritesPage() {
   return (
     <main className="mx-auto max-w-7xl p-4">
-      <h1 className="mb-4 text-xl">ドット絵の見比べ（一時ページ）</h1>
+      <h1 className="mb-4 text-xl">ドット絵の確認（一時ページ）</h1>
 
-      <Section title="ふだんの絵">
-        <div className="flex flex-wrap gap-6">
-          {VERSIONS.map((v) => (
-            <figure key={v.name} className="text-center text-sm">
-              <div className="rounded p-3" style={{ background: SKY }}>
-                <Sprite name={v.name} palette={PALETTE} size={192} />
-              </div>
-              <figcaption>{v.label}</figcaption>
+      <Section title="全員（待機の息づかい・まばたきつき）">
+        <div className="flex flex-wrap items-end gap-4 rounded p-4" style={{ background: SKY }}>
+          {EVERYONE.map((id) => (
+            <figure key={id} className="text-center text-xs text-white">
+              <Portrait id={id} size={96} />
+              <figcaption>{CHARACTERS[id].name}</figcaption>
             </figure>
           ))}
         </div>
       </Section>
 
       <Section title="ゲームの中で出る大きさ">
-        {VERSIONS.map((v) => (
-          <div key={v.name} className="mb-2 flex flex-wrap items-end gap-4">
-            <span className="w-20 text-sm">{v.label}</span>
-            {SIZES.map((size) => (
-              <figure key={size} className="text-center text-xs text-dim">
-                <Sprite name={v.name} palette={PALETTE} size={size} />
-                <figcaption>{size}</figcaption>
-              </figure>
-            ))}
-          </div>
-        ))}
-      </Section>
-
-      <Section title="全ポーズ">
-        <p className="mb-2 text-sm text-dim">前の絵には「歩く」「かがむ」のコマがないので、ふだんの絵のままです。</p>
-        {VERSIONS.map((v) => (
-          <div key={v.name} className="mb-3 flex flex-wrap items-end gap-3">
-            <span className="w-full text-sm">{v.label}</span>
-            {POSE_LABELS.map(([pose, label]) => (
-              <figure key={label} className="text-center text-xs">
-                <Sprite name={v.name} palette={PALETTE} size={96} pose={pose} />
-                <figcaption>{label}</figcaption>
-              </figure>
-            ))}
-          </div>
-        ))}
+        <div className="flex flex-wrap items-end gap-8">
+          {CAST.map((id) => (
+            <div key={id} className="flex items-end gap-3">
+              {SIZES.map((size) => (
+                <figure key={size} className="text-center text-xs text-dim">
+                  <Portrait id={id} size={size} still />
+                  <figcaption>{size}</figcaption>
+                </figure>
+              ))}
+            </div>
+          ))}
+        </div>
       </Section>
 
       <Section title="動き（ゲームと同じコマ送り）">
-        {VERSIONS.map((v) => (
-          <div key={v.name} className="mb-3 flex flex-wrap items-end gap-3">
-            <span className="w-20 text-sm">{v.label}</span>
-            <figure className="text-center text-xs">
-              <div className="overflow-hidden rounded px-6 pt-4 pb-1" style={{ background: SKY }}>
-                <Player name={v.name} clip={ENTER} className="walk-in" />
-              </div>
-              <figcaption>登場</figcaption>
-            </figure>
+        {CAST.map((id) => (
+          <div key={id} className="mb-3 flex flex-wrap items-end gap-3">
+            <Stage label="登場">
+              <Player id={id} clip={ENTER} className="walk-in" />
+            </Stage>
             {(Object.keys(CLIPS) as Mood[]).map((mood) => (
-              <figure key={mood} className="text-center text-xs">
-                <div className="overflow-hidden rounded px-6 pt-4 pb-1" style={{ background: SKY }}>
-                  <Player name={v.name} clip={CLIPS[mood]} className={mood === "talk" ? "" : `mood-${mood}`} talking={mood === "talk"} />
-                </div>
-                <figcaption>{MOOD_LABELS[mood]}</figcaption>
-              </figure>
+              <Stage key={mood} label={MOOD_LABELS[mood]}>
+                <Player id={id} clip={CLIPS[mood]} className={mood === "talk" ? "" : `mood-${mood}`} talking={mood === "talk"} />
+              </Stage>
             ))}
+          </div>
+        ))}
+      </Section>
+
+      <Section title="店の場面（ボタンで話し手と動きを切り替え）">
+        <ShopStage />
+      </Section>
+
+      <Section title="全コマ">
+        <p className="mb-2 text-sm text-dim">妖精は飛んでいるので、歩くコマはありません（ふだんの絵のまま）。</p>
+        {CAST.map((id) => (
+          <div key={id} className="mb-4">
+            <h3 className="mb-1 text-sm">{CHARACTERS[id].name}</h3>
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+              {POSE_GROUPS.map(([label, poses]) => (
+                <figure key={label} className="text-xs">
+                  <div className="flex items-end rounded px-1 pt-2" style={{ background: SKY }}>
+                    {poses.map((pose, i) => (
+                      <Portrait key={i} id={id} size={64} pose={pose} still />
+                    ))}
+                  </div>
+                  <figcaption>{label}</figcaption>
+                </figure>
+              ))}
+            </div>
           </div>
         ))}
       </Section>

@@ -175,7 +175,7 @@ export function LessonView({
         </span>
       </div>
       <div key={page} className="rise flex gap-3">
-        <Portrait id={speaker} size={56} className="shrink-0" />
+        <Portrait id={speaker} size={64} className="shrink-0" />
         <div className="min-w-0 flex-1">
           <Speaker id={speaker} />
           <Dialogue text={p.text}>

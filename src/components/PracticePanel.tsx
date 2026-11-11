@@ -274,7 +274,7 @@ export function PracticePanel({
       <MethodCard format={format} open={!!results} />
       {results && (
         <div className="mb-3 flex items-center gap-3">
-          <Portrait id="hoho" size={44} className="shrink-0" />
+          <Portrait id="hoho" size={48} className="shrink-0" />
           <div>
             <p className={`pop text-3xl tabular-nums ${passed ? "text-gold" : "text-ng"}`}>
               {score} / {full}点

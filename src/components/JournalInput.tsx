@@ -53,7 +53,7 @@ export function JournalInput({
       {(session.hints > 0 || session.feedback) && (
         <Win key={`${session.attempts}-${session.hints}`} className={session.feedback && session.hints < 3 ? "shake" : "rise"}>
           <div className="flex gap-3">
-            <Portrait id="hoho" size={44} className="shrink-0" />
+            <Portrait id="hoho" size={48} className="shrink-0" />
             <div className="min-w-0 flex-1 text-sm">
               <Speaker id="hoho" />
               {session.feedback && (

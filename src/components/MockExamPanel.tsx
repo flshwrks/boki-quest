@@ -231,7 +231,7 @@ function Intro({ onBegin, onQuit }: { onBegin: () => void; onQuit: () => void })
   return (
     <Win title="模擬試験（日商簿記3級）">
       <div className="flex gap-3">
-        <Portrait id="hoho" size={56} className="shrink-0" />
+        <Portrait id="hoho" size={64} className="shrink-0" />
         <div className="text-sm">
           <p>本試験と同じ配分の模擬試験じゃ。店のことは忘れて、試験会場にいるつもりで解いてみよう。</p>
           <ul className="mt-2 list-disc pl-5">
@@ -283,7 +283,7 @@ function Result({ mock, onFinish }: { mock: MockSession; onFinish: () => void })
         </div>
       </div>
       <div className="mb-3 flex gap-3 text-sm">
-        <Portrait id="hoho" size={44} className="shrink-0" />
+        <Portrait id="hoho" size={48} className="shrink-0" />
         <p>
           {passed && score === 100
             ? "満点じゃと！？ もう教えることはないのう…いや、本番まで油断は禁物じゃ。"
