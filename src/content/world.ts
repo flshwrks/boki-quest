@@ -26,11 +26,17 @@ export const CHARACTERS: Record<CharacterId, Character> = {
     palette: {
       o: "#3b2414",
       b: "#8a5a2b",
+      d: "#6b4420",
+      t: "#a8743c",
       l: "#e8d2a6",
       v: "#c9a46a",
       w: "#ffffff",
       k: "#1a1a1a",
+      // 目のいちばん下の行（色は w・k と同じ。まばたきで、まぶたの線になる）
+      W: "#ffffff",
+      K: "#1a1a1a",
       y: "#f0b030",
+      n: "#c8861c",
       g: "#d4af37",
     },
   },

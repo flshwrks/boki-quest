@@ -40,9 +40,9 @@ export interface SceneFx {
 }
 
 /** コマの列。frames を ms ごとに切り替え、loop でなければ最後のコマ（undefined なら元の絵）で止まる */
-type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
+export type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
 
-const CLIPS: Record<Mood, Clip> = {
+export const CLIPS: Record<Mood, Clip> = {
   happy: { frames: ["crouch", "armsUp", "armsUp", "crouch", undefined], ms: 140 },
   cheer: { frames: ["armsUp", undefined, "crouch"], ms: 220, loop: true },
   oops: { frames: ["sweat"], ms: 0 },
@@ -50,8 +50,8 @@ const CLIPS: Record<Mood, Clip> = {
   sleepy: { frames: ["sleep"], ms: 0 },
   talk: { frames: ["gesture", undefined, "gesture", undefined], ms: 320 },
 };
-/** 登場：足を開く・閉じるを交互にして歩いてくる */
-const ENTER: Clip = { frames: ["walk", undefined, "walk", undefined], ms: 110 };
+/** 登場：歩く4コマ（片足を上げる → 下ろす → 反対の足を上げる → 下ろす）で歩いてくる */
+export const ENTER: Clip = { frames: ["walk1", "walk2", "walk3", "walk4"], ms: 110 };
 
 /** コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key が変わるたびに最初から再生する */
 function usePose(mood: Mood | undefined, key: string): Pose | undefined {
