@@ -1,7 +1,11 @@
-import { BLINK, BREATH, EXTRA_COLORS, FLAP, MOUTH, type Pose, type SpriteName, posed } from "@/content/sprites";
+import { EXTRA_COLORS, FINE, type Pose, type SpriteName, type SpriteSet, type SpriteStyle } from "@/content/sprites";
+import { CLASSIC } from "@/content/spritesClassic";
 import { memo } from "react";
+import { useSpriteStyle } from "./spriteStyle";
 
 export type { Pose, SpriteName };
+
+const SETS: Record<SpriteStyle, SpriteSet> = { fine: FINE, classic: CLASSIC };
 
 /** 名前から決まる、動き出すタイミングのずれ（全員が同時に動かないように） */
 const offset = (key: string) => [...key].reduce((a, c) => a + c.charCodeAt(0), 0) % 7;
@@ -29,20 +33,21 @@ export const Sprite = memo(function Sprite({
   /** 今のコマのポーズ（省くと元の絵） */
   pose?: Pose;
 }) {
-  const rows = posed(name, pose);
+  const set = SETS[useSpriteStyle()];
+  const rows = set.rows(name, pose);
   const colors = { ...EXTRA_COLORS, ...palette };
   const w = rows[0].length;
   const h = rows.length;
-  const blink = animate ? BLINK[name] : undefined;
-  const flap = animate ? FLAP[name] : undefined;
+  const blink = animate ? set.blink[name] : undefined;
+  const flap = animate ? set.flap[name] : undefined;
   // 息づかいで別々に動かすので、頭・上半身・足もとに分けて描く
-  const [neck, waist] = BREATH[name] ?? [0, 0];
+  const [neck, waist] = set.breath[name] ?? [0, 0];
   const head: React.ReactNode[] = [];
   const torso: React.ReactNode[] = [];
   const feet: React.ReactNode[] = [];
   const eyesClosed: React.ReactNode[] = [];
   const wings: React.ReactNode[] = [];
-  const mouth = talking ? MOUTH[name] : undefined;
+  const mouth = talking ? set.mouth[name] : undefined;
   rows.forEach((row, y) => {
     const part = y < neck ? head : y < waist ? torso : feet;
     // 同じ色が横に続くところは、1つの四角にまとめる
@@ -57,9 +62,9 @@ export const Sprite = memo(function Sprite({
       if (blink?.[ch]) eyesClosed.push(rect(`c${x}-${y}`, palette[blink[ch]]));
     }
   });
-  // 待機の動き：息づかいのあるキャラクターは頭と上半身が沈み、ないキャラクター（妖精）は体ごと浮く。
+  // 待機の動き：息づかいのあるキャラクターは頭と上半身が沈み、ないキャラクター（妖精と、前の粗い絵）は体ごと浮く。
   // ポーズのコマの間は、息づかいを止める
-  const breathes = animate && BREATH[name] !== undefined;
+  const breathes = animate && set.breath[name] !== undefined;
   const breathing = breathes && !pose;
   // 動き出しのずれは CSS 変数で渡し、各アニメーションが共通で使う
   const style = animate ? ({ "--sprite-delay": `${-offset(label ?? name) * 0.37}s` } as React.CSSProperties) : undefined;

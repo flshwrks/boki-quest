@@ -89,7 +89,7 @@ import { LessonView } from "./LessonView";
 import { DayEndPanel, DayStartPanel, EventPanel, LessonDonePanel, LevelUpPanel, MonthEndPanel, ReplyPanel, ResultPanel } from "./Panels";
 import { Scene, type SceneFx, type TimeOfDay } from "./Scene";
 import { play, setSoundEnabled } from "./sfx";
-import { AnimatedNumber, Btn, Modal, Portrait, Win, fmt } from "./ui";
+import { AnimatedNumber, Btn, Modal, Portrait, SpriteStylePicker, Win, fmt } from "./ui";
 
 const SOUND_KEY = "boki-quest-sound";
 const DEFAULT_SHOP = "星のしずく";
@@ -341,6 +341,7 @@ function Title({
           </form>
         )}
         <CloudPanel status={cloud} onConnect={onConnect} />
+        <SpriteStylePicker className="mt-3 border-t border-white/20 pt-3" />
       </Win>
     </main>
   );

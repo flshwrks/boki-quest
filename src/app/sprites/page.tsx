@@ -1,11 +1,12 @@
 "use client";
 
-// 確認用の一時ページ（/sprites）。細かくしたドット絵と、増やしたコマを並べて確かめる。
-// 確認が済んだら、このページと Scene.tsx の CLIPS・ENTER・Clip の export を消す。
+// 確認用の一時ページ（/sprites）。細かくしたドット絵と、増やしたコマを並べて確かめる。前の粗い絵にも切り替えられる。
+// 確認が済んだら、このページと Scene.tsx の CLIP_SETS・Clip の export を消す。
 
-import { CLIPS, type Clip, ENTER, type Mood, Scene } from "@/components/Scene";
+import { CLIP_SETS, type Clip, type Mood, Scene } from "@/components/Scene";
 import type { Pose } from "@/components/Sprite";
-import { Btn, Portrait } from "@/components/ui";
+import { useSpriteStyle } from "@/components/spriteStyle";
+import { Btn, Portrait, SpriteStylePicker } from "@/components/ui";
 import { CHARACTERS } from "@/content/world";
 import { initialState } from "@/game/logic";
 import type { CharacterId } from "@/game/types";
@@ -36,6 +37,7 @@ const MOOD_LABELS: Record<Mood, string> = {
   cheer: "昇格",
   sleepy: "閉店後",
 };
+const MOODS = Object.keys(MOOD_LABELS) as Mood[];
 
 const SHOP = initialState("ためし");
 
@@ -43,13 +45,15 @@ const SKY = "linear-gradient(#3d5a8a,#7aa0c8 54%,#5a8a4a 55%)";
 
 /** コマの列をくり返し再生する。1周ごとに作り直して、CSS の動き（跳ねる・歩いてくる）も最初からやり直す */
 function Player({ id, clip, className = "", talking = false }: { id: CharacterId; clip: Clip; className?: string; talking?: boolean }) {
+  // コマ送りのない動き（前の粗い絵の、1コマだけの動き）は、CSS の動きがひと区切りつく 4.8秒ごとにやり直す
+  const ms = clip.ms || 4800;
   // くり返さない動きは、1周のあとに最後のコマのまま少し休む
-  const length = clip.frames.length + (clip.loop ? 0 : Math.ceil(700 / clip.ms));
+  const length = clip.frames.length + (clip.loop || !clip.ms ? 0 : Math.ceil(700 / ms));
   const [n, setN] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setN((v) => v + 1), clip.ms);
+    const timer = setInterval(() => setN((v) => v + 1), ms);
     return () => clearInterval(timer);
-  }, [clip.ms]);
+  }, [ms]);
   const pose = clip.frames[Math.min(n % length, clip.frames.length - 1)];
   return (
     <div key={Math.floor(n / length)} className={className}>
@@ -76,7 +80,7 @@ function ShopStage() {
         ))}
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
-        {(Object.keys(CLIPS) as Mood[]).map((mood) => (
+        {MOODS.map((mood) => (
           <Btn key={mood} variant="chip" sound={null} active={fx.mood === mood} onClick={() => setFx((v) => ({ mood, moodKey: v.moodKey + 1 }))}>
             {MOOD_LABELS[mood]}
           </Btn>
@@ -107,9 +111,13 @@ function Stage({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function SpritesPage() {
+  const style = useSpriteStyle();
+  const clips = CLIP_SETS[style];
   return (
-    <main className="mx-auto max-w-7xl p-4">
-      <h1 className="mb-4 text-xl">ドット絵の確認（一時ページ）</h1>
+    // 前の粗い絵の動き（CSS）は .sprites-classic の中だけで効く
+    <main className={`mx-auto max-w-7xl p-4 ${style === "classic" ? "sprites-classic" : ""}`}>
+      <h1 className="mb-2 text-xl">ドット絵の確認（一時ページ）</h1>
+      <SpriteStylePicker className="mb-4" />
 
       <Section title="全員（待機の息づかい・まばたきつき）">
         <div className="flex flex-wrap items-end gap-4 rounded p-4" style={{ background: SKY }}>
@@ -141,11 +149,11 @@ export default function SpritesPage() {
         {CAST.map((id) => (
           <div key={id} className="mb-3 flex flex-wrap items-end gap-3">
             <Stage label="登場">
-              <Player id={id} clip={ENTER} className="walk-in" />
+              <Player id={id} clip={clips.enter} className="walk-in" />
             </Stage>
-            {(Object.keys(CLIPS) as Mood[]).map((mood) => (
+            {MOODS.map((mood) => (
               <Stage key={mood} label={MOOD_LABELS[mood]}>
-                <Player id={id} clip={CLIPS[mood]} className={mood === "talk" ? "" : `mood-${mood}`} talking={mood === "talk"} />
+                <Player id={id} clip={clips.moods[mood]} className={mood === "talk" ? "" : `mood-${mood}`} talking={mood === "talk"} />
               </Stage>
             ))}
           </div>
@@ -157,7 +165,9 @@ export default function SpritesPage() {
       </Section>
 
       <Section title="全コマ">
-        <p className="mb-2 text-sm text-dim">妖精は飛んでいるので、歩くコマはありません（ふだんの絵のまま）。</p>
+        <p className="mb-2 text-sm text-dim">
+          妖精は飛んでいるので、歩くコマはありません（ふだんの絵のまま）。前の粗い絵は動きごとに1コマだけなので、ほかのコマはふだんの絵になります。
+        </p>
         {CAST.map((id) => (
           <div key={id} className="mb-4">
             <h3 className="mb-1 text-sm">{CHARACTERS[id].name}</h3>

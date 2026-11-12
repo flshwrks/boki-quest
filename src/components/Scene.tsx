@@ -1,10 +1,12 @@
 "use client";
 
 import { DECORS, RARITY, TREASURES } from "@/content/treasures";
+import type { SpriteStyle } from "@/content/sprites";
 import { ITEMS, LEVELS, itemsForLevel } from "@/content/world";
 import type { CharacterId, GameState } from "@/game/types";
 import { useEffect, useRef, useState } from "react";
 import { type Pose, Sprite } from "./Sprite";
+import { useSpriteStyle } from "./spriteStyle";
 import { Portrait, prefersReducedMotion } from "./ui";
 
 const SHELF_MAX = 8;
@@ -42,42 +44,61 @@ export interface SceneFx {
 /** コマの列。frames を ms ごとに切り替え、loop でなければ最後のコマ（undefined なら元の絵）で止まる */
 export type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
 
+/** 絵のそろい1つ分の、登場と場面ごとのコマの並び */
+export type ClipSet = { enter: Clip; moods: Record<Mood, Clip> };
+
 // 跳ねる高さ・震え・歩いてくる動きは CSS（globals.css の mood-*・walk-in）でつけている。
 // コマの数 × ms が CSS の時間とそろうようにしてあるので、変えるときは両方を直す
-export const CLIPS: Record<Mood, Clip> = {
-  // かがむ → 跳ぶ → 着地 → 小さくもう一度（0.78秒）
-  happy: {
-    frames: ["crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3", "crouch2", "crouch1", "jump1", "jump2", "jump3", "crouch1", undefined],
-    ms: 60,
+export const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
+  fine: {
+    // 登場：歩く8コマで歩いてくる（0.6秒）
+    enter: { frames: ["walk1", "walk2", "walk3", "walk4", "walk5", "walk6", "walk7", "walk8"], ms: 75 },
+    moods: {
+      // かがむ → 跳ぶ → 着地 → 小さくもう一度（0.78秒）
+      happy: {
+        frames: ["crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3", "crouch2", "crouch1", "jump1", "jump2", "jump3", "crouch1", undefined],
+        ms: 60,
+      },
+      // 着地 → ためる → 跳ぶ、をくり返す（1回 0.64秒）。動きを減らす設定では、最後のコマ（両手を上げた絵）で止まる
+      cheer: { frames: ["crouch2", "crouch1", "crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3"], ms: 80, loop: true },
+      // すくんで震え、汗のしずくが流れて止まる
+      oops: { frames: ["oops1", "oops1", "oops1", "oops2", "oops2", "oops3"], ms: 130 },
+      // 上を見て、頭を左右にかしげる
+      think: { frames: ["think1", "think1", "think2", "think3", "think3", "think2"], ms: 300, loop: true },
+      // 寝息：Z がのぼっていく
+      sleepy: { frames: ["sleep1", "sleep2", "sleep3", "sleep4"], ms: 500, loop: true },
+      // 身ぶりを2回
+      talk: {
+        frames: ["talk1", "talk2", "talk2", "talk2", "talk1", undefined, undefined, "talk1", "talk2", "talk2", "talk2", "talk1", undefined],
+        ms: 100,
+      },
+    },
   },
-  // 着地 → ためる → 跳ぶ、をくり返す（1回 0.64秒）。動きを減らす設定では、最後のコマ（両手を上げた絵）で止まる
-  cheer: { frames: ["crouch2", "crouch1", "crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3"], ms: 80, loop: true },
-  // すくんで震え、汗のしずくが流れて止まる
-  oops: { frames: ["oops1", "oops1", "oops1", "oops2", "oops2", "oops3"], ms: 130 },
-  // 上を見て、頭を左右にかしげる
-  think: { frames: ["think1", "think1", "think2", "think3", "think3", "think2"], ms: 300, loop: true },
-  // 寝息：Z がのぼっていく
-  sleepy: { frames: ["sleep1", "sleep2", "sleep3", "sleep4"], ms: 500, loop: true },
-  // 身ぶりを2回
-  talk: {
-    frames: ["talk1", "talk2", "talk2", "talk2", "talk1", undefined, undefined, "talk1", "talk2", "talk2", "talk2", "talk1", undefined],
-    ms: 100,
+  // 前の粗い絵：動きは1つにつき1コマ。跳ねる・かしげる・うとうとする動きは CSS（.sprites-classic）でつける
+  classic: {
+    enter: { frames: ["walk1", undefined, "walk1", undefined], ms: 110 },
+    moods: {
+      happy: { frames: ["crouch1", "jump1", "jump1", "crouch1", undefined], ms: 140 },
+      cheer: { frames: ["jump1", undefined, "crouch1"], ms: 220, loop: true },
+      oops: { frames: ["oops1"], ms: 0 },
+      think: { frames: ["think1"], ms: 0 },
+      sleepy: { frames: ["sleep1"], ms: 0 },
+      talk: { frames: ["talk1", undefined, "talk1", undefined], ms: 320 },
+    },
   },
 };
-/** 登場：歩く8コマで歩いてくる（0.6秒） */
-export const ENTER: Clip = { frames: ["walk1", "walk2", "walk3", "walk4", "walk5", "walk6", "walk7", "walk8"], ms: 75 };
 
 /**
- * コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key が変わるたびに最初から再生する。
+ * コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key か絵のそろいが変わるたびに最初から再生する。
  * entering は歩いている間だけ true（場面の動きは、歩き終えてから始める）
  */
-function usePose(mood: Mood | undefined, key: string): { pose?: Pose; entering: boolean } {
+function usePose(mood: Mood | undefined, key: string, { enter, moods }: ClipSet): { pose?: Pose; entering: boolean } {
   const entered = useRef(false);
   const [now, setNow] = useState<{ pose?: Pose; entering: boolean }>({ entering: false });
   useEffect(() => {
-    const clip = mood ? CLIPS[mood] : undefined;
-    const clips = [...(entered.current ? [] : [ENTER]), clip ?? { frames: [undefined], ms: 0 }];
-    const steps = clips.flatMap((c) => c.frames.map((pose) => ({ pose, ms: c.ms, entering: c === ENTER })));
+    const clip = mood ? moods[mood] : undefined;
+    const clips = [...(entered.current ? [] : [enter]), clip ?? { frames: [undefined], ms: 0 }];
+    const steps = clips.flatMap((c) => c.frames.map((pose) => ({ pose, ms: c.ms, entering: c === enter })));
     entered.current = true;
     // 動きを減らす設定なら、コマ送りせず最後のコマだけ見せる
     if (prefersReducedMotion()) {
@@ -100,14 +121,14 @@ function usePose(mood: Mood | undefined, key: string): { pose?: Pose; entering: 
     step();
     return () => clearTimeout(timer);
     // key には mood も含まれている
-  }, [key]);
+  }, [key, enter, moods]);
   return now;
 }
 
 /** 動きと感情アイコンをつけたキャラクター */
 function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx }) {
   const key = `${fx.mood}:${fx.moodKey ?? ""}`;
-  const { pose, entering } = usePose(fx.mood, key);
+  const { pose, entering } = usePose(fx.mood, key, CLIP_SETS[useSpriteStyle()]);
   // 体ごとの動き（CSS）は、歩き終えてクラスがついたときに始まる
   const moving = fx.mood && fx.mood !== "talk" && !entering;
   return (
@@ -130,6 +151,7 @@ function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx })
 
 /** 店内の様子。棚の品数が在庫に合わせて増減し、話し手がカウンターに立つ */
 export function Scene({ state, speaker, time, fx = {} }: { state: GameState; speaker?: CharacterId; time: TimeOfDay; fx?: SceneFx }) {
+  const classic = useSpriteStyle() === "classic";
   const indoor = state.level >= 2;
   const items = itemsForLevel(state.level);
   const decor = DECORS[state.decor] ?? DECORS.wood;
@@ -139,7 +161,7 @@ export function Scene({ state, speaker, time, fx = {} }: { state: GameState; spe
     .slice(0, 8);
   return (
     <div
-      className="relative h-44 overflow-hidden rounded-[14px] border-2 border-white/85 shadow-[0_10px_24px_rgb(0_0_0/0.45)] sm:h-52"
+      className={`relative h-44 overflow-hidden rounded-[14px] border-2 border-white/85 shadow-[0_10px_24px_rgb(0_0_0/0.45)] sm:h-52 ${classic ? "sprites-classic" : ""}`}
       style={{
         background: indoor ? decor.wall : SKY[time],
         transition: "background 0.8s",

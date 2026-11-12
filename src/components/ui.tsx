@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { type AccountName, type Category, categoryOf } from "@/engine/accounts";
 import { fmt } from "@/engine/format";
 import { type Entry, explainLine } from "@/engine/journal";
+import type { SpriteStyle } from "@/content/sprites";
 import { CHARACTERS } from "@/content/world";
 import type { CharacterId } from "@/game/types";
 import { type Pose, Sprite } from "./Sprite";
 import { play } from "./sfx";
+import { setSpriteStyle, useSpriteStyle } from "./spriteStyle";
 
 export const CATEGORY_BG: Record<Category, string> = {
   asset: "bg-asset",
@@ -93,6 +95,26 @@ export function Portrait({
 }) {
   const c = CHARACTERS[id];
   return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} talking={talking} pose={pose} />;
+}
+
+const SPRITE_STYLES: [SpriteStyle, string][] = [
+  ["fine", "細かい絵"],
+  ["classic", "前の粗い絵"],
+];
+
+/** キャラクターの絵を、細かい絵と前の粗い絵から選ぶ。選ぶとその場で切り替わり、この端末に覚える */
+export function SpriteStylePicker({ className = "" }: { className?: string }) {
+  const style = useSpriteStyle();
+  return (
+    <div className={`flex flex-wrap items-center gap-2 text-sm ${className}`} role="group" aria-label="キャラクターの絵">
+      <span aria-hidden>キャラクターの絵</span>
+      {SPRITE_STYLES.map(([id, label]) => (
+        <Btn key={id} variant="chip" active={style === id} onClick={() => setSpriteStyle(id)}>
+          {label}
+        </Btn>
+      ))}
+    </div>
+  );
 }
 
 export function Speaker({ id }: { id: CharacterId }) {

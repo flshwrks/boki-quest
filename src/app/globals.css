@@ -214,9 +214,13 @@ body {
     opacity: 1;
   }
 }
-/* 歩くコマ（Scene.tsx の ENTER：8コマ × 75ms）と同じ長さ */
+/* 歩くコマ（Scene.tsx の CLIP_SETS の enter：8コマ × 75ms）と同じ長さ */
 .walk-in {
   animation: walk-in 0.6s ease-out both;
+}
+/* 前の粗い絵は 4コマ × 110ms */
+.sprites-classic .walk-in {
+  animation-duration: 0.45s;
 }
 
 /* 朝の場面転換 */
@@ -351,7 +355,7 @@ body {
 
 /* ───────── 場面ごとの動き（Scene の mood） ───────── */
 
-/* コマ送り（Scene.tsx の CLIPS）に合わせて、体ごと動かす。時間はコマの数 × ms とそろえてある。
+/* コマ送り（Scene.tsx の CLIP_SETS）に合わせて、体ごと動かす。時間はコマの数 × ms とそろえてある。
    跳ねる高さは絵の大きさに対する割合なので、大きい絵ほど高く跳ぶ */
 
 /* うれしい：かがんでから跳び、着地して小さくもう一度（13コマ × 60ms） */
@@ -419,6 +423,57 @@ body {
   animation: mood-shake 0.4s steps(4) 2;
 }
 
+/* 前の粗い絵（絵を選ぶ設定で classic のとき）：コマが少ないぶん、体ごとの動きを CSS でつける */
+
+/* うれしい・お祝い：ぴょんぴょん跳ねる */
+@keyframes mood-hop-classic {
+  0%,
+  50%,
+  100% {
+    transform: none;
+  }
+  30% {
+    transform: translateY(-14px);
+  }
+  70% {
+    transform: translateY(-8px);
+  }
+}
+.sprites-classic .mood-happy {
+  animation: mood-hop-classic 0.7s ease-out;
+}
+.sprites-classic .mood-cheer {
+  animation: mood-hop-classic 0.7s ease-out infinite;
+}
+/* 考え中：首をかしげる */
+@keyframes mood-tilt {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+.sprites-classic .mood-think {
+  transform-origin: 50% 100%;
+  animation: mood-tilt 1.6s steps(1) infinite;
+}
+/* 眠い：うとうと */
+@keyframes mood-doze {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: translateY(3px) rotate(6deg);
+  }
+}
+.sprites-classic .mood-sleepy {
+  transform-origin: 50% 100%;
+  animation: mood-doze 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sprite-idle,
   .sprite-breath,
@@ -428,7 +483,9 @@ body {
   .sprite-talk,
   .mood-happy,
   .mood-cheer,
-  .mood-oops {
+  .mood-oops,
+  .mood-think,
+  .mood-sleepy {
     animation: none !important;
   }
 }

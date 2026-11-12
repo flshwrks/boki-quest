@@ -3,7 +3,7 @@
 // キャラクターは 32×32。足もとは30行目にそろえ、31行目は足を前に出すコマのために空けておく。
 
 const reversed = (row: string) => [...row].reverse().join("");
-const mirror = (rows: string[]) => rows.map((r) => r + reversed(r));
+export const mirror = (rows: string[]) => rows.map((r) => r + reversed(r));
 
 export const SPRITES = {
   // 大文字の W・K は目のいちばん下の行で、まばたきのときにまぶたの線になる
@@ -191,36 +191,34 @@ export const SPRITES = {
 
 export type SpriteName = keyof typeof SPRITES;
 
-type Rows = readonly string[];
+export type Rows = readonly string[];
 
-/** まばたきのコマ：目のドットを、閉じたまぶたの色に差し替える */
-export const BLINK: Partial<Record<SpriteName, Record<string, string>>> = {
+/** 絵のそろい：fine は 32×32 の細かい絵、classic は前の 16×16 の絵（spritesClassic.ts）。タイトル画面で選べる */
+export type SpriteStyle = "fine" | "classic";
+
+/** 絵のそろい1つ分。Sprite はこれだけを見て描く */
+export interface SpriteSet {
+  /** ポーズの絵。そのキャラクターにないポーズなら元の絵 */
+  rows: (name: SpriteName, pose: Pose | undefined) => Rows;
+  /** まばたきのコマ：目のドットを、閉じたまぶたの色に差し替える */
+  blink: Partial<Record<SpriteName, Record<string, string>>>;
+  /** 羽ばたきで上下に動かすドット（妖精の羽） */
+  flap: Partial<Record<SpriteName, string>>;
+  /**
+   * 待機の息づかいで沈む範囲：[頭, 上半身] のそれぞれ、この行より上を1ドット下げる。
+   * 下げた分はすぐ下の行に重なるので、その行は上の行より幅が広くないこと。
+   * 書いていないキャラクター（妖精と、前の粗い絵）は、体ごと上下に浮く
+   */
+  breath: Partial<Record<SpriteName, readonly [number, number]>>;
+  /** 口パクのコマで暗くする口の位置：[x, y, 幅, 高さ] */
+  mouth: Partial<Record<SpriteName, readonly [number, number, number, number]>>;
+}
+
+const BLINK: SpriteSet["blink"] = {
   owl: { w: "t", k: "t", W: "o", K: "o" },
   human: { e: "s", i: "s" },
   dwarf: { e: "s", i: "s" },
   fairy: { e: "s", i: "s" },
-};
-
-/** 羽ばたきで上下に動かすドット（妖精の羽） */
-export const FLAP: Partial<Record<SpriteName, string>> = { fairy: "uwW" };
-
-/**
- * 待機の息づかいで沈む範囲：[頭, 上半身] のそれぞれ、この行より上を1ドット下げる。
- * 下げた分はすぐ下の行に重なるので、その行は上の行より幅が広くないこと。
- * 書いていないキャラクター（妖精）は、体ごと上下に浮く
- */
-export const BREATH: Partial<Record<SpriteName, readonly [number, number]>> = {
-  owl: [17, 22],
-  human: [19, 26],
-  dwarf: [17, 26],
-};
-
-/** 口パクのコマで暗くする口の位置：[x, y, 幅, 高さ] */
-export const MOUTH: Partial<Record<SpriteName, readonly [number, number, number, number]>> = {
-  owl: [14, 15, 4, 1],
-  human: [15, 16, 2, 2],
-  dwarf: [15, 15, 2, 2],
-  fairy: [15, 15, 2, 1],
 };
 
 /** ポーズで使う、キャラクターのパレットにない色（x は汗のしずく、z は寝息の Z） */
@@ -229,6 +227,7 @@ export const EXTRA_COLORS: Record<string, string> = { x: "#8fd3ff", z: "#ffffff"
 // ───────── ポーズ（コマ）：元の絵のドットを差し替えたり、絵をずらしたりして作る ─────────
 
 export type Pose =
+  // 前の粗い絵（spritesClassic.ts）は、どの動きも1コマ目だけを持つ
   // 歩く：片足を上げかける → 上げて傾く → 一歩前に下ろす → 元の絵、を左右で（4と8は元の絵）
   | `walk${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`
   // かがむ（浅く・深く）
@@ -245,21 +244,25 @@ export type Pose =
   | `oops${1 | 2 | 3}`;
 
 /** [x, y, 文字]。文字はパレットの色（"." は透明） */
-type Edit = [number, number, string];
+export type Edit = [number, number, string];
 
 type Transform = (rows: Rows) => Rows;
 
 /** ポーズの作り方：ドットの差し替え、または絵全体の変換 */
 type PoseDef = Edit[] | Transform;
 
-type Frames = Partial<Record<Pose, PoseDef>>;
+export type Frames = Partial<Record<Pose, PoseDef>>;
 
 /** (x, y) を左上にして、小さな絵を重ねる。1行が1文字列で、空白のところは元の絵のまま */
 const stamp = (x: number, y: number, ...lines: string[]): Edit[] =>
   lines.flatMap((line, dy) => [...line].flatMap((c, dx): Edit[] => (c === " " ? [] : [[x + dx, y + dy, c]])));
 
-/** 左右対称に差し替える（x と 31−x） */
-const sym = (...edits: Edit[]): Edit[] => edits.flatMap(([x, y, c]) => [[x, y, c] as Edit, [31 - x, y, c] as Edit]);
+/** 幅 width の絵を、左右対称に差し替える（x と width−1−x） */
+export const symmetric =
+  (width: number) =>
+  (...edits: Edit[]): Edit[] =>
+    edits.flatMap(([x, y, c]) => [[x, y, c] as Edit, [width - 1 - x, y, c] as Edit]);
+const sym = symmetric(32);
 
 function applyPose(rows: Rows, def: PoseDef): Rows {
   if (typeof def === "function") return def(rows);
@@ -278,13 +281,13 @@ const chain =
 const flip: Transform = (rows) => rows.map(reversed);
 
 /** 色を差し替える（目を閉じる：まばたきと同じ差し替えを、絵そのものにする） */
-const recolor =
+export const recolor =
   (map: Record<string, string>): Transform =>
   (rows) =>
     rows.map((r) => [...r].map((c) => map[c] ?? c).join(""));
 
 /** 縮む：指定した行を抜き、そのぶん上を下げる */
-const squash =
+export const squash =
   (...cut: number[]): Transform =>
   (rows) => [...cut.map(() => ".".repeat(rows[0].length)), ...rows.filter((_, y) => !cut.includes(y))];
 
@@ -463,21 +466,31 @@ const FAIRY: Frames = {
   ...oops(24, 26, 0, 1),
 };
 
-const POSES: Partial<Record<SpriteName, Frames>> = { owl: OWL, human: HUMAN, dwarf: DWARF, fairy: FAIRY };
-
-/** 作ったポーズの絵は使い回す（コマ送りのたびに作り直さない） */
-const posedCache = new Map<string, Rows>();
-
-/** ポーズの絵。そのキャラクターにないポーズなら元の絵 */
-export function posed(name: SpriteName, pose: Pose | undefined): Rows {
-  const rows = SPRITES[name];
-  const def = pose && POSES[name]?.[pose];
-  if (!def) return rows;
-  const key = `${name}:${pose}`;
-  let result = posedCache.get(key);
-  if (!result) {
-    result = applyPose(rows, def);
-    posedCache.set(key, result);
-  }
-  return result;
+/**
+ * 元の絵とポーズの作り方から、ポーズの絵を返す関数を作る。
+ * 作った絵は使い回す（コマ送りのたびに作り直さない）
+ */
+export function poser(sprites: Record<SpriteName, Rows>, poses: Partial<Record<SpriteName, Frames>>): SpriteSet["rows"] {
+  const cache = new Map<string, Rows>();
+  return (name, pose) => {
+    const rows = sprites[name];
+    const def = pose && poses[name]?.[pose];
+    if (!def) return rows;
+    const key = `${name}:${pose}`;
+    let result = cache.get(key);
+    if (!result) {
+      result = applyPose(rows, def);
+      cache.set(key, result);
+    }
+    return result;
+  };
 }
+
+/** 細かい絵（32×32）のそろい */
+export const FINE: SpriteSet = {
+  rows: poser(SPRITES, { owl: OWL, human: HUMAN, dwarf: DWARF, fairy: FAIRY }),
+  blink: BLINK,
+  flap: { fairy: "uwW" },
+  breath: { owl: [17, 22], human: [19, 26], dwarf: [17, 26] },
+  mouth: { owl: [14, 15, 4, 1], human: [15, 16, 2, 2], dwarf: [15, 15, 2, 2], fairy: [15, 15, 2, 1] },
+};

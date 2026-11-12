@@ -102,6 +102,8 @@ export const CHARACTERS: Record<CharacterId, Character> = {
       n: "#eeb090",
       ...EYES,
       c: "#58c878",
+      // きらめき（前の粗い絵だけにある）
+      y: "#f8e858",
     },
   },
   rose: { name: "マダム・ローズ", title: "店舗の大家", sprite: "human", palette: human("#d04070", "#802050", "#501030", "#301020") },
