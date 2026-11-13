@@ -1,9 +1,12 @@
 import type { CharacterId, ItemId } from "@/game/types";
+import type { Look } from "./sprites";
 
 export interface Character {
   name: string;
   title: string;
   sprite: "owl" | "human" | "dwarf" | "fairy";
+  /** 人の描き分け（頭まわりと小物）。細かい絵だけにある */
+  look?: Look;
   palette: Record<string, string>;
 }
 
@@ -23,7 +26,8 @@ const OUTLINE = "#1d1d2b";
 /** 目：e と、いちばん下の行の E（まばたきで閉じた目の線になる）、光の i */
 const EYES = { e: OUTLINE, E: OUTLINE, i: "#ffffff" };
 
-const human = (hair: string, cloth: string, clothDark: string, pants: string): Record<string, string> => ({
+/** 人のパレット。a は描き分けの小物の色（影の A は a から作る）、g は差し色 */
+const human = (hair: string, cloth: string, clothDark: string, pants: string, a = "#ffffff", g = "#f0c040"): Record<string, string> => ({
   o: OUTLINE,
   h: hair,
   H: shade(hair, -0.25),
@@ -35,6 +39,9 @@ const human = (hair: string, cloth: string, clothDark: string, pants: string): R
   d: clothDark,
   p: pants,
   b: "#4a2e1a",
+  a,
+  A: shade(a, -0.25),
+  g,
 });
 
 export const CHARACTERS: Record<CharacterId, Character> = {
@@ -59,7 +66,7 @@ export const CHARACTERS: Record<CharacterId, Character> = {
       g: "#d4af37",
     },
   },
-  cecil: { name: "セシル", title: "商人ギルドの受付", sprite: "human", palette: human("#c8553d", "#2f5fb3", "#203f78", "#3a3a4a") },
+  cecil: { name: "セシル", title: "商人ギルドの受付", sprite: "human", look: "ribbon", palette: human("#c8553d", "#2f5fb3", "#203f78", "#3a3a4a", "#f8e070") },
   gantetsu: {
     name: "ガンテツ",
     title: "ドワーフ商会の問屋",
@@ -82,10 +89,10 @@ export const CHARACTERS: Record<CharacterId, Character> = {
       b: "#2e1e12",
     },
   },
-  allen: { name: "アレン", title: "ツケ払い常連の戦士", sprite: "human", palette: human("#e0b030", "#a83232", "#6e1f1f", "#3a3a4a") },
-  mina: { name: "ミーナ", title: "魔法使い", sprite: "human", palette: human("#6b3fa0", "#3a2a6a", "#24183f", "#24183f") },
-  gord: { name: "ゴルド", title: "まとめ買いの盾使い", sprite: "human", palette: human("#5a3a1a", "#7a7a8a", "#4a4a5a", "#3a2a1a") },
-  lily: { name: "リリィ", title: "薬草好きの僧侶", sprite: "human", palette: human("#f0e0b0", "#f0f0f0", "#b0b0c0", "#8090b0") },
+  allen: { name: "アレン", title: "ツケ払い常連の戦士", sprite: "human", look: "spiky", palette: human("#e0b030", "#a83232", "#6e1f1f", "#3a3a4a", "#e84a4a") },
+  mina: { name: "ミーナ", title: "魔法使い", sprite: "human", look: "witch", palette: human("#6b3fa0", "#3a2a6a", "#24183f", "#24183f", "#3a2f78", "#f0c040") },
+  gord: { name: "ゴルド", title: "まとめ買いの盾使い", sprite: "human", look: "helmet", palette: human("#5a3a1a", "#7a7a8a", "#4a4a5a", "#3a2a1a", "#9a9aac", "#d4d4e4") },
+  lily: { name: "リリィ", title: "薬草好きの僧侶", sprite: "human", look: "veil", palette: human("#f0e0b0", "#f0f0f0", "#b0b0c0", "#8090b0", "#f6f6fc", "#e8b830") },
   pipi: {
     name: "ピピ",
     title: "いたずら妖精",
@@ -106,9 +113,9 @@ export const CHARACTERS: Record<CharacterId, Character> = {
       y: "#f8e858",
     },
   },
-  rose: { name: "マダム・ローズ", title: "店舗の大家", sprite: "human", palette: human("#d04070", "#802050", "#501030", "#301020") },
-  luke: { name: "ルーク", title: "王都銀行の窓口係", sprite: "human", palette: human("#303040", "#e8e8f0", "#202838", "#202838") },
-  noel: { name: "ノエル", title: "住み込みの見習い店員", sprite: "human", palette: human("#3a8a5a", "#e8c860", "#a88a30", "#3a3a4a") },
+  rose: { name: "マダム・ローズ", title: "店舗の大家", sprite: "human", look: "updo", palette: human("#d04070", "#802050", "#501030", "#301020") },
+  luke: { name: "ルーク", title: "王都銀行の窓口係", sprite: "human", look: "glasses", palette: human("#303040", "#e8e8f0", "#202838", "#202838", "#b03040", "#8a6a20") },
+  noel: { name: "ノエル", title: "住み込みの見習い店員", sprite: "human", look: "bandana", palette: human("#3a8a5a", "#e8c860", "#a88a30", "#3a3a4a", "#f4eedc", "#e05a3a") },
 };
 
 export interface Item {

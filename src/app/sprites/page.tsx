@@ -3,7 +3,7 @@
 // 確認用の一時ページ（/sprites）。細かくしたドット絵と、増やしたコマを並べて確かめる。前の粗い絵にも切り替えられる。
 // 確認が済んだら、このページと Scene.tsx の CLIP_SETS・Clip の export を消す。
 
-import { CLIP_SETS, type Clip, type Mood, Scene } from "@/components/Scene";
+import { CLIP_SETS, type Clip, type Mood, Scene, clipFor } from "@/components/Scene";
 import type { Pose } from "@/components/Sprite";
 import { useSpriteStyle } from "@/components/spriteStyle";
 import { Btn, Portrait, SpriteStylePicker } from "@/components/ui";
@@ -24,6 +24,7 @@ const POSE_GROUPS: [string, (Pose | undefined)[]][] = [
   ["考える", ["think1", "think2", "think3"]],
   ["眠る", ["sleep1", "sleep2", "sleep3", "sleep4"]],
   ["あわてる", ["oops1", "oops2", "oops3"]],
+  ["首を回す（ホーホー先生だけ）", ["turn1", "turn2", "turn3", "turn4", "turn5"]],
 ];
 
 /** ゲームの中で出る大きさ（px） */
@@ -119,7 +120,7 @@ export default function SpritesPage() {
       <h1 className="mb-2 text-xl">ドット絵の確認（一時ページ）</h1>
       <SpriteStylePicker className="mb-4" />
 
-      <Section title="全員（待機の息づかい・まばたきつき）">
+      <Section title="全員（待機の息づかい・まばたきつき。細かい絵では、人を1人ずつ描き分けている）">
         <div className="flex flex-wrap items-end gap-4 rounded p-4" style={{ background: SKY }}>
           {EVERYONE.map((id) => (
             <figure key={id} className="text-center text-xs text-white">
@@ -153,7 +154,7 @@ export default function SpritesPage() {
             </Stage>
             {MOODS.map((mood) => (
               <Stage key={mood} label={MOOD_LABELS[mood]}>
-                <Player id={id} clip={clips.moods[mood]} className={mood === "talk" ? "" : `mood-${mood}`} talking={mood === "talk"} />
+                <Player id={id} clip={clipFor(clips, CHARACTERS[id].sprite, mood)} className={mood === "talk" ? "" : `mood-${mood}`} talking={mood === "talk"} />
               </Stage>
             ))}
           </div>

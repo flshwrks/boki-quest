@@ -198,8 +198,8 @@ export type SpriteStyle = "fine" | "classic";
 
 /** 絵のそろい1つ分。Sprite はこれだけを見て描く */
 export interface SpriteSet {
-  /** ポーズの絵。そのキャラクターにないポーズなら元の絵 */
-  rows: (name: SpriteName, pose: Pose | undefined) => Rows;
+  /** ポーズの絵。そのキャラクターにないポーズなら元の絵。look は人の描き分け（このそろいにない look なら、共通の絵） */
+  rows: (name: SpriteName, pose: Pose | undefined, look?: Look) => Rows;
   /** まばたきのコマ：目のドットを、閉じたまぶたの色に差し替える */
   blink: Partial<Record<SpriteName, Record<string, string>>>;
   /** 羽ばたきで上下に動かすドット（妖精の羽） */
@@ -241,7 +241,9 @@ export type Pose =
   // 眠る：寝息の Z がのぼっていく（4は Z なし）
   | `sleep${1 | 2 | 3 | 4}`
   // あわてる：すくんで、汗のしずくが流れる
-  | `oops${1 | 2 | 3}`;
+  | `oops${1 | 2 | 3}`
+  // 首を回す（フクロウの決めポーズ）：横を向きかける → 真横 → 真後ろ → 反対の真横 → 戻りかける
+  | `turn${1 | 2 | 3 | 4 | 5}`;
 
 /** [x, y, 文字]。文字はパレットの色（"." は透明） */
 export type Edit = [number, number, string];
@@ -365,6 +367,13 @@ const OWL_WING_UP = [
 ];
 /** 目を上に向ける */
 const OWL_LOOK_UP = sym(...stamp(9, 9, "wkk", "kkk", "kkk", "www", "WWW"));
+/** 顔（7〜16行目の、輪郭の内側）を n ドット右へ回す。回って見えてきた側は羽の色、右にはみ出た分は見えなくなる */
+const owlTurn =
+  (n: number): Transform =>
+  (rows) =>
+    rows.map((r, y) => (y < 7 || y > 16 ? r : r.slice(0, 3) + "b".repeat(n) + r.slice(3, 29 - n) + r.slice(29)));
+/** 真後ろ：顔がすっかり回って、後ろ頭の羽だけが見える */
+const OWL_BACK = chain(owlTurn(26), sym(...stamp(6, 8, "dd", "", "   dd", "", "dd    dd", "", "   dd", "", "dd    dd")));
 
 const OWL: Frames = {
   // 画面右の足（x=19〜23）を上げて、体を左へ傾ける。下ろすときは体を沈め、足を1ドット手前（下）に出す
@@ -383,6 +392,11 @@ const OWL: Frames = {
   ...think(OWL_LOOK_UP, 17),
   ...sleep("owl", 22, 28, 0),
   ...oops(24, 29, 0),
+  turn1: owlTurn(6),
+  turn2: owlTurn(12),
+  turn3: OWL_BACK,
+  turn4: chain(flip, owlTurn(12), flip),
+  turn5: chain(flip, owlTurn(6), flip),
 };
 
 // 人とドワーフ。足の位置（x=17〜25 が画面右の足）は同じなので、歩くコマは作り方を共有する
@@ -422,6 +436,118 @@ const HUMAN: Frames = {
   ...sleep("human", 23, 28, 1),
   ...oops(23, 28, 2),
 };
+
+// 人の描き分け。体とコマは全員同じで、頭まわりと小物だけを1人ずつ差し替える。
+// 色は a（小物）・A（その影）・g（差し色）で、キャラクターのパレットに足す（world.ts）。
+// 目（11〜13行目の x=10・11）と口の位置は変えない。0行目は、のびるコマのために空けておく
+
+/** y 行目から、左半分だけ書いた絵を鏡写しにして重ねる */
+const both = (y: number, ...left: string[]): Edit[] => mirror(left).flatMap((r, i) => stamp(0, y + i, r));
+
+const LOOKS = {
+  // セシル（受付）：ヘアバンドとリボン
+  ribbon: [...sym(...stamp(5, 7, "aaaaaaaaaaa")), ...stamp(19, 3, "a   a", "aaAaa", "a   a")],
+  // アレン（戦士）：画面右へ高くなっていくつんつん頭に、はちまき（左右対称にすると王冠に見える）
+  spiky: [
+    ...stamp(
+      0,
+      1,
+      "....................o...........",
+      "............o......oho..........",
+      "......o....oho....ohhho.........",
+      ".....oho..ohhho..ohhLhhoooo.....",
+      "....ohhhoohhLhhoohhLhhhhhhho....",
+    ),
+    ...both(8, "....ohhhhhhhhhhh", "....oaaaaaaaaaaa", "....oAAAAAAAAAAA"),
+  ],
+  // ミーナ（魔法使い）：とんがり帽子
+  witch: both(
+    1,
+    "..............oo",
+    ".............oaa",
+    "............oaAa",
+    "...........oaaAa",
+    "..........oaaaaa",
+    ".........ogggggg",
+    "...oooooooaaaaaa",
+    "..oaaaaaaaaaaaaa",
+    "...ooooooooooooo",
+  ),
+  // ゴルド（盾使い）：鼻当てとほお当てのついた兜
+  helmet: both(
+    2,
+    "........ooaaaaaa",
+    "......ooaaaaaaaa",
+    ".....oaaaggaaaaa",
+    "....oaaaggaaaaaa",
+    "....oaaaaaaaaaaa",
+    "....oaaaaaaaaaaa",
+    "....oAAAAAAAAAAA",
+    "....oaahhhsssssa",
+    "....oaahhssssssa",
+    "....oaaHssiesssa",
+    "....oaaHsseesssa",
+    "....oaaHssEEsssA",
+    "....oaAHssssssss",
+    "....oAAnnsssssss",
+    ".....oAssssssssn",
+  ),
+  // リリィ（僧侶）：十字のついた頭巾が、肩までかかる
+  veil: both(
+    2,
+    "........ooaaaaaa",
+    "......ooaaaaaaag",
+    ".....oaaaaaaaagg",
+    "....oaaaaaaaaaag",
+    "....oaaaaaaaaaag",
+    "....oaaAAAAAAAAA",
+    "....oaAhhhhhhhss",
+    "....oaAhhhhsssss",
+    "....oaAhhsssssss",
+    "....oaAHssiessss",
+    "....oaAHsseessss",
+    "....oaAHssEEssss",
+    "....oaAHssssssss",
+    "....oaAnnsssssss",
+    "....oaaAsssssssn",
+    "....oaaaosssssss",
+    "...oaaaaoooosnnn",
+  ),
+  // マダム・ローズ（大家）：高く結い上げた髪と、耳かざり
+  updo: both(
+    1,
+    ".............ooo",
+    "...........oohhh",
+    "...........ohLhh",
+    "......oooooohhhh",
+    "....oohhhhhhhhhh",
+    "...ohhhLLhhhhhhh",
+    "...ohhLhhhhhhhhh",
+    "...ohhhhhhhhhhss",
+    "...ohhhhhhhsssss",
+    "..ohhhhhhsssssss",
+    "..ohhhhHssiessss",
+    "..ohhhhHsseessss",
+    "..ohhhhHssEEssss",
+    "...ohhhHssssssss",
+    "...ohgHnnsssssss",
+    "....ogHssssssssn",
+  ),
+  // ルーク（銀行の窓口）：めがねとネクタイ
+  glasses: [
+    ...both(10, "....ohhhhggggsss", "....ohhHsgiegsss", "....ohhHggeegggg", "....ohhHsgEEgsss", "....ohhHsggggsss"),
+    ...sym(...stamp(15, 20, "a", "a", "a", "A")),
+  ],
+  // ノエル（見習い）：水玉の三角巾（結び目は画面右）とエプロン
+  bandana: [
+    ...both(2, "........ooaaaaaa", "......ooaaaaaaaa", ".....oaaaaagaaaa", "....oaagaaaaaaga", "....oaaaaaagaaaa", "....oAAAAAAAAAAA"),
+    ...stamp(27, 5, "oo", "aao", "Aao", "oo"),
+    ...sym(...stamp(12, 21, "aaaa", "aaaa", "aaaa", "AAAA")),
+  ],
+} satisfies Record<string, Edit[]>;
+
+/** 人の描き分けの名前 */
+export type Look = keyof typeof LOOKS;
 
 /** 手（画面左）を袖に戻す */
 const DWARF_HAND_AWAY = stamp(5, 21, "cc", "cc");
@@ -467,28 +593,34 @@ const FAIRY: Frames = {
 };
 
 /**
- * 元の絵とポーズの作り方から、ポーズの絵を返す関数を作る。
+ * 元の絵とポーズの作り方から、ポーズの絵を返す関数を作る。looks を渡すと、人の描き分けを元の絵に重ねてからポーズをつける。
  * 作った絵は使い回す（コマ送りのたびに作り直さない）
  */
-export function poser(sprites: Record<SpriteName, Rows>, poses: Partial<Record<SpriteName, Frames>>): SpriteSet["rows"] {
+export function poser(
+  sprites: Record<SpriteName, Rows>,
+  poses: Partial<Record<SpriteName, Frames>>,
+  looks: Partial<Record<Look, Edit[]>> = {},
+): SpriteSet["rows"] {
   const cache = new Map<string, Rows>();
-  return (name, pose) => {
-    const rows = sprites[name];
-    const def = pose && poses[name]?.[pose];
-    if (!def) return rows;
-    const key = `${name}:${pose}`;
+  const cached = (key: string, make: () => Rows) => {
     let result = cache.get(key);
     if (!result) {
-      result = applyPose(rows, def);
+      result = make();
       cache.set(key, result);
     }
     return result;
+  };
+  return (name, pose, look) => {
+    const edits = look && looks[look];
+    const rows = edits ? cached(`${name}:${look}`, () => applyPose(sprites[name], edits)) : sprites[name];
+    const def = pose && poses[name]?.[pose];
+    return def ? cached(`${name}:${edits ? look : ""}:${pose}`, () => applyPose(rows, def)) : rows;
   };
 }
 
 /** 細かい絵（32×32）のそろい */
 export const FINE: SpriteSet = {
-  rows: poser(SPRITES, { owl: OWL, human: HUMAN, dwarf: DWARF, fairy: FAIRY }),
+  rows: poser(SPRITES, { owl: OWL, human: HUMAN, dwarf: DWARF, fairy: FAIRY }, LOOKS),
   blink: BLINK,
   flap: { fairy: "uwW" },
   breath: { owl: [17, 22], human: [19, 26], dwarf: [17, 26] },

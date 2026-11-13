@@ -1,8 +1,8 @@
 "use client";
 
 import { DECORS, RARITY, TREASURES } from "@/content/treasures";
-import type { SpriteStyle } from "@/content/sprites";
-import { ITEMS, LEVELS, itemsForLevel } from "@/content/world";
+import type { SpriteName, SpriteStyle } from "@/content/sprites";
+import { CHARACTERS, ITEMS, LEVELS, itemsForLevel } from "@/content/world";
 import type { CharacterId, GameState } from "@/game/types";
 import { useEffect, useRef, useState } from "react";
 import { type Pose, Sprite } from "./Sprite";
@@ -44,8 +44,13 @@ export interface SceneFx {
 /** コマの列。frames を ms ごとに切り替え、loop でなければ最後のコマ（undefined なら元の絵）で止まる */
 export type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
 
-/** 絵のそろい1つ分の、登場と場面ごとのコマの並び */
-export type ClipSet = { enter: Clip; moods: Record<Mood, Clip> };
+/** 絵のそろい1つ分の、登場と場面ごとのコマの並び。special は、そのキャラクターだけの決めポーズ（moods の代わりに使う） */
+export type ClipSet = { enter: Clip; moods: Record<Mood, Clip>; special?: Partial<Record<SpriteName, Partial<Record<Mood, Clip>>>> };
+
+/** 跳ぶ動き（13コマ × 60ms）：かがむ → 跳ぶ → 着地 → 小さくもう一度 */
+const HOP: Clip["frames"] = ["crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3", "crouch2", "crouch1", "jump1", "jump2", "jump3", "crouch1", undefined];
+/** 同じコマを2回ずつ（コマ送りの速さを半分にする） */
+const slow = (...frames: Clip["frames"]) => frames.flatMap((f) => [f, f]);
 
 // 跳ねる高さ・震え・歩いてくる動きは CSS（globals.css の mood-*・walk-in）でつけている。
 // コマの数 × ms が CSS の時間とそろうようにしてあるので、変えるときは両方を直す
@@ -55,10 +60,7 @@ export const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
     enter: { frames: ["walk1", "walk2", "walk3", "walk4", "walk5", "walk6", "walk7", "walk8"], ms: 75 },
     moods: {
       // かがむ → 跳ぶ → 着地 → 小さくもう一度（0.78秒）
-      happy: {
-        frames: ["crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3", "crouch2", "crouch1", "jump1", "jump2", "jump3", "crouch1", undefined],
-        ms: 60,
-      },
+      happy: { frames: HOP, ms: 60 },
       // 着地 → ためる → 跳ぶ、をくり返す（1回 0.64秒）。動きを減らす設定では、最後のコマ（両手を上げた絵）で止まる
       cheer: { frames: ["crouch2", "crouch1", "crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3"], ms: 80, loop: true },
       // すくんで震え、汗のしずくが流れて止まる
@@ -72,6 +74,10 @@ export const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
         frames: ["talk1", "talk2", "talk2", "talk2", "talk1", undefined, undefined, "talk1", "talk2", "talk2", "talk2", "talk1", undefined],
         ms: 100,
       },
+    },
+    special: {
+      // ホーホー先生の決めポーズ：跳ねたあと、首をくるっと1周させる
+      owl: { happy: { frames: [...HOP.slice(0, -1), ...slow("turn1", "turn2", "turn3", "turn4", "turn5"), undefined], ms: 60 } },
     },
   },
   // 前の粗い絵：動きは1つにつき1コマ。跳ねる・かしげる・うとうとする動きは CSS（.sprites-classic）でつける
@@ -88,15 +94,19 @@ export const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
   },
 };
 
+/** その絵のキャラクターが、その場面で使うコマの並び（決めポーズがあれば、そちら） */
+export const clipFor = ({ moods, special }: ClipSet, sprite: SpriteName, mood: Mood): Clip => special?.[sprite]?.[mood] ?? moods[mood];
+
 /**
  * コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key か絵のそろいが変わるたびに最初から再生する。
  * entering は歩いている間だけ true（場面の動きは、歩き終えてから始める）
  */
-function usePose(mood: Mood | undefined, key: string, { enter, moods }: ClipSet): { pose?: Pose; entering: boolean } {
+function usePose(mood: Mood | undefined, key: string, set: ClipSet, sprite: SpriteName): { pose?: Pose; entering: boolean } {
   const entered = useRef(false);
   const [now, setNow] = useState<{ pose?: Pose; entering: boolean }>({ entering: false });
   useEffect(() => {
-    const clip = mood ? moods[mood] : undefined;
+    const { enter } = set;
+    const clip = mood ? clipFor(set, sprite, mood) : undefined;
     const clips = [...(entered.current ? [] : [enter]), clip ?? { frames: [undefined], ms: 0 }];
     const steps = clips.flatMap((c) => c.frames.map((pose) => ({ pose, ms: c.ms, entering: c === enter })));
     entered.current = true;
@@ -121,14 +131,14 @@ function usePose(mood: Mood | undefined, key: string, { enter, moods }: ClipSet)
     step();
     return () => clearTimeout(timer);
     // key には mood も含まれている
-  }, [key, enter, moods]);
+  }, [key, set, sprite]);
   return now;
 }
 
 /** 動きと感情アイコンをつけたキャラクター */
 function Actor({ id, size, fx }: { id: CharacterId; size: number; fx: SceneFx }) {
   const key = `${fx.mood}:${fx.moodKey ?? ""}`;
-  const { pose, entering } = usePose(fx.mood, key, CLIP_SETS[useSpriteStyle()]);
+  const { pose, entering } = usePose(fx.mood, key, CLIP_SETS[useSpriteStyle()], CHARACTERS[id].sprite);
   // 体ごとの動き（CSS）は、歩き終えてクラスがついたときに始まる
   const moving = fx.mood && fx.mood !== "talk" && !entering;
   return (

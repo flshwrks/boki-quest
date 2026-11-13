@@ -94,7 +94,7 @@ export function Portrait({
   pose?: Pose;
 }) {
   const c = CHARACTERS[id];
-  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} talking={talking} pose={pose} />;
+  return <Sprite name={c.sprite} palette={c.palette} size={size} className={className} label={c.name} animate={!still} talking={talking} pose={pose} look={c.look} />;
 }
 
 const SPRITE_STYLES: [SpriteStyle, string][] = [

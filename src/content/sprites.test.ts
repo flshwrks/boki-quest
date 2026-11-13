@@ -23,6 +23,7 @@ const POSES: (Pose | undefined)[] = [
   "oops1",
   "oops2",
   "oops3",
+  ...([1, 2, 3, 4, 5] as const).map((n): Pose => `turn${n}`),
 ];
 
 const SETS: [string, SpriteSet, number][] = [
@@ -34,7 +35,7 @@ describe.each(SETS)("%s", (_, set, size) => {
   it.each(Object.entries(CHARACTERS))("%s：どのコマも大きさがそろい、パレットにない色を使わない", (_id, c) => {
     const colors = { ...EXTRA_COLORS, ...c.palette };
     for (const pose of POSES) {
-      const rows = set.rows(c.sprite, pose);
+      const rows = set.rows(c.sprite, pose, c.look);
       expect(rows.map((r) => r.length)).toEqual(Array(size).fill(size));
       const unknown = [...new Set(rows.join(""))].filter((ch) => ch !== "." && !colors[ch]);
       expect(unknown, `${pose ?? "元の絵"}`).toEqual([]);

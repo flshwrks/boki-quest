@@ -1,4 +1,4 @@
-import { EXTRA_COLORS, FINE, type Pose, type SpriteName, type SpriteSet, type SpriteStyle } from "@/content/sprites";
+import { EXTRA_COLORS, FINE, type Look, type Pose, type SpriteName, type SpriteSet, type SpriteStyle } from "@/content/sprites";
 import { CLASSIC } from "@/content/spritesClassic";
 import { memo } from "react";
 import { useSpriteStyle } from "./spriteStyle";
@@ -20,6 +20,7 @@ export const Sprite = memo(function Sprite({
   animate = false,
   talking = false,
   pose,
+  look,
 }: {
   name: SpriteName;
   palette: Record<string, string>;
@@ -32,9 +33,11 @@ export const Sprite = memo(function Sprite({
   talking?: boolean;
   /** 今のコマのポーズ（省くと元の絵） */
   pose?: Pose;
+  /** 人の描き分け */
+  look?: Look;
 }) {
   const set = SETS[useSpriteStyle()];
-  const rows = set.rows(name, pose);
+  const rows = set.rows(name, pose, look);
   const colors = { ...EXTRA_COLORS, ...palette };
   const w = rows[0].length;
   const h = rows.length;
