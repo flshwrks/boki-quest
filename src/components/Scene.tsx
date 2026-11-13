@@ -42,10 +42,10 @@ export interface SceneFx {
 }
 
 /** コマの列。frames を ms ごとに切り替え、loop でなければ最後のコマ（undefined なら元の絵）で止まる */
-export type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
+type Clip = { frames: (Pose | undefined)[]; ms: number; loop?: boolean };
 
 /** 絵のそろい1つ分の、登場と場面ごとのコマの並び。special は、そのキャラクターだけの決めポーズ（moods の代わりに使う） */
-export type ClipSet = { enter: Clip; moods: Record<Mood, Clip>; special?: Partial<Record<SpriteName, Partial<Record<Mood, Clip>>>> };
+type ClipSet = { enter: Clip; moods: Record<Mood, Clip>; special?: Partial<Record<SpriteName, Partial<Record<Mood, Clip>>>> };
 
 /** 跳ぶ動き（13コマ × 60ms）：かがむ → 跳ぶ → 着地 → 小さくもう一度 */
 const HOP: Clip["frames"] = ["crouch1", "crouch2", "jump1", "jump2", "jump2", "jump3", "crouch2", "crouch1", "jump1", "jump2", "jump3", "crouch1", undefined];
@@ -54,7 +54,7 @@ const slow = (...frames: Clip["frames"]) => frames.flatMap((f) => [f, f]);
 
 // 跳ねる高さ・震え・歩いてくる動きは CSS（globals.css の mood-*・walk-in）でつけている。
 // コマの数 × ms が CSS の時間とそろうようにしてあるので、変えるときは両方を直す
-export const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
+const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
   fine: {
     // 登場：歩く8コマで歩いてくる（0.6秒）
     enter: { frames: ["walk1", "walk2", "walk3", "walk4", "walk5", "walk6", "walk7", "walk8"], ms: 75 },
@@ -95,7 +95,7 @@ export const CLIP_SETS: Record<SpriteStyle, ClipSet> = {
 };
 
 /** その絵のキャラクターが、その場面で使うコマの並び（決めポーズがあれば、そちら） */
-export const clipFor = ({ moods, special }: ClipSet, sprite: SpriteName, mood: Mood): Clip => special?.[sprite]?.[mood] ?? moods[mood];
+const clipFor = ({ moods, special }: ClipSet, sprite: SpriteName, mood: Mood): Clip => special?.[sprite]?.[mood] ?? moods[mood];
 
 /**
  * コマ送り。登場したてなら歩くコマのあとに、場面のコマを続ける。key か絵のそろいが変わるたびに最初から再生する。

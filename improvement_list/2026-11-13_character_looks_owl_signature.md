@@ -44,3 +44,8 @@
 
 - ユーザーに見てもらう。直すところ・ほかのキャラクターの決めポーズを足すかどうかを決めてもらう
 - OK のあと master に入れる（デプロイは指示があってから）。そのとき `src/app/sprites/` と、Scene の確認用 export を消す
+
+## 追記（2026-11-13）：master に取り込み
+
+- ユーザーの OK が出たので、確認用の一時ページ `src/app/sprites/` を消し、Scene の確認用 export（`CLIP_SETS`・`Clip`・`ClipSet`・`clipFor`）を外して、master に取り込んだ。
+- 残作業：公開（push とデプロイ）は指示があってから。
